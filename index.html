@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Heladería — Gestión</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f5f5f3;
+    --surface: #ffffff;
+    --border: rgba(0,0,0,0.1);
+    --border-md: rgba(0,0,0,0.2);
+    --text: #1a1a1a;
+    --text-muted: #666;
+    --text-faint: #999;
+    --blue: #378ADD;
+    --blue-dark: #185FA5;
+    --blue-bg: #E6F1FB;
+    --green: #3B6D11;
+    --green-bg: #EAF3DE;
+    --red: #A32D2D;
+    --red-bg: #FCEBEB;
+    --amber: #854F0B;
+    --amber-bg: #FAEEDA;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: var(--text); background: var(--bg); }
+
+  /* AUTH */
+  #auth-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .auth-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 36px 40px; width: 360px; }
+  .auth-card h1 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
+  .auth-card p { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
+
+  /* APP SHELL */
+  #app-screen { display: none; height: 100vh; overflow: hidden; }
+  .shell { display: flex; height: 100%; }
+
+  /* SIDEBAR */
+  .sidebar { width: 220px; min-width: 220px; background: var(--surface); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+  .sidebar-logo { padding: 18px 16px 14px; border-bottom: 0.5px solid var(--border); }
+  .sidebar-logo .title { font-size: 13px; font-weight: 500; }
+  .sidebar-logo .sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .nav-group { padding: 10px 0 4px; }
+  .nav-label { font-size: 10px; font-weight: 500; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 16px 5px; }
+  .nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 16px; cursor: pointer; font-size: 13px; color: var(--text-muted); border-left: 2px solid transparent; }
+  .nav-item:hover { background: var(--bg); color: var(--text); }
+  .nav-item.active { background: var(--blue-bg); color: var(--blue-dark); border-left-color: var(--blue); font-weight: 500; }
+  .sidebar-footer { margin-top: auto; padding: 12px 16px; border-top: 0.5px solid var(--border); }
+  .user-info { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn-logout { font-size: 12px; color: var(--red); background: none; border: none; cursor: pointer; padding: 0; }
+
+  /* MAIN */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar { background: var(--surface); border-bottom: 0.5px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar-title { font-size: 16px; font-weight: 500; }
+  .content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* COMPONENTS */
+  .btn { padding: 7px 14px; font-size: 13px; border-radius: var(--radius); border: 0.5px solid var(--border-md); background: transparent; color: var(--text); cursor: pointer; font-family: inherit; transition: background 0.1s; }
+  .btn:hover { background: var(--bg); }
+  .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn-primary:hover { background: var(--blue-dark); border-color: var(--blue-dark); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-danger { color: var(--red); border-color: var(--red-bg); }
+
+  .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 16px; }
+  .card-title { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 14px; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 20px; }
+  .kpi-card { background: var(--bg); border-radius: var(--radius); padding: 14px 16px; }
+  .kpi-label { font-size: 11px; color: var(--text-muted); margin-bottom: 5px; }
+  .kpi-value { font-size: 22px; font-weight: 500; }
+  .kpi-sub { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { font-size: 11px; font-weight: 500; color: var(--text-muted); text-align: left; padding: 0 8px 8px; border-bottom: 0.5px solid var(--border); text-transform: uppercase; letter-spacing: 0.04em; }
+  td { padding: 9px 8px; border-bottom: 0.5px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg); }
+
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+  .badge-success { background: var(--green-bg); color: var(--green); }
+  .badge-warning { background: var(--amber-bg); color: var(--amber); }
+  .badge-danger { background: var(--red-bg); color: var(--red); }
+  .badge-info { background: var(--blue-bg); color: var(--blue-dark); }
+  .badge-gray { background: var(--bg); color: var(--text-muted); }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+  .field input, .field select, .field textarea { font-size: 13px; padding: 7px 10px; border: 0.5px solid var(--border-md); border-radius: var(--radius); background: var(--surface); color: var(--text); font-family: inherit; }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--blue); }
+  .field.full { grid-column: 1 / -1; }
+
+  .filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filters input, .filters select { font-size: 13px; padding: 6px 10px; border: 0.5px solid var(--border-md); border-radius: var(--radius); background: var(--surface); color: var(--text); font-family: inherit; }
+  .filters input { flex: 1; min-width: 180px; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border-radius: var(--radius-lg); padding: 24px; width: 560px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+  .modal h2 { font-size: 16px; font-weight: 500; margin-bottom: 20px; }
+  .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; border-top: 0.5px solid var(--border); padding-top: 16px; }
+
+  .alert { padding: 10px 14px; border-radius: var(--radius); font-size: 13px; margin-bottom: 12px; }
+  .alert-danger { background: var(--red-bg); color: var(--red); }
+  .alert-success { background: var(--green-bg); color: var(--green); }
+
+  .empty { text-align: center; padding: 48px; color: var(--text-faint); font-size: 13px; }
+
+  .loading { text-align: center; padding: 32px; color: var(--text-faint); font-size: 13px; }
+
+  .total-row td { font-weight: 500; background: var(--bg); }
+
+  .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 16px; }
+  .day-col { background: var(--bg); border-radius: var(--radius); padding: 10px 8px; min-height: 90px; }
+  .day-col.today { background: var(--blue-bg); }
+  .day-name { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; }
+  .day-col.today .day-name { color: var(--blue-dark); }
+  .venc-chip { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 5px 7px; margin-bottom: 4px; }
+  .venc-chip.vencida { background: var(--red-bg); border-color: #F09595; }
+  .venc-chip .vp { font-size: 11px; font-weight: 500; }
+  .venc-chip.vencida .vp { color: var(--red); }
+  .venc-chip .vm { font-size: 11px; color: var(--text-muted); }
+
+  .stmt { width: 100%; font-size: 13px; border-collapse: collapse; }
+  .stmt td { padding: 7px 6px; }
+  .stmt .sh td { font-size: 11px; font-weight: 500; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; padding-top: 14px; padding-bottom: 4px; }
+  .stmt .st td { border-top: 0.5px solid var(--border); font-weight: 500; padding: 8px 6px; }
+  .stmt .tt td { border-top: 2px solid var(--border-md); background: var(--bg); font-weight: 500; font-size: 14px; padding: 10px 8px; }
+  .stmt .ind td:first-child { padding-left: 18px; color: var(--text-muted); }
+  .stmt .ind2 td:first-child { padding-left: 32px; color: var(--text-muted); }
+  .stmt td:last-child { text-align: right; white-space: nowrap; }
+
+  .topbar-actions { display: flex; gap: 8px; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .grid2 { grid-template-columns: 1fr; }
+    .week-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <h1>Heladería — Gestión</h1>
+    <p>Ingresá con tu cuenta para continuar</p>
+    <div id="auth-error" class="alert alert-danger" style="display:none"></div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Email</label>
+      <input type="email" id="auth-email" placeholder="tu@email.com">
+    </div>
+    <div class="field" style="margin-bottom:20px">
+      <label>Contraseña</label>
+      <input type="password" id="auth-password" placeholder="••••••••">
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="login()">Ingresar</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app-screen">
+  <div class="shell">
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <div class="title">Eisdiele — Gestión</div>
+        <div class="sub" id="temporada-label">Temporada 2025</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">General</div>
+        <div class="nav-item active" data-page="dashboard">◈ Dashboard</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Maestros</div>
+        <div class="nav-item" data-page="proveedores">◎ Proveedores</div>
+        <div class="nav-item" data-page="productos">◉ Productos / MP</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Compras</div>
+        <div class="nav-item" data-page="facturas">▤ Facturas</div>
+        <div class="nav-item" data-page="pagos">◈ Pagos</div>
+        <div class="nav-item" data-page="vencimientos">◷ Vencimientos</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Gastos</div>
+        <div class="nav-item" data-page="gastos">▣ Gastos al contado</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Ventas</div>
+        <div class="nav-item" data-page="caja">▧ Cierre de caja</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Inventario</div>
+        <div class="nav-item" data-page="stock">▦ Stock</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Reportes</div>
+        <div class="nav-item" data-page="rep-compras">▶ Compras por período</div>
+        <div class="nav-item" data-page="rep-resultados">▶ Estado de resultados</div>
+        <div class="nav-item" data-page="rep-flujo">▶ Flujo de caja</div>
+      </div>
+      <div class="sidebar-footer">
+        <div class="user-info" id="user-email-display"></div>
+        <button class="btn-logout" onclick="logout()">Cerrar sesión</button>
+      </div>
+    </nav>
+    <div class="main">
+      <div class="topbar">
+        <div class="topbar-title" id="page-title">Dashboard</div>
+        <div class="topbar-actions" id="topbar-actions"></div>
+      </div>
+      <div class="content" id="content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modal-title"></h2>
+    <div id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="modal-save" onclick="saveModal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://slbtsmycouzbahwtwbje.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNsYnRzbXljb3V6YmFod3R3YmplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2Njc3ODQsImV4cCI6MjA5MTI0Mzc4NH0.oEcV8hQduQcWLwITG4IUNkccJirT4qFC8PP69aN7C3o';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentPage = 'dashboard';
+let modalSaveFn = null;
+
+// ---- AUTH ----
+async function login() {
+  const email = document.getElementById('auth-email').value;
+  const pw = document.getElementById('auth-password').value;
+  const err = document.getElementById('auth-error');
+  err.style.display = 'none';
+  const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+  if (error) { err.textContent = 'Email o contraseña incorrectos.'; err.style.display = 'block'; return; }
+  showApp();
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('auth-screen').style.display = 'flex';
+}
+
+async function showApp() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return;
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  document.getElementById('user-email-display').textContent = user.email;
+  setupNav();
+  navigate('dashboard');
+}
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (session) showApp();
+});
+
+// ---- NAV ----
+function setupNav() {
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => navigate(el.dataset.page));
+  });
+}
+
+function navigate(page) {
+  currentPage = page;
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+  const titles = {
+    dashboard: 'Dashboard', proveedores: 'Proveedores', productos: 'Productos / Materias primas',
+    facturas: 'Facturas de proveedores', pagos: 'Pagos de facturas', vencimientos: 'Vencimientos — vista semanal',
+    gastos: 'Gastos al contado', caja: 'Cierre de caja diario', stock: 'Stock',
+    'rep-compras': 'Reporte — Compras por período',
+    'rep-resultados': 'Estado de resultados', 'rep-flujo': 'Flujo de caja'
+  };
+  document.getElementById('page-title').textContent = titles[page] || page;
+  document.getElementById('topbar-actions').innerHTML = '';
+  const pages = { dashboard, proveedores, productos, facturas, pagos, vencimientos, gastos, caja, stock, 'rep-compras': repCompras, 'rep-resultados': repResultados, 'rep-flujo': repFlujo };
+  if (pages[page]) pages[page]();
+}
+
+// ---- HELPERS ----
+function fmt(n) { return '€ ' + (parseFloat(n)||0).toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtDate(d) { if (!d) return '—'; const dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'2-digit'}); }
+function today() { return new Date().toISOString().split('T')[0]; }
+function loading() { document.getElementById('content').innerHTML = '<div class="loading">Cargando...</div>'; }
+function openModal(title, body, saveFn) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = body;
+  modalSaveFn = saveFn;
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); modalSaveFn = null; }
+async function saveModal() { if (modalSaveFn) await modalSaveFn(); }
+function setActions(html) { document.getElementById('topbar-actions').innerHTML = html; }
+
+function badgeEstado(e) {
+  const map = { pendiente: 'warning', pagada: 'success', vencida: 'danger' };
+  return `<span class="badge badge-${map[e]||'gray'}">${e}</span>`;
+}
+
+// ---- DASHBOARD ----
+async function dashboard() {
+  loading();
+  const hoy = today();
+  const en7 = new Date(); en7.setDate(en7.getDate()+7); const en7s = en7.toISOString().split('T')[0];
+
+  const [{ data: factVenc }, { data: factProx }, { data: ventas }, { data: gastosList }] = await Promise.all([
+    sb.from('facturas').select('monto_total').eq('estado','vencida'),
+    sb.from('facturas').select('id,numero_factura,monto_total,fecha_vencimiento,proveedores(nombre)').eq('estado','pendiente').lte('fecha_vencimiento', en7s).order('fecha_vencimiento'),
+    sb.from('cierres_caja').select('ingresos_dia,fecha').order('fecha', {ascending:false}).limit(5),
+    sb.from('gastos').select('fecha,concepto,monto').order('fecha', {ascending:false}).limit(5)
+  ]);
+
+  const totalVencido = (factVenc||[]).reduce((a,f)=>a+parseFloat(f.monto_total),0);
+  const totalProx = (factProx||[]).reduce((a,f)=>a+parseFloat(f.monto_total),0);
+
+  const mesInicio = new Date(); mesInicio.setDate(1);
+  const [{ data: comprasMes }, { data: ventasMes }] = await Promise.all([
+    sb.from('facturas').select('monto_neto').gte('fecha_emision', mesInicio.toISOString().split('T')[0]),
+    sb.from('cierres_caja').select('ingresos_dia').gte('fecha', mesInicio.toISOString().split('T')[0])
+  ]);
+  const totCompras = (comprasMes||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
+  const totVentas = (ventasMes||[]).reduce((a,f)=>a+parseFloat(f.ingresos_dia),0);
+
+  document.getElementById('content').innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="kpi-label">Ventas del mes</div><div class="kpi-value">${fmt(totVentas)}</div><div class="kpi-sub">Efectivo registrado</div></div>
+      <div class="kpi-card"><div class="kpi-label">Compras del mes (neto)</div><div class="kpi-value">${fmt(totCompras)}</div><div class="kpi-sub">Sin MwSt</div></div>
+      <div class="kpi-card"><div class="kpi-label">Por vencer (7 días)</div><div class="kpi-value" style="color:var(--amber)">${fmt(totalProx)}</div><div class="kpi-sub">${(factProx||[]).length} factura(s)</div></div>
+      <div class="kpi-card"><div class="kpi-label">Facturas vencidas</div><div class="kpi-value" style="color:var(--red)">${fmt(totalVencido)}</div><div class="kpi-sub">${(factVenc||[]).length} factura(s)</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Próximos vencimientos</div>
+        ${(factProx||[]).length === 0 ? '<div class="empty" style="padding:20px">Sin vencimientos próximos</div>' :
+        `<table><thead><tr><th>Proveedor</th><th>Vencimiento</th><th>Monto</th></tr></thead><tbody>
+        ${(factProx||[]).map(f=>`<tr><td>${f.proveedores?.nombre||'—'}</td><td>${fmtDate(f.fecha_vencimiento)}</td><td>${fmt(f.monto_total)}</td></tr>`).join('')}
+        </tbody></table>`}
+      </div>
+      <div class="card">
+        <div class="card-title">Últimas ventas</div>
+        ${(ventas||[]).length === 0 ? '<div class="empty" style="padding:20px">Sin ventas registradas</div>' :
+        `<table><thead><tr><th>Fecha</th><th>Ingresos</th></tr></thead><tbody>
+        ${(ventas||[]).map(v=>`<tr><td>${fmtDate(v.fecha)}</td><td>${fmt(v.ingresos_dia)}</td></tr>`).join('')}
+        </tbody></table>`}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Últimos gastos</div>
+      ${(gastosList||[]).length === 0 ? '<div class="empty" style="padding:20px">Sin gastos registrados</div>' :
+      `<table><thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th></tr></thead><tbody>
+      ${(gastosList||[]).map(g=>`<tr><td>${fmtDate(g.fecha)}</td><td>${g.concepto}</td><td>${fmt(g.monto)}</td></tr>`).join('')}
+      </tbody></table>`}
+    </div>
+  `;
+}
+
+// ---- PROVEEDORES ----
+async function proveedores() {
+  loading();
+  setActions(`<button class="btn btn-primary" onclick="nuevoProveedor()">+ Nuevo proveedor</button>`);
+  const { data } = await sb.from('proveedores').select('*').order('nombre');
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      ${(data||[]).length === 0 ? '<div class="empty">Sin proveedores. Agregá el primero.</div>' :
+      `<table><thead><tr><th>Nombre</th><th>Contacto</th><th>Cond. pago</th><th>IBAN</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${data.map(p=>`<tr>
+        <td><strong>${p.nombre}</strong>${p.razon_social?`<br><span style="font-size:11px;color:var(--text-muted)">${p.razon_social}</span>`:''}</td>
+        <td>${p.contacto_nombre||'—'}<br><span style="font-size:11px;color:var(--text-muted)">${p.contacto_email||p.contacto_telefono||''}</span></td>
+        <td>${p.condicion_pago_dias||30} días</td>
+        <td style="font-size:11px">${p.iban||'—'}</td>
+        <td>${p.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
+        <td><button class="btn btn-sm" onclick="editProveedor('${p.id}')">Editar</button></td>
+      </tr>`).join('')}
+      </tbody></table>`}
+    </div>`;
+}
+
+function proveedorForm(p={}) {
+  return `<div class="form-grid">
+    <div class="field"><label>Nombre / Razón social *</label><input id="f-nombre" value="${p.nombre||''}"></div>
+    <div class="field"><label>Nombre de contacto</label><input id="f-contacto" value="${p.contacto_nombre||''}"></div>
+    <div class="field"><label>Email</label><input id="f-email" type="email" value="${p.contacto_email||''}"></div>
+    <div class="field"><label>Teléfono</label><input id="f-tel" value="${p.contacto_telefono||''}"></div>
+    <div class="field"><label>IBAN</label><input id="f-iban" value="${p.iban||''}"></div>
+    <div class="field"><label>Banco</label><input id="f-banco" value="${p.banco||''}"></div>
+    <div class="field"><label>Condición de pago (días)</label><input id="f-dias" type="number" value="${p.condicion_pago_dias||30}"></div>
+    <div class="field"><label>Dirección</label><input id="f-dir" value="${p.direccion||''}"></div>
+  </div>`;
+}
+
+function nuevoProveedor() {
+  openModal('Nuevo proveedor', proveedorForm(), async () => {
+    const { error } = await sb.from('proveedores').insert({
+      nombre: document.getElementById('f-nombre').value,
+      contacto_nombre: document.getElementById('f-contacto').value,
+      contacto_email: document.getElementById('f-email').value,
+      contacto_telefono: document.getElementById('f-tel').value,
+      iban: document.getElementById('f-iban').value,
+      banco: document.getElementById('f-banco').value,
+      condicion_pago_dias: parseInt(document.getElementById('f-dias').value)||30,
+      direccion: document.getElementById('f-dir').value
+    });
+    if (!error) { closeModal(); proveedores(); }
+    else alert('Error al guardar: ' + error.message);
+  });
+}
+
+async function editProveedor(id) {
+  const { data: p } = await sb.from('proveedores').select('*').eq('id',id).single();
+  openModal('Editar proveedor', proveedorForm(p), async () => {
+    const { error } = await sb.from('proveedores').update({
+      nombre: document.getElementById('f-nombre').value,
+      contacto_nombre: document.getElementById('f-contacto').value,
+      contacto_email: document.getElementById('f-email').value,
+      contacto_telefono: document.getElementById('f-tel').value,
+      iban: document.getElementById('f-iban').value,
+      banco: document.getElementById('f-banco').value,
+      condicion_pago_dias: parseInt(document.getElementById('f-dias').value)||30,
+      direccion: document.getElementById('f-dir').value
+    }).eq('id',id);
+    if (!error) { closeModal(); proveedores(); }
+    else alert('Error: ' + error.message);
+  });
+}
+
+// ---- PRODUCTOS ----
+async function productos() {
+  loading();
+  setActions(`<button class="btn btn-primary" onclick="nuevoProducto()">+ Nuevo producto</button>`);
+  const [{ data }, { data: cats }, { data: provs }] = await Promise.all([
+    sb.from('productos').select('*, categorias_producto(nombre), proveedores(nombre)').order('nombre'),
+    sb.from('categorias_producto').select('*').order('nombre'),
+    sb.from('proveedores').select('id,nombre').eq('activo',true).order('nombre')
+  ]);
+  window._cats = cats; window._provs = provs;
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      ${(data||[]).length === 0 ? '<div class="empty">Sin productos. Agregá el primero.</div>' :
+      `<table><thead><tr><th>Nombre</th><th>Categoría</th><th>Unidad</th><th>Proveedor habitual</th><th>Último precio</th><th></th></tr></thead><tbody>
+      ${data.map(p=>`<tr>
+        <td>${p.nombre}</td>
+        <td><span style="font-size:11px;border:0.5px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text-muted)">${p.categorias_producto?.nombre||'—'}</span></td>
+        <td>${p.unidad_medida}</td>
+        <td>${p.proveedores?.nombre||'—'}</td>
+        <td>${p.ultimo_precio ? fmt(p.ultimo_precio) : '—'}</td>
+        <td><button class="btn btn-sm" onclick="editProducto('${p.id}')">Editar</button></td>
+      </tr>`).join('')}
+      </tbody></table>`}
+    </div>`;
+}
+
+function productoForm(p={}) {
+  const cats = window._cats||[]; const provs = window._provs||[];
+  return `<div class="form-grid">
+    <div class="field full"><label>Nombre *</label><input id="f-nombre" value="${p.nombre||''}"></div>
+    <div class="field"><label>Categoría</label><select id="f-cat">
+      <option value="">— Seleccionar —</option>
+      ${cats.map(c=>`<option value="${c.id}" ${p.categoria_id===c.id?'selected':''}>${c.nombre}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Unidad de medida *</label><input id="f-unidad" placeholder="Kg, Litro, Unidad..." value="${p.unidad_medida||''}"></div>
+    <div class="field"><label>Proveedor habitual</label><select id="f-prov">
+      <option value="">— Ninguno —</option>
+      ${provs.map(v=>`<option value="${v.id}" ${p.proveedor_habitual_id===v.id?'selected':''}>${v.nombre}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Último precio (€)</label><input id="f-precio" type="number" step="0.0001" value="${p.ultimo_precio||''}"></div>
+  </div>`;
+}
+
+async function nuevoProducto() {
+  if (!window._cats) { const {data:c}=await sb.from('categorias_producto').select('*'); window._cats=c; }
+  if (!window._provs) { const {data:v}=await sb.from('proveedores').select('id,nombre').eq('activo',true); window._provs=v; }
+  openModal('Nuevo producto', productoForm(), async () => {
+    const { error } = await sb.from('productos').insert({
+      nombre: document.getElementById('f-nombre').value,
+      categoria_id: document.getElementById('f-cat').value || null,
+      unidad_medida: document.getElementById('f-unidad').value,
+      proveedor_habitual_id: document.getElementById('f-prov').value || null,
+      ultimo_precio: parseFloat(document.getElementById('f-precio').value)||null
+    });
+    if (!error) { closeModal(); productos(); }
+    else alert('Error: ' + error.message);
+  });
+}
+
+async function editProducto(id) {
+  const { data: p } = await sb.from('productos').select('*').eq('id',id).single();
+  openModal('Editar producto', productoForm(p), async () => {
+    const { error } = await sb.from('productos').update({
+      nombre: document.getElementById('f-nombre').value,
+      categoria_id: document.getElementById('f-cat').value || null,
+      unidad_medida: document.getElementById('f-unidad').value,
+      proveedor_habitual_id: document.getElementById('f-prov').value || null,
+      ultimo_precio: parseFloat(document.getElementById('f-precio').value)||null
+    }).eq('id',id);
+    if (!error) { closeModal(); productos(); }
+    else alert('Error: ' + error.message);
+  });
+}
+
+// ---- FACTURAS ----
+async function facturas() {
+  loading();
+  setActions(`<button class="btn btn-primary" onclick="nuevaFactura()">+ Nueva factura</button>`);
+  const { data } = await sb.from('facturas').select('*, proveedores(nombre)').order('fecha_vencimiento', {ascending:true});
+  const hoy = today();
+  const tot_neto = (data||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
+  const tot_mwst = (data||[]).reduce((a,f)=>a+parseFloat(f.mwst_monto),0);
+  const tot_total = (data||[]).reduce((a,f)=>a+parseFloat(f.monto_total),0);
+  const tot_pend = (data||[]).filter(f=>f.estado!=='pagada').reduce((a,f)=>a+parseFloat(f.monto_total),0);
+
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <div class="filters">
+        <input placeholder="Buscar proveedor o n° factura..." oninput="filterFacturas(this.value)" id="fact-search">
+        <select onchange="filterFacturasEstado(this.value)">
+          <option value="">Todos los estados</option>
+          <option>pendiente</option><option>pagada</option><option>vencida</option>
+        </select>
+      </div>
+      <div style="overflow-x:auto">
+      <table id="fact-table"><thead><tr>
+        <th>N° Factura</th><th>Proveedor</th><th>Emisión</th><th>Vencimiento</th>
+        <th>Neto</th><th>MwSt</th><th>Total</th><th>Estado</th><th></th>
+      </tr></thead><tbody>
+      ${(data||[]).map(f=>`<tr data-nombre="${(f.proveedores?.nombre||'').toLowerCase()}" data-num="${f.numero_factura.toLowerCase()}" data-estado="${f.estado}">
+        <td>${f.numero_factura}</td>
+        <td>${f.proveedores?.nombre||'—'}</td>
+        <td>${fmtDate(f.fecha_emision)}</td>
+        <td style="${f.estado==='vencida'?'color:var(--red);font-weight:500':''}${f.estado==='pendiente'&&f.fecha_vencimiento<=hoy?'color:var(--amber)':''}">${fmtDate(f.fecha_vencimiento)}</td>
+        <td>${fmt(f.monto_neto)}</td>
+        <td>${fmt(f.mwst_monto)}</td>
+        <td>${fmt(f.monto_total)}</td>
+        <td>${badgeEstado(f.estado)}</td>
+        <td><button class="btn btn-sm" onclick="verFactura('${f.id}')">Ver</button></td>
+      </tr>`).join('')}
+      </tbody></table>
+      </div>
+    </div>
+    <div class="card" style="padding:14px 20px">
+      <div style="display:flex;gap:24px;flex-wrap:wrap">
+        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Total neto</div><div style="font-size:16px;font-weight:500">${fmt(tot_neto)}</div></div>
+        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">MwSt total</div><div style="font-size:16px;font-weight:500">${fmt(tot_mwst)}</div></div>
+        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Total bruto</div><div style="font-size:16px;font-weight:500">${fmt(tot_total)}</div></div>
+        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Pendiente de pago</div><div style="font-size:16px;font-weight:500;color:var(--amber)">${fmt(tot_pend)}</div></div>
+      </div>
+    </div>`;
+}
+
+function filterFacturas(q) {
+  document.querySelectorAll('#fact-table tbody tr').forEach(tr => {
+    const match = tr.dataset.nombre.includes(q.toLowerCase()) || tr.dataset.num.includes(q.toLowerCase());
+    tr.style.display = match ? '' : 'none';
+  });
+}
+function filterFacturasEstado(e) {
+  document.querySelectorAll('#fact-table tbody tr').forEach(tr => {
+    tr.style.display = (!e || tr.dataset.estado === e) ? '' : 'none';
+  });
+}
+
+async function nuevaFactura() {
+  const { data: provs } = await sb.from('proveedores').select('id,nombre,condicion_pago_dias').eq('activo',true).order('nombre');
+  openModal('Nueva factura', `
+    <div class="form-grid">
+      <div class="field"><label>N° Factura *</label><input id="f-num"></div>
+      <div class="field"><label>Proveedor *</label><select id="f-prov" onchange="autoVenc()">
+        <option value="">— Seleccionar —</option>
+        ${(provs||[]).map(p=>`<option value="${p.id}" data-dias="${p.condicion_pago_dias}">${p.nombre}</option>`).join('')}
+      </select></div>
+      <div class="field"><label>Fecha de emisión *</label><input id="f-emision" type="date" value="${today()}" onchange="autoVenc()"></div>
+      <div class="field"><label>Fecha de vencimiento *</label><input id="f-venc" type="date"></div>
+      <div class="field"><label>Monto neto (sin MwSt) *</label><input id="f-neto" type="number" step="0.01" oninput="calcMwst()"></div>
+      <div class="field"><label>MwSt %</label><input id="f-mwst-pct" type="number" value="19" oninput="calcMwst()"></div>
+      <div class="field"><label>MwSt monto</label><input id="f-mwst-monto" type="number" step="0.01" oninput="calcTotal()"></div>
+      <div class="field"><label>Total factura</label><input id="f-total" type="number" step="0.01" readonly style="background:var(--bg)"></div>
+      <div class="field full"><label>Notas</label><input id="f-notas"></div>
+    </div>`, async () => {
+    const neto = parseFloat(document.getElementById('f-neto').value)||0;
+    const mwst = parseFloat(document.getElementById('f-mwst-monto').value)||0;
+    const { error } = await sb.from('facturas').insert({
+      numero_factura: document.getElementById('f-num').value,
+      proveedor_id: document.getElementById('f-prov').value,
+      fecha_emision: document.getElementById('f-emision').value,
+      fecha_vencimiento: document.getElementById('f-venc').value,
+      monto_neto: neto,
+      mwst_porcentaje: parseFloat(document.getElementById('f-mwst-pct').value)||19,
+      mwst_monto: mwst,
+      monto_total: neto+mwst,
+      notas: document.getElementById('f-notas').value
+    });
+    if (!error) { closeModal(); facturas(); }
+    else alert('Error: ' + error.message);
+  });
+}
+
+function autoVenc() {
+  const sel = document.getElementById('f-prov');
+  const dias = parseInt(sel.options[sel.selectedIndex]?.dataset.dias)||30;
+  const emision = document.getElementById('f-emision').value;
+  if (emision) {
+    const d = new Date(emision); d.setDate(d.getDate()+dias);
+    document.getElementById('f-venc').value = d.toISOString().split('T')[0];
+  }
+}
+function calcMwst() {
+  const neto = parseFloat(document.getElementById('f-neto').value)||0;
+  const pct = parseFloat(document.getElementById('f-mwst-pct').value)||19;
+  const mwst = Math.round(neto * pct) / 100;
+  document.getElementById('f-mwst-monto').value = mwst.toFixed(2);
+  document.getElementById('f-total').value = (neto+mwst).toFixed(2);
+}
+function calcTotal() {
+  const neto = parseFloat(document.getElementById('f-neto').value)||0;
+  const mwst = parseFloat(document.getElementById('f-mwst-monto').value)||0;
+  document.getElementById('f-total').value = (neto+mwst).toFixed(2);
+}
+
+async function verFactura(id) {
+  const { data: f } = await sb.from('facturas').select('*, proveedores(nombre)').eq('id',id).single();
+  openModal('Detalle de factura', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div><div style="font-size:11px;color:var(--text-muted)">Proveedor</div><div style="font-weight:500">${f.proveedores?.nombre}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted)">N° Factura</div><div style="font-weight:500">${f.numero_factura}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted)">Fecha emisión</div><div>${fmtDate(f.fecha_emision)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted)">Vencimiento</div><div>${fmtDate(f.fecha_vencimiento)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted)">Neto</div><div>${fmt(f.monto_neto)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted)">MwSt (${f.mwst_porcentaje}%)</div><div>${fmt(f.mwst_monto)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted)">Total</div><div style="font-weight:500;font-size:16px">${fmt(f.monto_total)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted)">Estado</div><div>${badgeEstado(f.estado)}</div></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-sm" onclick="marcarPagada('${f.id}')">Marcar como pagada</button>
+      <button class="btn btn-sm btn-danger" onclick="marcarVencida('${f.id}')">Marcar vencida</button>
+    </div>`, () => {});
+  document.getElementById('modal-save').style.display = 'none';
+}
+async function marcarPagada(id) { await sb.from('facturas').update({estado:'pagada'}).eq('id',id); closeModal(); document.getElementById('modal-save').style.display=''; facturas(); }
+async function marcarVencida(id) { await sb.from('facturas').update({estado:'vencida'}).eq('id',id); closeModal(); document.getElementById('modal-save').style.display=''; facturas(); }
+
+// ---- PAGOS ----
+async function pagos() {
+  loading();
+  setActions(`<button class="btn btn-primary" onclick="nuevoPago()">+ Registrar pago</button>`);
+  const { data } = await sb.from('pagos').select('*, facturas(numero_factura, proveedores(nombre))').order('fecha_pago', {ascending:false});
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      ${(data||[]).length === 0 ? '<div class="empty">Sin pagos registrados.</div>' :
+      `<table><thead><tr><th>Fecha pago</th><th>Factura</th><th>Proveedor</th><th>Monto</th><th>Medio</th><th>Referencia</th><th>Gasto bancario</th></tr></thead><tbody>
+      ${data.map(p=>`<tr>
+        <td>${fmtDate(p.fecha_pago)}</td>
+        <td>${p.facturas?.numero_factura||'—'}</td>
+        <td>${p.facturas?.proveedores?.nombre||'—'}</td>
+        <td>${fmt(p.monto)}</td>
+        <td><span style="font-size:11px;border:0.5px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text-muted)">${p.medio_pago}</span></td>
+        <td style="font-size:12px">${p.referencia_transferencia||'—'}</td>
+        <td>${p.gasto_bancario>0?fmt(p.gasto_bancario):'—'}</td>
+      </tr>`).join('')}
+      </tbody></table>`}
+    </div>`;
+}
+
+async function nuevoPago() {
+  const { data: facts } = await sb.from('facturas').select('id,numero_factura,monto_total,proveedores(nombre)').eq('estado','pendiente').order('fecha_vencimiento');
+  openModal('Registrar pago', `
+    <div class="form-grid">
+      <div class="field full"><label>Factura *</label><select id="f-fact">
+        <option value="">— Seleccionar —</option>
+        ${(facts||[]).map(f=>`<option value="${f.id}">${f.numero_factura} — ${f.proveedores?.nombre} (${fmt(f.monto_total)})</option>`).join('')}
+      </select></div>
+      <div class="field"><label>Fecha de pago *</label><input id="f-fecha" type="date" value="${today()}"></div>
+      <div class="field"><label>Monto pagado *</label><input id="f-monto" type="number" step="0.01"></div>
+      <div class="field"><label>Medio de pago</label><select id="f-medio">
+        <option value="transferencia">Transferencia</option>
+        <option value="efectivo">Efectivo</option>
+        <option value="otro">Otro</option>
+      </select></div>
+      <div class="field"><label>Referencia / N° transferencia</label><input id="f-ref"></div>
+      <div class="field"><label>Gasto bancario (€)</label><input id="f-banco" type="number" step="0.01" value="0"></div>
+      <div class="field full"><label>Notas</label><input id="f-notas"></div>
+    </div>`, async () => {
+    const factId = document.getElementById('f-fact').value;
+    const { error } = await sb.from('pagos').insert({
+      factura_id: factId,
+      fecha_pago: document.getElementById('f-fecha').value,
+      monto: parseFloat(document.getElementById('f-monto').value)||0,
+      medio_pago: document.getElementById('f-medio').value,
+      referencia_transferencia: document.getElementById('f-ref').value,
+      gasto_bancario: parseFloat(document.getElementById('f-banco').value)||0,
+      notas: document.getElementById('f-notas').value
+    });
+    if (!error) {
+      await sb.from('facturas').update({estado:'pagada'}).eq('id', factId);
+      const gb = parseFloat(document.getElementById('f-banco').value)||0;
+      if (gb > 0) {
+        const { data: catFin } = await sb.from('categorias_gasto').select('id').eq('nombre','Comisión bancaria').single();
+        if (catFin) await sb.from('gastos').insert({ fecha: document.getElementById('f-fecha').value, concepto: 'Comisión bancaria por transferencia', categoria_id: catFin.id, monto: gb });
+      }
+      closeModal(); pagos();
+    } else alert('Error: ' + error.message);
+  });
+}
+
+// ---- VENCIMIENTOS ----
+async function vencimientos() {
+  loading();
+  const hoy = new Date();
+  const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - ((hoy.getDay()+6)%7));
+  const domingo = new Date(lunes); domingo.setDate(lunes.getDate()+6);
+  const lunesS = lunes.toISOString().split('T')[0];
+  const domingoS = domingo.toISOString().split('T')[0];
+  const { data } = await sb.from('facturas').select('*, proveedores(nombre)').in('estado',['pendiente','vencida']).order('fecha_vencimiento');
+
+  const dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  const cols = Array.from({length:7}, (_,i) => { const d=new Date(lunes); d.setDate(lunes.getDate()+i); return d; });
+
+  setActions(`<button class="btn" onclick="semanaAnterior()">← Anterior</button><button class="btn" onclick="semanaSiguiente()">Siguiente →</button>`);
+
+  const hoyS = today();
+  const colsHtml = cols.map((d,i) => {
+    const ds = d.toISOString().split('T')[0];
+    const isToday = ds === hoyS;
+    const facts = (data||[]).filter(f => f.fecha_vencimiento === ds);
+    return `<div class="day-col${isToday?' today':''}">
+      <div class="day-name">${dias[i]} ${d.getDate()}</div>
+      ${facts.map(f=>`<div class="venc-chip${f.estado==='vencida'?' vencida':''}">
+        <div class="vp">${f.proveedores?.nombre||'—'}</div>
+        <div class="vm">${fmt(f.monto_total)}</div>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+
+  const totalSemana = (data||[]).filter(f=>f.fecha_vencimiento>=lunesS&&f.fecha_vencimiento<=domingoS).reduce((a,f)=>a+parseFloat(f.monto_total),0);
+  const totalVencido = (data||[]).filter(f=>f.estado==='vencida').reduce((a,f)=>a+parseFloat(f.monto_total),0);
+
+  document.getElementById('content').innerHTML = `
+    <div style="margin-bottom:10px;font-size:13px;color:var(--text-muted)">Semana del ${lunes.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})} al ${domingo.toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'})}</div>
+    <div class="week-grid">${colsHtml}</div>
+    <div class="card" style="padding:14px 20px">
+      <div style="display:flex;gap:24px;flex-wrap:wrap">
+        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Por pagar esta semana</div><div style="font-size:18px;font-weight:500">${fmt(totalSemana)}</div></div>
+        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Facturas vencidas (total)</div><div style="font-size:18px;font-weight:500;color:var(--red)">${fmt(totalVencido)}</div></div>
+      </div>
+    </div>`;
+}
+function semanaAnterior() { vencimientos(); }
+function semanaSiguiente() { vencimientos(); }
+
+// ---- GASTOS ----
+async function gastos() {
+  loading();
+  setActions(`<button class="btn btn-primary" onclick="nuevoGasto()">+ Nuevo gasto</button>`);
+  const { data } = await sb.from('gastos').select('*, categorias_gasto(nombre, tipo)').order('fecha', {ascending:false});
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      ${(data||[]).length === 0 ? '<div class="empty">Sin gastos registrados.</div>' :
+      `<table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Período</th><th>Monto</th></tr></thead><tbody>
+      ${data.map(g=>`<tr>
+        <td>${fmtDate(g.fecha)}</td>
+        <td>${g.concepto}</td>
+        <td><span style="font-size:11px;border:0.5px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text-muted)">${g.categorias_gasto?.nombre||'—'}</span></td>
+        <td style="font-size:12px;color:var(--text-muted)">${g.periodo_correspondiente||'—'}</td>
+        <td>${fmt(g.monto)}</td>
+      </tr>`).join('')}
+      </tbody></table>`}
+    </div>`;
+}
+
+async function nuevoGasto() {
+  const { data: cats } = await sb.from('categorias_gasto').select('*').order('nombre');
+  openModal('Nuevo gasto', `
+    <div class="form-grid">
+      <div class="field"><label>Fecha *</label><input id="f-fecha" type="date" value="${today()}"></div>
+      <div class="field"><label>Monto (€) *</label><input id="f-monto" type="number" step="0.01"></div>
+      <div class="field full"><label>Concepto *</label><input id="f-concepto"></div>
+      <div class="field"><label>Categoría</label><select id="f-cat">
+        <option value="">— Seleccionar —</option>
+        ${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}
+      </select></div>
+      <div class="field"><label>Período que corresponde</label><input id="f-periodo" placeholder="Ej: Temporada 2025"></div>
+      <div class="field full"><label>Notas</label><input id="f-notas"></div>
+    </div>`, async () => {
+    const { error } = await sb.from('gastos').insert({
+      fecha: document.getElementById('f-fecha').value,
+      concepto: document.getElementById('f-concepto').value,
+      categoria_id: document.getElementById('f-cat').value || null,
+      monto: parseFloat(document.getElementById('f-monto').value)||0,
+      periodo_correspondiente: document.getElementById('f-periodo').value||null,
+      notas: document.getElementById('f-notas').value
+    });
+    if (!error) { closeModal(); gastos(); }
+    else alert('Error: ' + error.message);
+  });
+}
+
+// ---- CAJA ----
+async function caja() {
+  loading();
+  setActions(`<button class="btn btn-primary" onclick="nuevoCierre()">+ Registrar cierre</button>`);
+  const { data } = await sb.from('cierres_caja').select('*').order('fecha', {ascending:false});
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      ${(data||[]).length === 0 ? '<div class="empty">Sin cierres registrados.</div>' :
+      `<table><thead><tr><th>Fecha</th><th>Ef. inicial</th><th>Ingresos</th><th>Egresos</th><th>Ef. final contado</th><th>Diferencia</th><th>Obs.</th></tr></thead><tbody>
+      ${data.map(c=>`<tr>
+        <td>${fmtDate(c.fecha)}</td>
+        <td>${fmt(c.efectivo_inicial)}</td>
+        <td style="color:var(--green);font-weight:500">${fmt(c.ingresos_dia)}</td>
+        <td>${fmt(c.egresos_efectivo)}</td>
+        <td>${fmt(c.efectivo_final_contado)}</td>
+        <td style="color:${(c.diferencia_caja||0)===0?'var(--green)':(c.diferencia_caja||0)>0?'var(--green)':'var(--red)';font-weight:500}">${fmt(c.diferencia_caja||0)}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${c.observaciones||'—'}</td>
+      </tr>`).join('')}
+      </tbody></table>`}
+    </div>`;
+}
+
+function nuevoCierre() {
+  openModal('Cierre de caja diario', `
+    <div class="form-grid">
+      <div class="field"><label>Fecha *</label><input id="f-fecha" type="date" value="${today()}"></div>
+      <div class="field"><label>Efectivo inicial (apertura)</label><input id="f-inicial" type="number" step="0.01" value="0"></div>
+      <div class="field"><label>Ingresos del día *</label><input id="f-ingresos" type="number" step="0.01" oninput="calcDif()"></div>
+      <div class="field"><label>Egresos en efectivo</label><input id="f-egresos" type="number" step="0.01" value="0" oninput="calcDif()"></div>
+      <div class="field"><label>Efectivo final (contado)</label><input id="f-final" type="number" step="0.01" oninput="calcDif()"></div>
+      <div class="field"><label>Diferencia</label><input id="f-dif" readonly style="background:var(--bg)" value="0"></div>
+      <div class="field full"><label>Observaciones</label><input id="f-obs" placeholder="Ej: día lluvioso, evento especial..."></div>
+    </div>`, async () => {
+    const ini = parseFloat(document.getElementById('f-inicial').value)||0;
+    const ing = parseFloat(document.getElementById('f-ingresos').value)||0;
+    const egr = parseFloat(document.getElementById('f-egresos').value)||0;
+    const fin = parseFloat(document.getElementById('f-final').value)||0;
+    const dif = fin - (ini + ing - egr);
+    const { error } = await sb.from('cierres_caja').insert({
+      fecha: document.getElementById('f-fecha').value,
+      efectivo_inicial: ini, ingresos_dia: ing, egresos_efectivo: egr,
+      efectivo_final_contado: fin, diferencia_caja: parseFloat(dif.toFixed(2)),
+      observaciones: document.getElementById('f-obs').value
+    });
+    if (!error) { closeModal(); caja(); }
+    else alert('Error: ' + error.message);
+  });
+}
+function calcDif() {
+  const ini = parseFloat(document.getElementById('f-inicial').value)||0;
+  const ing = parseFloat(document.getElementById('f-ingresos').value)||0;
+  const egr = parseFloat(document.getElementById('f-egresos').value)||0;
+  const fin = parseFloat(document.getElementById('f-final').value)||0;
+  document.getElementById('f-dif').value = (fin - (ini + ing - egr)).toFixed(2);
+}
+
+// ---- STOCK ----
+async function stock() {
+  loading();
+  setActions(`<button class="btn btn-primary" onclick="nuevoStock()">+ Registrar stock</button>`);
+  const { data } = await sb.from('stock').select('*, productos(nombre, unidad_medida, categorias_producto(nombre)), temporadas(nombre)').order('tipo').order('created_at');
+  const inicial = (data||[]).filter(s=>s.tipo==='inicial');
+  const final = (data||[]).filter(s=>s.tipo==='final');
+  const totIni = inicial.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const totFin = final.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+
+  const renderTable = (rows, label) => rows.length===0 ? `<div class="empty">Sin registros de stock ${label}.</div>` :
+    `<table><thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Cantidad</th><th>Precio unit.</th><th>Valor total</th></tr></thead><tbody>
+    ${rows.map(s=>`<tr><td>${s.productos?.nombre||'—'}</td><td>${s.productos?.categorias_producto?.nombre||'—'}</td><td>${s.productos?.unidad_medida||'—'}</td><td>${s.cantidad}</td><td>${fmt(s.precio_unitario)}</td><td>${fmt(s.valor_total)}</td></tr>`).join('')}
+    <tr class="total-row"><td colspan="5">Total</td><td>${fmt(rows.reduce((a,s)=>a+parseFloat(s.valor_total||0),0))}</td></tr>
+    </tbody></table>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="card"><div class="card-title">Stock inicial</div>${renderTable(inicial,'inicial')}</div>
+    <div class="card"><div class="card-title">Stock final</div>${renderTable(final,'final')}</div>`;
+}
+
+async function nuevoStock() {
+  const [{ data: prods }, { data: temps }] = await Promise.all([
+    sb.from('productos').select('id,nombre,unidad_medida').eq('activo',true).order('nombre'),
+    sb.from('temporadas').select('*').order('fecha_inicio',{ascending:false})
+  ]);
+  openModal('Registrar stock', `
+    <div class="form-grid">
+      <div class="field"><label>Temporada *</label><select id="f-temp">
+        ${(temps||[]).map(t=>`<option value="${t.id}">${t.nombre}</option>`).join('')}
+      </select></div>
+      <div class="field"><label>Tipo *</label><select id="f-tipo">
+        <option value="inicial">Inicial (apertura)</option>
+        <option value="final">Final (cierre)</option>
+      </select></div>
+      <div class="field"><label>Producto *</label><select id="f-prod">
+        <option value="">— Seleccionar —</option>
+        ${(prods||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.unidad_medida})</option>`).join('')}
+      </select></div>
+      <div class="field"><label>Cantidad</label><input id="f-cant" type="number" step="0.001"></div>
+      <div class="field"><label>Precio unitario (€)</label><input id="f-precio" type="number" step="0.0001"></div>
+    </div>`, async () => {
+    const { error } = await sb.from('stock').insert({
+      temporada_id: document.getElementById('f-temp').value,
+      tipo: document.getElementById('f-tipo').value,
+      producto_id: document.getElementById('f-prod').value,
+      cantidad: parseFloat(document.getElementById('f-cant').value)||0,
+      precio_unitario: parseFloat(document.getElementById('f-precio').value)||0
+    });
+    if (!error) { closeModal(); stock(); }
+    else alert('Error: ' + error.message);
+  });
+}
+
+// ---- REPORTE COMPRAS ----
+async function repCompras() {
+  loading();
+  const { data: facts } = await sb.from('facturas').select('*, proveedores(nombre)').order('fecha_emision');
+  const { data: provs } = await sb.from('proveedores').select('id,nombre');
+
+  const byProv = {};
+  (facts||[]).forEach(f => {
+    const n = f.proveedores?.nombre||'—';
+    if (!byProv[n]) byProv[n] = {count:0, neto:0, mwst:0, total:0};
+    byProv[n].count++;
+    byProv[n].neto += parseFloat(f.monto_neto);
+    byProv[n].mwst += parseFloat(f.mwst_monto);
+    byProv[n].total += parseFloat(f.monto_total);
+  });
+  const totNeto = Object.values(byProv).reduce((a,v)=>a+v.neto,0);
+  const totMwst = Object.values(byProv).reduce((a,v)=>a+v.mwst,0);
+  const totTotal = Object.values(byProv).reduce((a,v)=>a+v.total,0);
+
+  document.getElementById('content').innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="kpi-label">Total bruto</div><div class="kpi-value">${fmt(totTotal)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total neto (sin MwSt)</div><div class="kpi-value">${fmt(totNeto)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">MwSt total soportada</div><div class="kpi-value">${fmt(totMwst)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Facturas registradas</div><div class="kpi-value">${(facts||[]).length}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Por proveedor — toda la temporada</div>
+      <table><thead><tr><th>Proveedor</th><th>Facturas</th><th>Neto</th><th>MwSt (19%)</th><th>Total bruto</th><th>% del total</th></tr></thead><tbody>
+      ${Object.entries(byProv).map(([n,v])=>`<tr>
+        <td>${n}</td><td>${v.count}</td><td>${fmt(v.neto)}</td><td>${fmt(v.mwst)}</td><td>${fmt(v.total)}</td>
+        <td>${totTotal>0?(v.total/totTotal*100).toFixed(1):'0'}%</td>
+      </tr>`).join('')}
+      <tr class="total-row"><td>Total</td><td>${(facts||[]).length}</td><td>${fmt(totNeto)}</td><td>${fmt(totMwst)}</td><td>${fmt(totTotal)}</td><td>100%</td></tr>
+      </tbody></table>
+    </div>`;
+}
+
+// ---- ESTADO DE RESULTADOS ----
+async function repResultados() {
+  loading();
+  const [{ data: ventasD }, { data: comprasD }, { data: gastosD }, { data: stockD }, { data: configD }] = await Promise.all([
+    sb.from('cierres_caja').select('ingresos_dia'),
+    sb.from('facturas').select('monto_neto'),
+    sb.from('gastos').select('monto, categorias_gasto(nombre, tipo)'),
+    sb.from('stock').select('tipo, valor_total'),
+    sb.from('config_impositiva').select('alicuota_porcentaje').order('created_at',{ascending:false}).limit(1)
+  ]);
+
+  const ventas = (ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
+  const compras = (comprasD||[]).reduce((a,v)=>a+parseFloat(v.monto_neto),0);
+  const stockIni = (stockD||[]).filter(s=>s.tipo==='inicial').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const stockFin = (stockD||[]).filter(s=>s.tipo==='final').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const cmv = stockIni + compras - stockFin;
+  const utilBruta = ventas - cmv;
+
+  const opex = {}; let gFin = 0; let anticipos = 0;
+  (gastosD||[]).forEach(g => {
+    const tipo = g.categorias_gasto?.tipo;
+    const nom = g.categorias_gasto?.nombre||'Otros';
+    const m = parseFloat(g.monto);
+    if (tipo === 'financiero') { gFin += m; return; }
+    if (tipo === 'anticipo_impuesto') { anticipos += m; return; }
+    if (tipo === 'impuesto') return;
+    if (!opex[nom]) opex[nom] = 0;
+    opex[nom] += m;
+  });
+  const totalOpex = Object.values(opex).reduce((a,v)=>a+v,0);
+  const ebit = utilBruta - totalOpex;
+  const ebt = ebit - gFin;
+  const alicuota = parseFloat(configD?.[0]?.alicuota_porcentaje)||0;
+  const impTotal = Math.round(ebt * alicuota) / 100;
+  const saldoPend = Math.max(0, impTotal - anticipos);
+  const neto = ebt - impTotal;
+
+  const c = n => n >= 0 ? 'var(--green)' : 'var(--red)';
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+      <div><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Alícuota impositiva (%)</label>
+      <input type="number" value="${alicuota}" step="0.5" style="width:100px;font-size:13px;padding:6px 10px;border:0.5px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit" onchange="guardarAlicuota(this.value)"></div>
+      <div style="font-size:12px;color:var(--text-muted);padding-bottom:8px">Confirmá con tu contadora. Se guarda automáticamente.</div>
+    </div>
+    <div class="card" style="max-width:560px">
+      <div style="font-size:15px;font-weight:500;margin-bottom:2px">Eisdiele — Estado de resultados</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:18px">Temporada activa · datos reales</div>
+      <table class="stmt">
+        <tr><td>Ventas netas</td><td style="color:var(--text)">${fmt(ventas)}</td></tr>
+        <tr class="sh"><td colspan="2">Costo de mercadería vendida</td></tr>
+        <tr class="ind"><td>Stock inicial</td><td>${fmt(stockIni)}</td></tr>
+        <tr class="ind"><td>+ Compras netas (sin MwSt)</td><td>${fmt(compras)}</td></tr>
+        <tr class="ind"><td>- Stock final</td><td>(${fmt(stockFin)})</td></tr>
+        <tr class="st"><td>CMV</td><td style="color:var(--red)">(${fmt(cmv)})</td></tr>
+        <tr class="st" style="border-top:2px solid var(--border-md)"><td>Utilidad bruta</td><td style="color:${c(utilBruta)}">${fmt(utilBruta)}</td></tr>
+        <tr class="sh"><td colspan="2">Gastos operativos</td></tr>
+        ${Object.entries(opex).map(([n,v])=>`<tr class="ind"><td>${n}</td><td>(${fmt(v)})</td></tr>`).join('')}
+        <tr class="st"><td>Resultado operativo (EBIT)</td><td style="color:${c(ebit)}">${fmt(ebit)}</td></tr>
+        <tr class="sh"><td colspan="2">Resultado no operativo</td></tr>
+        <tr class="ind"><td>Gastos financieros</td><td>(${fmt(gFin)})</td></tr>
+        <tr class="st" style="border-top:2px solid var(--border-md)"><td>Resultado antes de impuestos (EBT)</td><td style="color:${c(ebt)};font-weight:500">${fmt(ebt)}</td></tr>
+        <tr class="sh"><td colspan="2">Impuestos devengados (${alicuota}%)</td></tr>
+        <tr class="ind"><td>Impuesto total estimado</td><td style="color:var(--red)">(${fmt(impTotal)})</td></tr>
+        <tr class="ind2"><td>Anticipos pagados (Vorauszahlung) <span class="badge badge-success" style="font-size:10px">Ya en caja</span></td><td style="color:var(--green)">${fmt(anticipos)}</td></tr>
+        <tr class="ind2"><td>Saldo pendiente <span class="badge badge-warning" style="font-size:10px">Pago futuro</span></td><td style="color:var(--amber)">(${fmt(saldoPend)})</td></tr>
+        <tr class="tt"><td>Resultado neto del período</td><td style="color:${c(neto)}">${fmt(neto)}</td></tr>
+      </table>
+    </div>`;
+}
+
+async function guardarAlicuota(val) {
+  const { data: temps } = await sb.from('temporadas').select('id').eq('activa',true).limit(1);
+  if (!temps?.length) return;
+  const { data: existing } = await sb.from('config_impositiva').select('id').eq('temporada_id', temps[0].id).limit(1);
+  if (existing?.length) {
+    await sb.from('config_impositiva').update({alicuota_porcentaje: parseFloat(val)}).eq('id', existing[0].id);
+  } else {
+    await sb.from('config_impositiva').insert({temporada_id: temps[0].id, alicuota_porcentaje: parseFloat(val)});
+  }
+}
+
+// ---- FLUJO DE CAJA ----
+async function repFlujo() {
+  loading();
+  const [{ data: ventasD }, { data: pagosD }, { data: gastosD }] = await Promise.all([
+    sb.from('cierres_caja').select('ingresos_dia, fecha').order('fecha'),
+    sb.from('pagos').select('monto, fecha_pago, gasto_bancario'),
+    sb.from('gastos').select('monto, fecha, categorias_gasto(tipo, nombre)')
+  ]);
+
+  const totVentas = (ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
+  const totPagos = (pagosD||[]).reduce((a,p)=>a+parseFloat(p.monto),0);
+  const totGastosOp = (gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='operativo').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totGastosFinanc = (gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='financiero').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totAnticipos = (gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='anticipo_impuesto').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totImpPagados = (gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='impuesto').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totSalidas = totPagos + totGastosOp + totGastosFinanc + totAnticipos + totImpPagados;
+  const flujoNeto = totVentas - totSalidas;
+  const c = n => n >= 0 ? 'var(--green)' : 'var(--red)';
+
+  document.getElementById('content').innerHTML = `
+    <div class="card" style="max-width:560px">
+      <div style="font-size:15px;font-weight:500;margin-bottom:2px">Eisdiele — Flujo de caja</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:18px">Temporada activa · método directo</div>
+      <table class="stmt">
+        <tr class="sh"><td colspan="2">Entradas de efectivo</td></tr>
+        <tr class="ind"><td>Cobros por ventas (efectivo)</td><td style="color:var(--text)">${fmt(totVentas)}</td></tr>
+        <tr class="st"><td>Total entradas</td><td style="color:var(--green)">${fmt(totVentas)}</td></tr>
+        <tr class="sh"><td colspan="2">Salidas de efectivo</td></tr>
+        <tr class="ind"><td>Pagos a proveedores (facturas)</td><td style="color:var(--red)">(${fmt(totPagos)})</td></tr>
+        <tr class="ind"><td>Gastos operativos al contado</td><td style="color:var(--red)">(${fmt(totGastosOp)})</td></tr>
+        <tr class="ind"><td>Gastos financieros</td><td style="color:var(--red)">(${fmt(totGastosFinanc)})</td></tr>
+        <tr class="ind"><td>Anticipos impuesto (Vorauszahlung) <span class="badge badge-gray" style="font-size:10px">Devengado en ERR</span></td><td style="color:var(--red)">(${fmt(totAnticipos)})</td></tr>
+        <tr class="ind"><td>Pagos impuesto temporadas anteriores</td><td style="color:var(--red)">${totImpPagados>0?'('+fmt(totImpPagados)+')':'—'}</td></tr>
+        <tr class="st"><td>Total salidas</td><td style="color:var(--red)">(${fmt(totSalidas)})</td></tr>
+        <tr class="sh"><td colspan="2">Posición de caja</td></tr>
+        <tr><td style="color:var(--text-muted)">Flujo neto del período</td><td style="color:${c(flujoNeto)}">${flujoNeto<0?'(':''}${fmt(flujoNeto)}${flujoNeto<0?')':''}</td></tr>
+        <tr class="tt"><td>Saldo acumulado (ventas − salidas)</td><td style="color:${c(flujoNeto)}">${fmt(flujoNeto)}</td></tr>
+      </table>
+      <div style="margin-top:14px;background:var(--bg);border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--text-muted)">
+        Los reportes usan los datos reales cargados en el sistema. El saldo final aumentará en precisión a medida que registrés más operaciones.
+      </div>
+    </div>`;
+}
+
+// Cerrar modal al click fuera
+document.getElementById('modal').addEventListener('click', function(e) {
+  if (e.target === this) { closeModal(); document.getElementById('modal-save').style.display=''; }
+});
+
+// Init
+sb.auth.getSession().then(({ data: { session } }) => {
+  if (session) showApp();
+});
+</script>
+</body>
+</html>
