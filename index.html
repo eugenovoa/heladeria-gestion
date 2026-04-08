@@ -260,29 +260,26 @@ async function login() {
     return;
   }
 
-  btn.textContent = 'Ingresando...';
-  btn.disabled = true;
+btn.textContent = 'Ingresando...';
+btn.disabled = true;
 
-  try {
-    const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
-    if (error) {
-      let msg = 'Error al ingresar.';
-      if (error.message.includes('Invalid login')) msg = 'Email o contraseña incorrectos.';
-      else if (error.message.includes('Email not confirmed')) msg = 'Debés confirmar tu email antes de ingresar.';
-      else if (error.message.includes('network') || error.message.includes('fetch')) msg = 'Error de conexión. Verificá tu internet.';
-      else msg = 'Error: ' + error.message;
-      err.textContent = msg;
-      err.style.display = 'block';
-    } else if (data?.user) {
-      showApp();
-    }
-  } catch(e) {
-    err.textContent = 'Error inesperado: ' + e.message;
+try {
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
+  alert('Respuesta: ' + JSON.stringify({error: error?.message, user: data?.user?.email}));
+  if (error) {
+    err.textContent = 'Error: ' + error.message;
     err.style.display = 'block';
-  } finally {
-    btn.textContent = 'Ingresar';
-    btn.disabled = false;
+  } else if (data?.user) {
+    showApp();
   }
+} catch(e) {
+  alert('Excepción: ' + e.message);
+  err.textContent = 'Error inesperado: ' + e.message;
+  err.style.display = 'block';
+} finally {
+  btn.textContent = 'Ingresar';
+  btn.disabled = false;
+}
 }
 
 async function logout() {
