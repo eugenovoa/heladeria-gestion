@@ -722,7 +722,7 @@ async function facturas() {
         <td style="color:${f.estado==='vencida'?'var(--red)':f.fecha_vencimiento<=hoy&&f.estado==='pendiente'?'var(--amber)':'inherit'};font-weight:${f.estado==='vencida'||f.fecha_vencimiento<=hoy?'600':'400'}">${fmtDate(f.fecha_vencimiento)}</td>
         <td>${fmt(f.monto_neto)}</td><td>${fmt(f.mwst_monto)}</td><td style="font-weight:600">${fmt(f.monto_total)}</td>
         <td>${badgeEstado(f.estado)}</td>
-        <td><button class="btn btn-sm" onclick="verFactura('${f.id}')">Ver</button></td>
+        <td style="display:flex;gap:5px"><button class="btn btn-sm" onclick="verFactura('${f.id}')">Ver</button><button class="btn btn-sm" onclick="editFactura('${f.id}')">Editar</button></td>
       </tr>`).join('')}
       </tbody></table></div>
     </div>
@@ -788,6 +788,50 @@ async function verFactura(id) {
 async function marcarPagada(id) { await sb.from('facturas').update({estado:'pagada'}).eq('id',id); closeModal(); facturas(); }
 async function marcarVencida(id) { await sb.from('facturas').update({estado:'vencida'}).eq('id',id); closeModal(); facturas(); }
 async function eliminarFactura(id) { if(!confirm('¿Eliminar esta factura?'))return; await sb.from('facturas').delete().eq('id',id); closeModal(); facturas(); }
+
+async function editFactura(id) {
+  const [{ data:f },{ data:provs }] = await Promise.all([
+    sb.from('facturas').select('*').eq('id',id).single(),
+    sb.from('proveedores').select('id,nombre,condicion_pago_dias').eq('activo',true).order('nombre')
+  ]);
+  const [{ data:temps }] = await Promise.all([
+    sb.from('temporadas').select('*').order('fecha_inicio',{ascending:false})
+  ]);
+  openModal('Editar factura', `<div class="form-grid">
+    <div class="field"><label>N° Factura *</label><input id="f-num" value="${f.numero_factura}"></div>
+    <div class="field"><label>Proveedor *</label><select id="f-prov">
+      ${(provs||[]).map(p=>`<option value="${p.id}" ${p.id===f.proveedor_id?'selected':''}>${p.nombre}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Fecha emisión *</label><input id="f-emision" type="date" value="${f.fecha_emision}"></div>
+    <div class="field"><label>Fecha vencimiento *</label><input id="f-venc" type="date" value="${f.fecha_vencimiento}"></div>
+    <div class="field"><label>Monto neto *</label><input id="f-neto" type="number" step="0.01" value="${f.monto_neto}" oninput="calcMwst()"></div>
+    <div class="field"><label>MwSt %</label><input id="f-mwst-pct" type="number" value="${f.mwst_porcentaje||19}" oninput="calcMwst()"></div>
+    <div class="field"><label>MwSt monto</label><input id="f-mwst-monto" type="number" step="0.01" value="${f.mwst_monto}" oninput="calcTotal()"></div>
+    <div class="field"><label>Total factura</label><input id="f-total" type="number" step="0.01" value="${f.monto_total}" readonly style="background:var(--surface2)"></div>
+    <div class="field"><label>Estado</label><select id="f-estado">
+      <option value="pendiente" ${f.estado==='pendiente'?'selected':''}>Pendiente</option>
+      <option value="pagada" ${f.estado==='pagada'?'selected':''}>Pagada</option>
+      <option value="vencida" ${f.estado==='vencida'?'selected':''}>Vencida</option>
+    </select></div>
+    <div class="field full"><label>Notas</label><input id="f-notas" value="${f.notas||''}"></div>
+  </div>`, async () => {
+    const neto=parseFloat(document.getElementById('f-neto').value)||0;
+    const mwst=parseFloat(document.getElementById('f-mwst-monto').value)||0;
+    const { error } = await sb.from('facturas').update({
+      numero_factura: document.getElementById('f-num').value,
+      proveedor_id: document.getElementById('f-prov').value,
+      fecha_emision: document.getElementById('f-emision').value,
+      fecha_vencimiento: document.getElementById('f-venc').value,
+      monto_neto: neto,
+      mwst_porcentaje: parseFloat(document.getElementById('f-mwst-pct').value)||19,
+      mwst_monto: mwst,
+      monto_total: neto+mwst,
+      estado: document.getElementById('f-estado').value,
+      notas: document.getElementById('f-notas').value
+    }).eq('id', id);
+    if (!error) { closeModal(); facturas(); } else alert('Error: '+error.message);
+  });
+}
 
 // ---- PAGOS ----
 async function pagos() {
@@ -908,7 +952,7 @@ async function caja() {
       <td>${fmt(c.egresos_efectivo)}</td><td>${fmt(c.efectivo_final_contado)}</td>
       <td style="color:${(c.diferencia_caja||0)>=0?'var(--green)':'var(--red)'};font-weight:600">${fmt(c.diferencia_caja||0)}</td>
       <td style="font-size:12px;color:var(--text-muted)">${c.observaciones||'—'}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="eliminarCierre('${c.id}')">✕</button></td>
+      <td style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editCierre('${c.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="eliminarCierre('${c.id}')">✕</button></td>
     </tr>`).join('')}
     </tbody></table></div>`}
   </div>`;
@@ -935,6 +979,34 @@ function nuevoCierre() {
 }
 function calcDif() { const i=parseFloat(document.getElementById('f-inicial').value)||0; const ing=parseFloat(document.getElementById('f-ingresos').value)||0; const e=parseFloat(document.getElementById('f-egresos').value)||0; const f=parseFloat(document.getElementById('f-final').value)||0; document.getElementById('f-dif').value=(f-(i+ing-e)).toFixed(2); }
 async function eliminarCierre(id) { if(!confirm('¿Eliminar este cierre?'))return; await sb.from('cierres_caja').delete().eq('id',id); caja(); }
+
+async function editCierre(id) {
+  const { data:c } = await sb.from('cierres_caja').select('*').eq('id',id).single();
+  openModal('Editar cierre de caja', `<div class="form-grid">
+    <div class="field"><label>Fecha *</label><input id="f-fecha" type="date" value="${c.fecha}"></div>
+    <div class="field"><label>Efectivo inicial</label><input id="f-inicial" type="number" step="0.01" value="${c.efectivo_inicial||0}"></div>
+    <div class="field"><label>Ingresos del día *</label><input id="f-ingresos" type="number" step="0.01" value="${c.ingresos_dia}" oninput="calcDif()"></div>
+    <div class="field"><label>Egresos en efectivo</label><input id="f-egresos" type="number" step="0.01" value="${c.egresos_efectivo||0}" oninput="calcDif()"></div>
+    <div class="field"><label>Efectivo final (contado)</label><input id="f-final" type="number" step="0.01" value="${c.efectivo_final_contado||0}" oninput="calcDif()"></div>
+    <div class="field"><label>Diferencia (calculada)</label><input id="f-dif" readonly style="background:var(--surface2)" value="${c.diferencia_caja||0}"></div>
+    <div class="field full"><label>Observaciones</label><input id="f-obs" value="${c.observaciones||''}"></div>
+  </div>`, async () => {
+    const ini=parseFloat(document.getElementById('f-inicial').value)||0;
+    const ing=parseFloat(document.getElementById('f-ingresos').value)||0;
+    const egr=parseFloat(document.getElementById('f-egresos').value)||0;
+    const fin=parseFloat(document.getElementById('f-final').value)||0;
+    const { error } = await sb.from('cierres_caja').update({
+      fecha: document.getElementById('f-fecha').value,
+      efectivo_inicial: ini,
+      ingresos_dia: ing,
+      egresos_efectivo: egr,
+      efectivo_final_contado: fin,
+      diferencia_caja: parseFloat((fin-(ini+ing-egr)).toFixed(2)),
+      observaciones: document.getElementById('f-obs').value
+    }).eq('id', id);
+    if (!error) { closeModal(); caja(); } else alert('Error: '+error.message);
+  });
+}
 
 // ---- STOCK ----
 async function stock() {
