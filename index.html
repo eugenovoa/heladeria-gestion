@@ -163,9 +163,10 @@
     </div>
     <div class="field" style="margin-bottom:20px">
       <label>Contraseña</label>
-      <input type="password" id="auth-password" placeholder="••••••••">
+      <input type="password" id="auth-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')login()">
     </div>
     <button class="btn btn-primary" style="width:100%" onclick="login()">Ingresar</button>
+    <div style="margin-top:12px;font-size:11px;color:#999;text-align:center">Usá el email y contraseña que creaste en Supabase</div>
   </div>
 </div>
 
@@ -247,13 +248,41 @@ let modalSaveFn = null;
 
 // ---- AUTH ----
 async function login() {
-  const email = document.getElementById('auth-email').value;
+  const email = document.getElementById('auth-email').value.trim();
   const pw = document.getElementById('auth-password').value;
   const err = document.getElementById('auth-error');
+  const btn = document.querySelector('#auth-screen button');
   err.style.display = 'none';
-  const { error } = await sb.auth.signInWithPassword({ email, password: pw });
-  if (error) { err.textContent = 'Email o contraseña incorrectos.'; err.style.display = 'block'; return; }
-  showApp();
+
+  if (!email || !pw) {
+    err.textContent = 'Por favor ingresá tu email y contraseña.';
+    err.style.display = 'block';
+    return;
+  }
+
+  btn.textContent = 'Ingresando...';
+  btn.disabled = true;
+
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
+    if (error) {
+      let msg = 'Error al ingresar.';
+      if (error.message.includes('Invalid login')) msg = 'Email o contraseña incorrectos.';
+      else if (error.message.includes('Email not confirmed')) msg = 'Debés confirmar tu email antes de ingresar.';
+      else if (error.message.includes('network') || error.message.includes('fetch')) msg = 'Error de conexión. Verificá tu internet.';
+      else msg = 'Error: ' + error.message;
+      err.textContent = msg;
+      err.style.display = 'block';
+    } else if (data?.user) {
+      showApp();
+    }
+  } catch(e) {
+    err.textContent = 'Error inesperado: ' + e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.textContent = 'Ingresar';
+    btn.disabled = false;
+  }
 }
 
 async function logout() {
