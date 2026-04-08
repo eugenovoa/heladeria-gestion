@@ -315,6 +315,7 @@ let currentPage = 'dashboard';
 let modalSaveFn = null;
 let _appConfig = {};
 let _refreshInterval = null;
+let _appInitialized = false;
 
 // ---- MOBILE SIDEBAR ----
 function toggleSidebar() {
@@ -351,14 +352,17 @@ async function login() {
 
 async function logout() {
   if (_refreshInterval) clearInterval(_refreshInterval);
+  _appInitialized = false;
   await sb.auth.signOut();
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('auth-screen').style.display = 'flex';
 }
 
 async function showApp() {
+  if (_appInitialized) return;
+  _appInitialized = true;
   const { data: { user } } = await sb.auth.getUser();
-  if (!user) return;
+  if (!user) { _appInitialized = false; return; }
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'block';
   const displayName = user.email.replace('@heladeria.local','');
@@ -446,6 +450,33 @@ function badgeEstado(e) {
 async function getTemporadas() {
   const { data } = await sb.from('temporadas').select('*').order('fecha_inicio', {ascending:false});
   return data || [];
+}
+function tempsOpciones(temps, selectedId) {
+  // Auto-select most recent if none specified
+  const selId = selectedId || (temps[0]?.id);
+  return temps.map(t => `<option value="${t.id}" ${t.id === selId ? 'selected' : ''}>${t.nombre}</option>`).join('');
+}
+async function getOrCreateTemporada(fecha) {
+  if (!fecha) return null;
+  const year = new Date(fecha + 'T00:00:00').getFullYear();
+  const { data: existing } = await sb.from('temporadas').select('id').ilike('nombre', `%${year}%`).limit(1);
+  if (existing?.length) return existing[0].id;
+  // Crear temporada nueva para ese año
+  const { data: nueva, error } = await sb.from('temporadas').insert({
+    nombre: `Temporada ${year}`,
+    fecha_inicio: `${year}-01-01`,
+    fecha_cierre: `${year}-12-31`,
+    activa: true
+  }).select('id').single();
+  if (error) { console.error('Error creando temporada:', error); return null; }
+  console.log(`Temporada ${year} creada automáticamente`);
+  return nueva.id;
+}
+
+function getTempFechas(temps, tempId) {
+  const t = temps.find(x => x.id === tempId);
+  if (!t) return { desde: null, hasta: null };
+  return { desde: t.fecha_inicio, hasta: t.fecha_cierre || new Date().toISOString().split('T')[0] };
 }
 function temporadaSelect(selected='') {
   return `<select id="f-temporada" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;min-width:160px">
@@ -720,12 +751,14 @@ async function nuevaFactura() {
     <div class="field"><label>MwSt %</label><input id="f-mwst-pct" type="number" value="19" oninput="calcMwst()"></div>
     <div class="field"><label>MwSt monto</label><input id="f-mwst-monto" type="number" step="0.01" oninput="calcTotal()"></div>
     <div class="field"><label>Total factura</label><input id="f-total" type="number" readonly style="background:var(--surface2)"></div>
-    <div class="field"><label>Temporada</label><select id="f-temp"><option value="">— Seleccionar —</option>${(temps||[]).map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <div class="field"><label>Temporada</label><select id="f-temp">${tempsOpciones(temps||[])}</select></div>
     <div class="field full"><label>Notas</label><input id="f-notas"></div>
   </div>`, async () => {
     const neto=parseFloat(document.getElementById('f-neto').value)||0;
     const mwst=parseFloat(document.getElementById('f-mwst-monto').value)||0;
-    const { error } = await sb.from('facturas').insert({ numero_factura:document.getElementById('f-num').value, proveedor_id:document.getElementById('f-prov').value, fecha_emision:document.getElementById('f-emision').value, fecha_vencimiento:document.getElementById('f-venc').value, monto_neto:neto, mwst_porcentaje:parseFloat(document.getElementById('f-mwst-pct').value)||19, mwst_monto:mwst, monto_total:neto+mwst, notas:document.getElementById('f-notas').value });
+    const fechaEmision = document.getElementById('f-emision').value;
+    await getOrCreateTemporada(fechaEmision);
+    const { error } = await sb.from('facturas').insert({ numero_factura:document.getElementById('f-num').value, proveedor_id:document.getElementById('f-prov').value, fecha_emision:fechaEmision, fecha_vencimiento:document.getElementById('f-venc').value, monto_neto:neto, mwst_porcentaje:parseFloat(document.getElementById('f-mwst-pct').value)||19, mwst_monto:mwst, monto_total:neto+mwst, notas:document.getElementById('f-notas').value });
     if (!error) { closeModal(); facturas(); } else alert('Error: '+error.message);
   });
 }
@@ -787,7 +820,9 @@ async function nuevoPago() {
   </div>`, async () => {
     const factId=document.getElementById('f-fact').value;
     const gb=parseFloat(document.getElementById('f-gasto-banco').value)||0;
-    const { error } = await sb.from('pagos').insert({ factura_id:factId, fecha_pago:document.getElementById('f-fecha').value, monto:parseFloat(document.getElementById('f-monto').value)||0, medio_pago:document.getElementById('f-medio').value, referencia_transferencia:document.getElementById('f-ref').value, gasto_bancario:gb, notas:document.getElementById('f-notas').value });
+    const fechaPago = document.getElementById('f-fecha').value;
+    await getOrCreateTemporada(fechaPago);
+    const { error } = await sb.from('pagos').insert({ factura_id:factId, fecha_pago:fechaPago, monto:parseFloat(document.getElementById('f-monto').value)||0, medio_pago:document.getElementById('f-medio').value, referencia_transferencia:document.getElementById('f-ref').value, gasto_bancario:gb, notas:document.getElementById('f-notas').value });
     if (!error) {
       await sb.from('facturas').update({estado:'pagada'}).eq('id',factId);
       if (gb>0) { const {data:catFin}=await sb.from('categorias_gasto').select('id').eq('nombre','Comisión bancaria').single(); if(catFin) await sb.from('gastos').insert({fecha:document.getElementById('f-fecha').value,concepto:'Comisión bancaria por transferencia',categoria_id:catFin.id,monto:gb}); }
@@ -847,11 +882,13 @@ async function nuevoGasto() {
     <div class="field"><label>Monto (€) *</label><input id="f-monto" type="number" step="0.01"></div>
     <div class="field full"><label>Concepto *</label><input id="f-concepto"></div>
     <div class="field"><label>Categoría</label><select id="f-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
-    <div class="field"><label>Temporada</label><select id="f-temp"><option value="">— Seleccionar —</option>${(temps||[]).map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <div class="field"><label>Temporada</label><select id="f-temp">${tempsOpciones(temps||[])}</select></div>
     <div class="field"><label>Período que corresponde</label><input id="f-periodo" type="date"></div>
     <div class="field full"><label>Notas</label><input id="f-notas"></div>
   </div>`, async () => {
-    const { error } = await sb.from('gastos').insert({ fecha:document.getElementById('f-fecha').value, concepto:document.getElementById('f-concepto').value, categoria_id:document.getElementById('f-cat').value||null, monto:parseFloat(document.getElementById('f-monto').value)||0, periodo_correspondiente:document.getElementById('f-periodo').value||null, notas:document.getElementById('f-notas').value });
+    const fechaGasto = document.getElementById('f-fecha').value;
+    await getOrCreateTemporada(fechaGasto);
+    const { error } = await sb.from('gastos').insert({ fecha:fechaGasto, concepto:document.getElementById('f-concepto').value, categoria_id:document.getElementById('f-cat').value||null, monto:parseFloat(document.getElementById('f-monto').value)||0, periodo_correspondiente:document.getElementById('f-periodo').value||null, notas:document.getElementById('f-notas').value });
     if (!error) { closeModal(); gastos(); } else alert('Error: '+error.message);
   });
 }
@@ -890,7 +927,9 @@ function nuevoCierre() {
     const ing=parseFloat(document.getElementById('f-ingresos').value)||0;
     const egr=parseFloat(document.getElementById('f-egresos').value)||0;
     const fin=parseFloat(document.getElementById('f-final').value)||0;
-    const { error } = await sb.from('cierres_caja').insert({ fecha:document.getElementById('f-fecha').value, efectivo_inicial:ini, ingresos_dia:ing, egresos_efectivo:egr, efectivo_final_contado:fin, diferencia_caja:parseFloat((fin-(ini+ing-egr)).toFixed(2)), observaciones:document.getElementById('f-obs').value });
+    const fechaCierre = document.getElementById('f-fecha').value;
+    await getOrCreateTemporada(fechaCierre);
+    const { error } = await sb.from('cierres_caja').insert({ fecha:fechaCierre, efectivo_inicial:ini, ingresos_dia:ing, egresos_efectivo:egr, efectivo_final_contado:fin, diferencia_caja:parseFloat((fin-(ini+ing-egr)).toFixed(2)), observaciones:document.getElementById('f-obs').value });
     if (!error) { closeModal(); caja(); } else alert('Error: '+error.message);
   });
 }
@@ -955,7 +994,7 @@ async function repCompras() {
   const activeTemp=temps.find(t=>t.activa)||temps[0];
   let filtroHTML=`<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
     <div class="field"><label>Temporada</label><select id="f-temp-filter" onchange="repComprasCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
-      ${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}
+      ${tempsOpciones(temps)}
     </select></div>
   </div><div id="rep-compras-body"></div>`;
   document.getElementById('content').innerHTML=filtroHTML;
@@ -964,7 +1003,12 @@ async function repCompras() {
 async function repComprasCargar() {
   const tempId=document.getElementById('f-temp-filter')?.value;
   document.getElementById('rep-compras-body').innerHTML='<div class="loading">Cargando...</div>';
-  const {data:facts}=await sb.from('facturas').select('*, proveedores(nombre)').order('fecha_emision');
+  const allTemps = await getTemporadas();
+  const {desde, hasta} = getTempFechas(allTemps, tempId);
+  let q = sb.from('facturas').select('*, proveedores(nombre)').order('fecha_emision');
+  if (desde) q = q.gte('fecha_emision', desde);
+  if (hasta) q = q.lte('fecha_emision', hasta);
+  const {data:facts}=await q;
   const byProv={};
   (facts||[]).forEach(f=>{const n=f.proveedores?.nombre||'—';if(!byProv[n])byProv[n]={count:0,neto:0,mwst:0,total:0};byProv[n].count++;byProv[n].neto+=parseFloat(f.monto_neto);byProv[n].mwst+=parseFloat(f.mwst_monto);byProv[n].total+=parseFloat(f.monto_total);});
   const totNeto=Object.values(byProv).reduce((a,v)=>a+v.neto,0);
@@ -992,7 +1036,7 @@ async function repResultados() {
   document.getElementById('content').innerHTML=`
     <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
       <div class="field"><label>Temporada</label><select id="f-temp-err" onchange="repResultadosCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
-        ${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}
+        ${tempsOpciones(temps)}
       </select></div>
       <div class="field"><label>Alícuota impositiva (%)</label><input type="number" id="f-alicuota" value="0" step="0.5" style="width:100px;font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit" oninput="repResultadosCargar()"></div>
       <div style="font-size:12px;color:var(--text-muted);padding-bottom:6px">Confirmá la alícuota con tu contadora.</div>
@@ -1009,12 +1053,15 @@ async function repResultadosCargar() {
   const tempId=document.getElementById('f-temp-err')?.value;
   const alicuota=parseFloat(document.getElementById('f-alicuota')?.value)||0;
   document.getElementById('err-body').innerHTML='<div class="loading">Calculando...</div>';
-  const [{data:ventasD},{data:comprasD},{data:gastosD},{data:stockD}]=await Promise.all([
-    sb.from('cierres_caja').select('ingresos_dia'),
-    sb.from('facturas').select('monto_neto'),
-    sb.from('gastos').select('monto,categorias_gasto(nombre,tipo)'),
-    sb.from('stock').select('tipo,valor_total')
-  ]);
+  const allTemps = await getTemporadas();
+  const {desde, hasta} = getTempFechas(allTemps, tempId);
+  let qVentas = sb.from('cierres_caja').select('ingresos_dia');
+  let qCompras = sb.from('facturas').select('monto_neto');
+  let qGastos = sb.from('gastos').select('monto,categorias_gasto(nombre,tipo)');
+  let qStock = sb.from('stock').select('tipo,valor_total');
+  if (desde) { qVentas=qVentas.gte('fecha',desde); qCompras=qCompras.gte('fecha_emision',desde); qGastos=qGastos.gte('fecha',desde); qStock=qStock.gte('created_at',desde); }
+  if (hasta) { qVentas=qVentas.lte('fecha',hasta); qCompras=qCompras.lte('fecha_emision',hasta); qGastos=qGastos.lte('fecha',hasta); qStock=qStock.lte('created_at',hasta); }
+  const [{data:ventasD},{data:comprasD},{data:gastosD},{data:stockD}]=await Promise.all([qVentas, qCompras, qGastos, qStock]);
   const ventas=(ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
   const compras=(comprasD||[]).reduce((a,v)=>a+parseFloat(v.monto_neto),0);
   const stockIni=(stockD||[]).filter(s=>s.tipo==='inicial').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
@@ -1070,19 +1117,23 @@ async function repFlujo() {
   document.getElementById('content').innerHTML=`
     <div style="margin-bottom:16px">
       <div class="field" style="display:inline-block"><label>Temporada</label><select id="f-temp-flujo" onchange="repFlujoCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
-        ${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}
+        ${tempsOpciones(temps)}
       </select></div>
     </div>
     <div id="flujo-body"></div>`;
   repFlujoCargar();
 }
 async function repFlujoCargar() {
+  const tempId=document.getElementById('f-temp-flujo')?.value;
   document.getElementById('flujo-body').innerHTML='<div class="loading">Calculando...</div>';
-  const [{data:ventasD},{data:pagosD},{data:gastosD}]=await Promise.all([
-    sb.from('cierres_caja').select('ingresos_dia'),
-    sb.from('pagos').select('monto,gasto_bancario'),
-    sb.from('gastos').select('monto,categorias_gasto(tipo)')
-  ]);
+  const allTemps = await getTemporadas();
+  const {desde, hasta} = getTempFechas(allTemps, tempId);
+  let qVentas = sb.from('cierres_caja').select('ingresos_dia');
+  let qPagos = sb.from('pagos').select('monto,gasto_bancario');
+  let qGastos = sb.from('gastos').select('monto,categorias_gasto(tipo)');
+  if (desde) { qVentas=qVentas.gte('fecha',desde); qPagos=qPagos.gte('fecha_pago',desde); qGastos=qGastos.gte('fecha',desde); }
+  if (hasta) { qVentas=qVentas.lte('fecha',hasta); qPagos=qPagos.lte('fecha_pago',hasta); qGastos=qGastos.lte('fecha',hasta); }
+  const [{data:ventasD},{data:pagosD},{data:gastosD}]=await Promise.all([qVentas, qPagos, qGastos]);
   const totVentas=(ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
   const totPagos=(pagosD||[]).reduce((a,p)=>a+parseFloat(p.monto),0);
   const totGastosOp=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='operativo').reduce((a,g)=>a+parseFloat(g.monto),0);
@@ -1115,8 +1166,13 @@ async function repFlujoCargar() {
 document.getElementById('modal').addEventListener('click', function(e) { if(e.target===this) closeModal(); });
 
 sb.auth.onAuthStateChange((event, session) => {
-  if (event==='SIGNED_IN' && session) showApp();
-  if (event==='SIGNED_OUT') { if(_refreshInterval) clearInterval(_refreshInterval); document.getElementById('app-screen').style.display='none'; document.getElementById('auth-screen').style.display='flex'; }
+  if (event === 'SIGNED_IN' && session && !_appInitialized) showApp();
+  if (event === 'SIGNED_OUT') {
+    _appInitialized = false;
+    if (_refreshInterval) clearInterval(_refreshInterval);
+    document.getElementById('app-screen').style.display = 'none';
+    document.getElementById('auth-screen').style.display = 'flex';
+  }
 });
 
 sb.auth.getSession().then(({ data: { session } }) => { if (session) showApp(); });
