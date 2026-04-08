@@ -2,148 +2,240 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Gestión — Heladería</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #f5f5f3; --surface: #ffffff;
-    --border: rgba(0,0,0,0.1); --border-md: rgba(0,0,0,0.2);
-    --text: #1a1a1a; --text-muted: #666; --text-faint: #999;
-    --blue: #378ADD; --blue-dark: #185FA5; --blue-bg: #E6F1FB;
-    --green: #3B6D11; --green-bg: #EAF3DE;
-    --red: #A32D2D; --red-bg: #FCEBEB;
-    --amber: #854F0B; --amber-bg: #FAEEDA;
-    --radius: 8px; --radius-lg: 12px;
-  }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: var(--text); background: var(--bg); }
-  #auth-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-  .auth-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 36px 40px; width: 360px; }
-  .auth-card h1 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
-  .auth-card p { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
-  #app-screen { display: none; height: 100vh; overflow: hidden; }
-  .shell { display: flex; height: 100%; }
-  .sidebar { width: 220px; min-width: 220px; background: var(--surface); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
-  .sidebar-logo { padding: 16px; border-bottom: 0.5px solid var(--border); display: flex; align-items: center; gap: 10px; cursor: pointer; }
-  .sidebar-logo img { width: 36px; height: 36px; border-radius: var(--radius); object-fit: cover; display: none; }
-  .sidebar-logo .logo-placeholder { width: 36px; height: 36px; border-radius: var(--radius); background: var(--blue-bg); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-  .sidebar-logo .logo-text .title { font-size: 13px; font-weight: 500; }
-  .sidebar-logo .logo-text .sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
-  .nav-group { padding: 10px 0 4px; }
-  .nav-label { font-size: 10px; font-weight: 500; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 16px 5px; }
-  .nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 16px; cursor: pointer; font-size: 13px; color: var(--text-muted); border-left: 2px solid transparent; }
-  .nav-item:hover { background: var(--bg); color: var(--text); }
-  .nav-item.active { background: var(--blue-bg); color: var(--blue-dark); border-left-color: var(--blue); font-weight: 500; }
-  .sidebar-footer { margin-top: auto; padding: 12px 16px; border-top: 0.5px solid var(--border); }
-  .user-info { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .btn-logout { font-size: 12px; color: var(--red); background: none; border: none; cursor: pointer; padding: 0; }
-  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  .topbar { background: var(--surface); border-bottom: 0.5px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
-  .topbar-title { font-size: 16px; font-weight: 500; }
-  .topbar-actions { display: flex; gap: 8px; }
-  .content { flex: 1; overflow-y: auto; padding: 24px; }
-  .btn { padding: 7px 14px; font-size: 13px; border-radius: var(--radius); border: 0.5px solid var(--border-md); background: transparent; color: var(--text); cursor: pointer; font-family: inherit; transition: background 0.1s; }
-  .btn:hover { background: var(--bg); }
-  .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
-  .btn-primary:hover { background: var(--blue-dark); border-color: var(--blue-dark); }
-  .btn-sm { padding: 4px 10px; font-size: 12px; }
-  .btn-danger { color: var(--red); border-color: #F09595; }
-  .btn-danger:hover { background: var(--red-bg); }
-  .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 16px; }
-  .card-title { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 14px; }
-  .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 20px; }
-  .kpi-card { background: var(--bg); border-radius: var(--radius); padding: 14px 16px; }
-  .kpi-label { font-size: 11px; color: var(--text-muted); margin-bottom: 5px; }
-  .kpi-value { font-size: 22px; font-weight: 500; }
-  .kpi-sub { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { font-size: 11px; font-weight: 500; color: var(--text-muted); text-align: left; padding: 0 8px 8px; border-bottom: 0.5px solid var(--border); text-transform: uppercase; letter-spacing: 0.04em; }
-  td { padding: 9px 8px; border-bottom: 0.5px solid var(--border); }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: var(--bg); }
-  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
-  .badge-success { background: var(--green-bg); color: var(--green); }
-  .badge-warning { background: var(--amber-bg); color: var(--amber); }
-  .badge-danger { background: var(--red-bg); color: var(--red); }
-  .badge-info { background: var(--blue-bg); color: var(--blue-dark); }
-  .badge-gray { background: var(--bg); color: var(--text-muted); }
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .field { display: flex; flex-direction: column; gap: 4px; }
-  .field label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
-  .field input, .field select, .field textarea { font-size: 13px; padding: 7px 10px; border: 0.5px solid var(--border-md); border-radius: var(--radius); background: var(--surface); color: var(--text); font-family: inherit; }
-  .field input:focus, .field select:focus { outline: none; border-color: var(--blue); }
-  .field.full { grid-column: 1 / -1; }
-  .filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
-  .filters input, .filters select { font-size: 13px; padding: 6px 10px; border: 0.5px solid var(--border-md); border-radius: var(--radius); background: var(--surface); color: var(--text); font-family: inherit; }
-  .filters input { flex: 1; min-width: 180px; }
-  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
-  .modal-overlay.open { display: flex; }
-  .modal { background: var(--surface); border-radius: var(--radius-lg); padding: 24px; width: 560px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
-  .modal h2 { font-size: 16px; font-weight: 500; margin-bottom: 20px; }
-  .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; border-top: 0.5px solid var(--border); padding-top: 16px; }
-  .alert { padding: 10px 14px; border-radius: var(--radius); font-size: 13px; margin-bottom: 12px; }
-  .alert-danger { background: var(--red-bg); color: var(--red); }
-  .alert-success { background: var(--green-bg); color: var(--green); }
-  .empty { text-align: center; padding: 48px; color: var(--text-faint); font-size: 13px; }
-  .loading { text-align: center; padding: 32px; color: var(--text-faint); font-size: 13px; }
-  .total-row td { font-weight: 500; background: var(--bg); }
-  .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 16px; }
-  .day-col { background: var(--bg); border-radius: var(--radius); padding: 10px 8px; min-height: 90px; }
-  .day-col.today { background: var(--blue-bg); }
-  .day-name { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; }
-  .day-col.today .day-name { color: var(--blue-dark); }
-  .venc-chip { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 5px 7px; margin-bottom: 4px; }
-  .venc-chip.vencida { background: var(--red-bg); border-color: #F09595; }
-  .venc-chip .vp { font-size: 11px; font-weight: 500; }
-  .venc-chip.vencida .vp { color: var(--red); }
-  .venc-chip .vm { font-size: 11px; color: var(--text-muted); }
-  .stmt { width: 100%; font-size: 13px; border-collapse: collapse; }
-  .stmt td { padding: 7px 6px; }
-  .stmt .sh td { font-size: 11px; font-weight: 500; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; padding-top: 14px; padding-bottom: 4px; }
-  .stmt .st td { border-top: 0.5px solid var(--border); font-weight: 500; padding: 8px 6px; }
-  .stmt .tt td { border-top: 2px solid var(--border-md); background: var(--bg); font-weight: 500; font-size: 14px; padding: 10px 8px; }
-  .stmt .ind td:first-child { padding-left: 18px; color: var(--text-muted); }
-  .stmt .ind2 td:first-child { padding-left: 32px; color: var(--text-muted); }
-  .stmt td:last-child { text-align: right; white-space: nowrap; }
-  .cat-list { display: flex; flex-direction: column; gap: 6px; }
-  .cat-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg); border-radius: var(--radius); font-size: 13px; }
-  .cat-item-actions { display: flex; gap: 6px; }
-  .logo-upload-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-  @media (max-width: 768px) {
-    .sidebar { display: none; }
-    .kpi-grid { grid-template-columns: 1fr 1fr; }
-    .grid2 { grid-template-columns: 1fr; }
-    .week-grid { grid-template-columns: repeat(3, 1fr); }
-  }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --surface2: #f8f9fb;
+  --border: rgba(0,0,0,0.08);
+  --border-md: rgba(0,0,0,0.15);
+  --text: #1a1a2e;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+  --blue: #3b82f6;
+  --blue-dark: #1d4ed8;
+  --blue-bg: #eff6ff;
+  --blue-mid: #dbeafe;
+  --green: #16a34a;
+  --green-bg: #f0fdf4;
+  --red: #dc2626;
+  --red-bg: #fef2f2;
+  --amber: #d97706;
+  --amber-bg: #fffbeb;
+  --purple: #7c3aed;
+  --purple-bg: #f5f3ff;
+  --sidebar-bg: #1e293b;
+  --sidebar-text: #cbd5e1;
+  --sidebar-muted: #64748b;
+  --sidebar-active-bg: #3b82f6;
+  --sidebar-active-text: #ffffff;
+  --sidebar-hover: #334155;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.05);
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: var(--text); background: var(--bg); }
+
+/* AUTH */
+#auth-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e293b 100%); }
+.auth-card { background: var(--surface); border-radius: 20px; padding: 40px; width: 360px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.auth-logo { text-align: center; margin-bottom: 28px; }
+.auth-logo .icon { font-size: 40px; margin-bottom: 10px; }
+.auth-card h1 { font-size: 20px; font-weight: 600; text-align: center; color: var(--text); margin-bottom: 4px; }
+.auth-card p { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; text-align: center; }
+
+/* APP */
+#app-screen { display: none; height: 100vh; overflow: hidden; }
+.shell { display: flex; height: 100%; }
+
+/* SIDEBAR */
+.sidebar { width: 240px; min-width: 240px; background: var(--sidebar-bg); display: flex; flex-direction: column; overflow-y: auto; transition: transform 0.3s ease; }
+.sidebar-logo { padding: 20px 16px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.sidebar-logo:hover { background: var(--sidebar-hover); }
+.logo-placeholder { width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, #3b82f6, #7c3aed); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.logo-img { width: 38px; height: 38px; border-radius: 10px; object-fit: cover; display: none; flex-shrink: 0; }
+.logo-text .title { font-size: 13px; font-weight: 600; color: #f1f5f9; }
+.logo-text .sub { font-size: 11px; color: var(--sidebar-muted); margin-top: 1px; }
+.nav-group { padding: 12px 0 4px; }
+.nav-label { font-size: 10px; font-weight: 600; color: var(--sidebar-muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 0 16px 6px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px; cursor: pointer; font-size: 13px; color: var(--sidebar-text); border-radius: 0; margin: 1px 8px; border-radius: 8px; transition: all 0.15s; }
+.nav-item:hover { background: var(--sidebar-hover); color: #f1f5f9; }
+.nav-item.active { background: var(--sidebar-active-bg); color: var(--sidebar-active-text); font-weight: 500; }
+.nav-icon { font-size: 15px; width: 20px; text-align: center; }
+.sidebar-footer { margin-top: auto; padding: 14px 16px; border-top: 1px solid rgba(255,255,255,0.08); }
+.user-info { font-size: 12px; color: var(--sidebar-muted); margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-logout { font-size: 12px; color: #f87171; background: none; border: none; cursor: pointer; padding: 0; }
+
+/* MAIN */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--shadow); }
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.menu-toggle { display: none; background: none; border: none; cursor: pointer; padding: 4px; color: var(--text-muted); font-size: 20px; }
+.topbar-title { font-size: 16px; font-weight: 600; color: var(--text); }
+.topbar-actions { display: flex; gap: 8px; }
+.content { flex: 1; overflow-y: auto; padding: 24px; }
+
+/* BUTTONS */
+.btn { padding: 8px 16px; font-size: 13px; border-radius: var(--radius); border: 1px solid var(--border-md); background: var(--surface); color: var(--text); cursor: pointer; font-family: inherit; transition: all 0.15s; font-weight: 500; }
+.btn:hover { background: var(--surface2); border-color: var(--border-md); }
+.btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); box-shadow: 0 1px 3px rgba(59,130,246,0.3); }
+.btn-primary:hover { background: var(--blue-dark); border-color: var(--blue-dark); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-danger { color: var(--red); border-color: #fca5a5; background: var(--red-bg); }
+.btn-danger:hover { background: #fee2e2; }
+.btn-ghost { border-color: transparent; background: transparent; color: var(--text-muted); }
+.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+
+/* CARDS */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.card-title { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 16px; }
+
+/* KPI CARDS */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-bottom: 20px; }
+.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 20px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+.kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+.kpi-card.blue::before { background: linear-gradient(90deg, #3b82f6, #6366f1); }
+.kpi-card.green::before { background: linear-gradient(90deg, #16a34a, #059669); }
+.kpi-card.amber::before { background: linear-gradient(90deg, #d97706, #f59e0b); }
+.kpi-card.red::before { background: linear-gradient(90deg, #dc2626, #ef4444); }
+.kpi-label { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+.kpi-value { font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+.kpi-sub { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* TABLE */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { font-size: 11px; font-weight: 600; color: var(--text-muted); text-align: left; padding: 0 10px 10px; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.04em; }
+td { padding: 10px; border-bottom: 1px solid var(--border); color: var(--text); }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: var(--surface2); }
+
+/* BADGES */
+.badge { display: inline-flex; align-items: center; font-size: 11px; padding: 3px 9px; border-radius: 20px; font-weight: 600; }
+.badge-success { background: var(--green-bg); color: var(--green); }
+.badge-warning { background: var(--amber-bg); color: var(--amber); }
+.badge-danger { background: var(--red-bg); color: var(--red); }
+.badge-info { background: var(--blue-bg); color: var(--blue-dark); }
+.badge-gray { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+.badge-purple { background: var(--purple-bg); color: var(--purple); }
+
+/* FORMS */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.field input, .field select, .field textarea { font-size: 13px; padding: 9px 12px; border: 1px solid var(--border-md); border-radius: var(--radius); background: var(--surface); color: var(--text); font-family: inherit; transition: border-color 0.15s; }
+.field input:focus, .field select:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+.field.full { grid-column: 1 / -1; }
+.filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.filters input, .filters select { font-size: 13px; padding: 8px 12px; border: 1px solid var(--border-md); border-radius: var(--radius); background: var(--surface); color: var(--text); font-family: inherit; }
+.filters input { flex: 1; min-width: 180px; }
+
+/* MODAL */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border-radius: 18px; padding: 28px; width: 580px; max-width: 95vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 60px rgba(0,0,0,0.25); }
+.modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 22px; color: var(--text); }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 22px; border-top: 1px solid var(--border); padding-top: 18px; }
+
+/* ALERTS */
+.alert { padding: 11px 14px; border-radius: var(--radius); font-size: 13px; margin-bottom: 14px; font-weight: 500; }
+.alert-danger { background: var(--red-bg); color: var(--red); border: 1px solid #fca5a5; }
+.alert-success { background: var(--green-bg); color: var(--green); border: 1px solid #86efac; }
+.empty { text-align: center; padding: 48px; color: var(--text-faint); font-size: 13px; }
+.loading { text-align: center; padding: 32px; color: var(--text-faint); font-size: 13px; }
+.total-row td { font-weight: 600; background: var(--surface2); }
+
+/* VENCIMIENTOS */
+.week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 16px; }
+.day-col { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 8px; min-height: 90px; box-shadow: var(--shadow); }
+.day-col.today { background: var(--blue-bg); border-color: var(--blue); }
+.day-name { font-size: 10px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+.day-col.today .day-name { color: var(--blue-dark); }
+.venc-chip { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 7px; margin-bottom: 4px; }
+.venc-chip.vencida { background: var(--red-bg); border-color: #fca5a5; }
+.venc-chip .vp { font-size: 11px; font-weight: 600; color: var(--text); }
+.venc-chip.vencida .vp { color: var(--red); }
+.venc-chip .vm { font-size: 11px; color: var(--text-muted); }
+
+/* STATEMENT */
+.stmt { width: 100%; font-size: 13px; border-collapse: collapse; }
+.stmt td { padding: 8px 8px; }
+.stmt .sh td { font-size: 10px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.07em; padding-top: 16px; padding-bottom: 4px; }
+.stmt .st td { border-top: 1px solid var(--border); font-weight: 600; padding: 10px 8px; }
+.stmt .tt td { border-top: 2px solid var(--border-md); background: var(--surface2); font-weight: 700; font-size: 15px; padding: 12px 10px; border-radius: 0 0 var(--radius) var(--radius); }
+.stmt .ind td:first-child { padding-left: 20px; color: var(--text-muted); }
+.stmt .ind2 td:first-child { padding-left: 36px; color: var(--text-muted); }
+.stmt td:last-child { text-align: right; white-space: nowrap; }
+
+/* CATEGORIES */
+.cat-list { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+.cat-item { display: flex; align-items: center; justify-content: space-between; padding: 9px 13px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; }
+.cat-item-actions { display: flex; gap: 6px; }
+
+/* CHART CONTAINER */
+.chart-wrap { position: relative; height: 200px; }
+
+/* MOBILE OVERLAY */
+.sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 49; }
+.sidebar-overlay.open { display: block; }
+
+/* MOBILE */
+@media (max-width: 768px) {
+  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; transform: translateX(-100%); width: 260px; }
+  .sidebar.open { transform: translateX(0); }
+  .menu-toggle { display: block; }
+  .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid2 { grid-template-columns: 1fr; }
+  .week-grid { grid-template-columns: repeat(3, 1fr); }
+  .content { padding: 16px; }
+  .topbar { padding: 12px 16px; }
+  .topbar-actions .btn span { display: none; }
+  table { font-size: 12px; }
+  th, td { padding: 8px 6px; }
+  .modal { padding: 20px; border-radius: 14px; max-height: 95vh; }
+  .form-grid { grid-template-columns: 1fr; }
+  .kpi-value { font-size: 18px; }
+}
+@media (max-width: 480px) {
+  .kpi-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
 
 <div id="auth-screen">
   <div class="auth-card">
-    <h1>Gestión — Heladería</h1>
-    <p>Ingresá con tu cuenta para continuar</p>
+    <div class="auth-logo">
+      <div style="font-size:40px">🍦</div>
+    </div>
+    <h1>Bienvenido</h1>
+    <p>Sistema de gestión</p>
     <div id="auth-error" class="alert alert-danger" style="display:none"></div>
-    <div class="field" style="margin-bottom:12px">
-      <label>Email</label>
-      <input type="email" id="auth-email" placeholder="tu@email.com" onkeydown="if(event.key==='Enter')login()">
+    <div class="field" style="margin-bottom:14px">
+      <label>Usuario</label>
+      <input type="text" id="auth-user" placeholder="tu usuario" autocomplete="username" onkeydown="if(event.key==='Enter')login()">
     </div>
-    <div class="field" style="margin-bottom:20px">
+    <div class="field" style="margin-bottom:22px">
       <label>Contraseña</label>
-      <input type="password" id="auth-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')login()">
+      <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
     </div>
-    <button class="btn btn-primary" style="width:100%" onclick="login()">Ingresar</button>
-    <div style="margin-top:12px;font-size:11px;color:#999;text-align:center">Usá el email y contraseña que creaste en Supabase</div>
+    <button class="btn btn-primary" style="width:100%;padding:11px" onclick="login()">Ingresar</button>
   </div>
 </div>
 
 <div id="app-screen">
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
   <div class="shell">
-    <nav class="sidebar">
-      <div class="sidebar-logo" onclick="editarLogo()" title="Clic para cambiar logo y nombre">
-        <img id="logo-img" src="" alt="Logo">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-logo" onclick="editarLogo()" title="Clic para personalizar">
+        <img class="logo-img" id="logo-img" src="" alt="">
         <div class="logo-placeholder" id="logo-placeholder">🍦</div>
         <div class="logo-text">
           <div class="title" id="sidebar-nombre">Gestión</div>
@@ -152,36 +244,36 @@
       </div>
       <div class="nav-group">
         <div class="nav-label">General</div>
-        <div class="nav-item active" data-page="dashboard">◈ Dashboard</div>
+        <div class="nav-item active" data-page="dashboard"><span class="nav-icon">⊞</span>Dashboard</div>
       </div>
       <div class="nav-group">
         <div class="nav-label">Maestros</div>
-        <div class="nav-item" data-page="proveedores">◎ Proveedores</div>
-        <div class="nav-item" data-page="productos">◉ Productos / MP</div>
+        <div class="nav-item" data-page="proveedores"><span class="nav-icon">◎</span>Proveedores</div>
+        <div class="nav-item" data-page="productos"><span class="nav-icon">◉</span>Productos / MP</div>
       </div>
       <div class="nav-group">
         <div class="nav-label">Compras</div>
-        <div class="nav-item" data-page="facturas">▤ Facturas</div>
-        <div class="nav-item" data-page="pagos">◈ Pagos</div>
-        <div class="nav-item" data-page="vencimientos">◷ Vencimientos</div>
+        <div class="nav-item" data-page="facturas"><span class="nav-icon">▤</span>Facturas</div>
+        <div class="nav-item" data-page="pagos"><span class="nav-icon">✦</span>Pagos</div>
+        <div class="nav-item" data-page="vencimientos"><span class="nav-icon">◷</span>Vencimientos</div>
       </div>
       <div class="nav-group">
         <div class="nav-label">Gastos</div>
-        <div class="nav-item" data-page="gastos">▣ Gastos al contado</div>
+        <div class="nav-item" data-page="gastos"><span class="nav-icon">▣</span>Gastos al contado</div>
       </div>
       <div class="nav-group">
         <div class="nav-label">Ventas</div>
-        <div class="nav-item" data-page="caja">▧ Cierre de caja</div>
+        <div class="nav-item" data-page="caja"><span class="nav-icon">▧</span>Cierre de caja</div>
       </div>
       <div class="nav-group">
         <div class="nav-label">Inventario</div>
-        <div class="nav-item" data-page="stock">▦ Stock</div>
+        <div class="nav-item" data-page="stock"><span class="nav-icon">▦</span>Stock</div>
       </div>
       <div class="nav-group">
         <div class="nav-label">Reportes</div>
-        <div class="nav-item" data-page="rep-compras">▶ Compras por período</div>
-        <div class="nav-item" data-page="rep-resultados">▶ Estado de resultados</div>
-        <div class="nav-item" data-page="rep-flujo">▶ Flujo de caja</div>
+        <div class="nav-item" data-page="rep-compras"><span class="nav-icon">▶</span>Compras</div>
+        <div class="nav-item" data-page="rep-resultados"><span class="nav-icon">▶</span>Estado resultados</div>
+        <div class="nav-item" data-page="rep-flujo"><span class="nav-icon">▶</span>Flujo de caja</div>
       </div>
       <div class="sidebar-footer">
         <div class="user-info" id="user-email-display"></div>
@@ -190,7 +282,10 @@
     </nav>
     <div class="main">
       <div class="topbar">
-        <div class="topbar-title" id="page-title">Dashboard</div>
+        <div class="topbar-left">
+          <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+          <div class="topbar-title" id="page-title">Dashboard</div>
+        </div>
         <div class="topbar-actions" id="topbar-actions"></div>
       </div>
       <div class="content" id="content"></div>
@@ -203,7 +298,7 @@
     <h2 id="modal-title"></h2>
     <div id="modal-body"></div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" id="modal-save" onclick="saveModal()">Guardar</button>
     </div>
   </div>
@@ -212,34 +307,50 @@
 <script>
 const SUPABASE_URL = 'https://slbtsmycouzbahwtwbje.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNsYnRzbXljb3V6YmFod3R3YmplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2Njc3ODQsImV4cCI6MjA5MTI0Mzc4NH0.oEcV8hQduQcWLwITG4IUNkccJirT4qFC8PP69aN7C3o';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+});
 
 let currentPage = 'dashboard';
 let modalSaveFn = null;
 let _appConfig = {};
+let _refreshInterval = null;
+
+// ---- MOBILE SIDEBAR ----
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
 
 // ---- AUTH ----
+function toEmail(user) { return user.includes('@') ? user : user.trim().toLowerCase() + '@heladeria.local'; }
+
 async function login() {
-  const email = document.getElementById('auth-email').value.trim();
+  const user = document.getElementById('auth-user').value.trim();
   const pw = document.getElementById('auth-password').value;
   const err = document.getElementById('auth-error');
   const btn = document.querySelector('#auth-screen button');
   err.style.display = 'none';
-  if (!email || !pw) { err.textContent = 'Por favor ingresá tu email y contraseña.'; err.style.display = 'block'; return; }
+  if (!user || !pw) { err.textContent = 'Por favor ingresá usuario y contraseña.'; err.style.display = 'block'; return; }
   btn.textContent = 'Ingresando...'; btn.disabled = true;
   try {
-    const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
+    const { data, error } = await sb.auth.signInWithPassword({ email: toEmail(user), password: pw });
     if (error) {
       let msg = 'Error: ' + error.message;
-      if (error.message.includes('Invalid login')) msg = 'Email o contraseña incorrectos.';
-      else if (error.message.includes('Email not confirmed')) msg = 'Confirmá tu email antes de ingresar.';
+      if (error.message.includes('Invalid login')) msg = 'Usuario o contraseña incorrectos.';
+      else if (error.message.includes('Email not confirmed')) msg = 'Cuenta pendiente de confirmación. Contactá al administrador.';
       err.textContent = msg; err.style.display = 'block';
     } else if (data?.user) { showApp(); }
-  } catch(e) { err.textContent = 'Error inesperado: ' + e.message; err.style.display = 'block'; }
+  } catch(e) { err.textContent = 'Error: ' + e.message; err.style.display = 'block'; }
   finally { btn.textContent = 'Ingresar'; btn.disabled = false; }
 }
 
 async function logout() {
+  if (_refreshInterval) clearInterval(_refreshInterval);
   await sb.auth.signOut();
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('auth-screen').style.display = 'flex';
@@ -250,24 +361,23 @@ async function showApp() {
   if (!user) return;
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'block';
-  document.getElementById('user-email-display').textContent = user.email;
-  await loadAppConfig();
+  const displayName = user.email.replace('@heladeria.local','');
+  document.getElementById('user-email-display').textContent = displayName;
+  loadAppConfig();
   setupNav();
-  if (currentPage) navigate(currentPage); else navigate('dashboard');
+  navigate(currentPage || 'dashboard');
+  // Refresh cada 10 minutos solo la página actual
+  if (_refreshInterval) clearInterval(_refreshInterval);
+  _refreshInterval = setInterval(() => { navigate(currentPage); }, 10 * 60 * 1000);
 }
 
-// ---- APP CONFIG (logo, nombre) ----
-async function loadAppConfig() {
+// ---- APP CONFIG ----
+function loadAppConfig() {
   try {
-    const { data } = await sb.from('gastos').select('id').limit(0); // ping
     const stored = localStorage.getItem('app_config');
-    if (stored) {
-      _appConfig = JSON.parse(stored);
-      applyAppConfig();
-    }
+    if (stored) { _appConfig = JSON.parse(stored); applyAppConfig(); }
   } catch(e) {}
 }
-
 function applyAppConfig() {
   if (_appConfig.nombre) document.getElementById('sidebar-nombre').textContent = _appConfig.nombre;
   if (_appConfig.sub) document.getElementById('sidebar-sub').textContent = _appConfig.sub;
@@ -277,58 +387,47 @@ function applyAppConfig() {
     document.getElementById('logo-placeholder').style.display = 'none';
   }
 }
-
 function editarLogo() {
   openModal('Personalizar identidad', `
-    <div class="field" style="margin-bottom:12px">
-      <label>Nombre del negocio</label>
-      <input id="f-nombre-app" value="${_appConfig.nombre||'Gestión'}">
-    </div>
-    <div class="field" style="margin-bottom:12px">
-      <label>Subtítulo (opcional)</label>
-      <input id="f-sub-app" value="${_appConfig.sub||'Sistema de gestión'}" placeholder="Ej: Temporada 2025">
-    </div>
-    <div class="field">
-      <label>Logo (URL de imagen)</label>
-      <input id="f-logo-app" value="${_appConfig.logo||''}" placeholder="https://... (link directo a una imagen)">
-      <div class="logo-upload-hint">Pegá el link directo de tu logo (JPG, PNG). Podés subir la imagen a imgur.com gratis.</div>
-    </div>`, async () => {
+    <div class="field" style="margin-bottom:12px"><label>Nombre del negocio</label><input id="f-nombre-app" value="${_appConfig.nombre||'Gestión'}"></div>
+    <div class="field" style="margin-bottom:12px"><label>Subtítulo</label><input id="f-sub-app" value="${_appConfig.sub||'Sistema de gestión'}"></div>
+    <div class="field"><label>Logo (URL de imagen)</label><input id="f-logo-app" value="${_appConfig.logo||''}" placeholder="https://...">
+    <span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block">Subí tu logo a imgur.com y pegá el link directo aquí.</span></div>`,
+  async () => {
     _appConfig.nombre = document.getElementById('f-nombre-app').value;
     _appConfig.sub = document.getElementById('f-sub-app').value;
     _appConfig.logo = document.getElementById('f-logo-app').value;
     localStorage.setItem('app_config', JSON.stringify(_appConfig));
-    applyAppConfig();
-    closeModal();
+    applyAppConfig(); closeModal();
   });
 }
 
-// ---- NAV (sin auto-redirect) ----
+// ---- NAV ----
 function setupNav() {
   document.querySelectorAll('.nav-item').forEach(el => {
-    el.addEventListener('click', () => navigate(el.dataset.page));
+    el.addEventListener('click', () => { navigate(el.dataset.page); closeSidebar(); });
   });
 }
-
 function navigate(page) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
-  const titles = {
-    dashboard:'Dashboard', proveedores:'Proveedores', productos:'Productos / Materias primas',
-    facturas:'Facturas de proveedores', pagos:'Pagos de facturas', vencimientos:'Vencimientos — vista semanal',
+  const titles = { dashboard:'Dashboard', proveedores:'Proveedores', productos:'Productos / Materias primas',
+    facturas:'Facturas de proveedores', pagos:'Pagos de facturas', vencimientos:'Vencimientos',
     gastos:'Gastos al contado', caja:'Cierre de caja diario', stock:'Stock',
-    'rep-compras':'Reporte — Compras por período', 'rep-resultados':'Estado de resultados', 'rep-flujo':'Flujo de caja'
-  };
+    'rep-compras':'Compras por período', 'rep-resultados':'Estado de resultados', 'rep-flujo':'Flujo de caja' };
   document.getElementById('page-title').textContent = titles[page] || page;
   document.getElementById('topbar-actions').innerHTML = '';
-  const pages = { dashboard, proveedores, productos, facturas, pagos, vencimientos, gastos, caja, stock, 'rep-compras': repCompras, 'rep-resultados': repResultados, 'rep-flujo': repFlujo };
+  const pages = { dashboard, proveedores, productos, facturas, pagos, vencimientos, gastos, caja, stock,
+    'rep-compras': repCompras, 'rep-resultados': repResultados, 'rep-flujo': repFlujo };
   if (pages[page]) pages[page]();
 }
 
 // ---- HELPERS ----
-function fmt(n) { return '€ ' + (parseFloat(n)||0).toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2}); }
-function fmtDate(d) { if (!d) return '—'; const dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'2-digit'}); }
+function fmt(n) { return '€\u202f' + (parseFloat(n)||0).toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtDate(d) { if (!d) return '—'; return new Date(d+'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'2-digit'}); }
 function today() { return new Date().toISOString().split('T')[0]; }
 function loading() { document.getElementById('content').innerHTML = '<div class="loading">Cargando...</div>'; }
+function setActions(html) { document.getElementById('topbar-actions').innerHTML = html; }
 function openModal(title, body, saveFn) {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = body;
@@ -338,10 +437,20 @@ function openModal(title, body, saveFn) {
 }
 function closeModal() { document.getElementById('modal').classList.remove('open'); modalSaveFn = null; }
 async function saveModal() { if (modalSaveFn) await modalSaveFn(); }
-function setActions(html) { document.getElementById('topbar-actions').innerHTML = html; }
 function badgeEstado(e) {
-  const map = { pendiente: 'warning', pagada: 'success', vencida: 'danger' };
-  return `<span class="badge badge-${map[e]||'gray'}">${e}</span>`;
+  const m = { pendiente:'warning', pagada:'success', vencida:'danger' };
+  return `<span class="badge badge-${m[e]||'gray'}">${e}</span>`;
+}
+
+// ---- TEMPORADAS helpers ----
+async function getTemporadas() {
+  const { data } = await sb.from('temporadas').select('*').order('fecha_inicio', {ascending:false});
+  return data || [];
+}
+function temporadaSelect(selected='') {
+  return `<select id="f-temporada" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;min-width:160px">
+    <option value="">Todas las temporadas</option>
+  </select>`;
 }
 
 // ---- DASHBOARD ----
@@ -349,45 +458,66 @@ async function dashboard() {
   loading();
   const en7 = new Date(); en7.setDate(en7.getDate()+7); const en7s = en7.toISOString().split('T')[0];
   const mesInicio = new Date(); mesInicio.setDate(1); const mesS = mesInicio.toISOString().split('T')[0];
-  const [{ data: factVenc }, { data: factProx }, { data: ventas }, { data: gastosList }, { data: comprasMes }, { data: ventasMes }] = await Promise.all([
+  const [{ data: factVenc }, { data: factProx }, { data: ventasRecientes }, { data: gastosList },
+         { data: comprasMes }, { data: ventasMes }, { data: ventasChart }] = await Promise.all([
     sb.from('facturas').select('monto_total').eq('estado','vencida'),
-    sb.from('facturas').select('id,numero_factura,monto_total,fecha_vencimiento,proveedores(nombre)').eq('estado','pendiente').lte('fecha_vencimiento', en7s).order('fecha_vencimiento'),
-    sb.from('cierres_caja').select('ingresos_dia,fecha').order('fecha', {ascending:false}).limit(5),
-    sb.from('gastos').select('fecha,concepto,monto').order('fecha', {ascending:false}).limit(5),
-    sb.from('facturas').select('monto_neto').gte('fecha_emision', mesS),
-    sb.from('cierres_caja').select('ingresos_dia').gte('fecha', mesS)
+    sb.from('facturas').select('id,numero_factura,monto_total,fecha_vencimiento,proveedores(nombre)').eq('estado','pendiente').lte('fecha_vencimiento',en7s).order('fecha_vencimiento'),
+    sb.from('cierres_caja').select('ingresos_dia,fecha').order('fecha',{ascending:false}).limit(5),
+    sb.from('gastos').select('fecha,concepto,monto').order('fecha',{ascending:false}).limit(4),
+    sb.from('facturas').select('monto_neto').gte('fecha_emision',mesS),
+    sb.from('cierres_caja').select('ingresos_dia').gte('fecha',mesS),
+    sb.from('cierres_caja').select('ingresos_dia,fecha').gte('fecha',mesS).order('fecha')
   ]);
   const totalVencido = (factVenc||[]).reduce((a,f)=>a+parseFloat(f.monto_total),0);
   const totalProx = (factProx||[]).reduce((a,f)=>a+parseFloat(f.monto_total),0);
   const totCompras = (comprasMes||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
   const totVentas = (ventasMes||[]).reduce((a,f)=>a+parseFloat(f.ingresos_dia),0);
+
   document.getElementById('content').innerHTML = `
     <div class="kpi-grid">
-      <div class="kpi-card"><div class="kpi-label">Ventas del mes</div><div class="kpi-value">${fmt(totVentas)}</div><div class="kpi-sub">Efectivo registrado</div></div>
-      <div class="kpi-card"><div class="kpi-label">Compras del mes (neto)</div><div class="kpi-value">${fmt(totCompras)}</div><div class="kpi-sub">Sin MwSt</div></div>
-      <div class="kpi-card"><div class="kpi-label">Por vencer (7 días)</div><div class="kpi-value" style="color:var(--amber)">${fmt(totalProx)}</div><div class="kpi-sub">${(factProx||[]).length} factura(s)</div></div>
-      <div class="kpi-card"><div class="kpi-label">Facturas vencidas</div><div class="kpi-value" style="color:var(--red)">${fmt(totalVencido)}</div><div class="kpi-sub">${(factVenc||[]).length} factura(s)</div></div>
+      <div class="kpi-card blue"><div class="kpi-label">Ventas del mes</div><div class="kpi-value">${fmt(totVentas)}</div><div class="kpi-sub">Efectivo registrado</div></div>
+      <div class="kpi-card green"><div class="kpi-label">Compras del mes</div><div class="kpi-value">${fmt(totCompras)}</div><div class="kpi-sub">Neto sin MwSt</div></div>
+      <div class="kpi-card amber"><div class="kpi-label">Por vencer (7 días)</div><div class="kpi-value">${fmt(totalProx)}</div><div class="kpi-sub">${(factProx||[]).length} factura(s)</div></div>
+      <div class="kpi-card red"><div class="kpi-label">Facturas vencidas</div><div class="kpi-value">${fmt(totalVencido)}</div><div class="kpi-sub">${(factVenc||[]).length} factura(s)</div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">Ventas diarias — mes en curso</div>
+      <div class="chart-wrap"><canvas id="chart-ventas"></canvas></div>
     </div>
     <div class="grid2">
       <div class="card"><div class="card-title">Próximos vencimientos</div>
-        ${!(factProx||[]).length ? '<div class="empty" style="padding:20px">Sin vencimientos próximos</div>' :
-        `<table><thead><tr><th>Proveedor</th><th>Vencimiento</th><th>Monto</th></tr></thead><tbody>
+        ${!(factProx||[]).length ? '<div class="empty" style="padding:20px">Sin vencimientos próximos ✓</div>' :
+        `<table><thead><tr><th>Proveedor</th><th>Vence</th><th>Monto</th></tr></thead><tbody>
         ${factProx.map(f=>`<tr><td>${f.proveedores?.nombre||'—'}</td><td>${fmtDate(f.fecha_vencimiento)}</td><td>${fmt(f.monto_total)}</td></tr>`).join('')}
         </tbody></table>`}
       </div>
       <div class="card"><div class="card-title">Últimas ventas</div>
-        ${!(ventas||[]).length ? '<div class="empty" style="padding:20px">Sin ventas registradas</div>' :
+        ${!(ventasRecientes||[]).length ? '<div class="empty" style="padding:20px">Sin ventas registradas</div>' :
         `<table><thead><tr><th>Fecha</th><th>Ingresos</th></tr></thead><tbody>
-        ${ventas.map(v=>`<tr><td>${fmtDate(v.fecha)}</td><td>${fmt(v.ingresos_dia)}</td></tr>`).join('')}
+        ${ventasRecientes.map(v=>`<tr><td>${fmtDate(v.fecha)}</td><td style="font-weight:600;color:var(--green)">${fmt(v.ingresos_dia)}</td></tr>`).join('')}
         </tbody></table>`}
       </div>
     </div>
     <div class="card"><div class="card-title">Últimos gastos</div>
       ${!(gastosList||[]).length ? '<div class="empty" style="padding:20px">Sin gastos registrados</div>' :
       `<table><thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th></tr></thead><tbody>
-      ${gastosList.map(g=>`<tr><td>${fmtDate(g.fecha)}</td><td>${g.concepto}</td><td>${fmt(g.monto)}</td></tr>`).join('')}
+      ${gastosList.map(g=>`<tr><td>${fmtDate(g.fecha)}</td><td>${g.concepto}</td><td style="color:var(--red)">${fmt(g.monto)}</td></tr>`).join('')}
       </tbody></table>`}
     </div>`;
+
+  // Chart
+  const labels = (ventasChart||[]).map(v => { const d=new Date(v.fecha+'T00:00:00'); return d.getDate(); });
+  const values = (ventasChart||[]).map(v => parseFloat(v.ingresos_dia)||0);
+  if (labels.length && document.getElementById('chart-ventas')) {
+    new Chart(document.getElementById('chart-ventas'), {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Ventas (€)', data: values, backgroundColor: 'rgba(59,130,246,0.7)', borderRadius: 6, borderSkipped: false }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: v => '€'+v } } } }
+    });
+  } else if (document.getElementById('chart-ventas')) {
+    document.querySelector('.chart-wrap').innerHTML = '<div class="empty" style="padding:40px">Sin datos de ventas este mes</div>';
+  }
 }
 
 // ---- PROVEEDORES ----
@@ -397,23 +527,22 @@ async function proveedores() {
   const { data } = await sb.from('proveedores').select('*').order('nombre');
   document.getElementById('content').innerHTML = `<div class="card">
     ${!(data||[]).length ? '<div class="empty">Sin proveedores. Agregá el primero.</div>' :
-    `<table><thead><tr><th>Nombre</th><th>Contacto</th><th>Cond. pago</th><th>IBAN</th><th>Estado</th><th></th></tr></thead><tbody>
+    `<div style="overflow-x:auto"><table><thead><tr><th>Nombre</th><th>Contacto</th><th>Pago</th><th>IBAN</th><th>Estado</th><th></th></tr></thead><tbody>
     ${data.map(p=>`<tr>
       <td><strong>${p.nombre}</strong>${p.razon_social?`<br><span style="font-size:11px;color:var(--text-muted)">${p.razon_social}</span>`:''}</td>
       <td>${p.contacto_nombre||'—'}<br><span style="font-size:11px;color:var(--text-muted)">${p.contacto_email||p.contacto_telefono||''}</span></td>
-      <td>${p.condicion_pago_dias||30} días</td>
-      <td style="font-size:11px">${p.iban||'—'}</td>
-      <td>${p.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
-      <td style="display:flex;gap:6px">
+      <td>${p.condicion_pago_dias||30}d</td>
+      <td style="font-size:11px;font-family:monospace">${p.iban||'—'}</td>
+      <td>${p.activo?'<span class="badge badge-success">Activo</span>':'<span class="badge badge-gray">Inactivo</span>'}</td>
+      <td><div style="display:flex;gap:5px">
         <button class="btn btn-sm" onclick="editProveedor('${p.id}')">Editar</button>
-        <button class="btn btn-sm" onclick="toggleProveedor('${p.id}',${p.activo})">${p.activo?'Desactivar':'Activar'}</button>
-        <button class="btn btn-sm btn-danger" onclick="eliminarProveedor('${p.id}','${p.nombre.replace(/'/g,"\\'")}')">Eliminar</button>
-      </td>
+        <button class="btn btn-sm btn-ghost" onclick="toggleProveedor('${p.id}',${p.activo})">${p.activo?'Desactivar':'Activar'}</button>
+        <button class="btn btn-sm btn-danger" onclick="eliminarProveedor('${p.id}','${p.nombre.replace(/'/g,"\\'")}')">✕</button>
+      </div></td>
     </tr>`).join('')}
-    </tbody></table>`}
+    </tbody></table></div>`}
   </div>`;
 }
-
 function proveedorForm(p={}) {
   return `<div class="form-grid">
     <div class="field"><label>Nombre *</label><input id="f-nombre" value="${p.nombre||''}"></div>
@@ -421,642 +550,436 @@ function proveedorForm(p={}) {
     <div class="field"><label>Contacto</label><input id="f-contacto" value="${p.contacto_nombre||''}"></div>
     <div class="field"><label>Email</label><input id="f-email" type="email" value="${p.contacto_email||''}"></div>
     <div class="field"><label>Teléfono</label><input id="f-tel" value="${p.contacto_telefono||''}"></div>
+    <div class="field"><label>Condición pago (días)</label><input id="f-dias" type="number" value="${p.condicion_pago_dias||30}"></div>
     <div class="field"><label>IBAN</label><input id="f-iban" value="${p.iban||''}"></div>
     <div class="field"><label>Banco</label><input id="f-banco" value="${p.banco||''}"></div>
-    <div class="field"><label>Condición de pago (días)</label><input id="f-dias" type="number" value="${p.condicion_pago_dias||30}"></div>
     <div class="field full"><label>Dirección</label><input id="f-dir" value="${p.direccion||''}"></div>
   </div>`;
 }
-
 function nuevoProveedor() {
   openModal('Nuevo proveedor', proveedorForm(), async () => {
-    const { error } = await sb.from('proveedores').insert({
-      nombre: document.getElementById('f-nombre').value,
-      razon_social: document.getElementById('f-razon').value,
-      contacto_nombre: document.getElementById('f-contacto').value,
-      contacto_email: document.getElementById('f-email').value,
-      contacto_telefono: document.getElementById('f-tel').value,
-      iban: document.getElementById('f-iban').value,
-      banco: document.getElementById('f-banco').value,
-      condicion_pago_dias: parseInt(document.getElementById('f-dias').value)||30,
-      direccion: document.getElementById('f-dir').value
-    });
-    if (!error) { closeModal(); proveedores(); } else alert('Error: ' + error.message);
+    const { error } = await sb.from('proveedores').insert({ nombre:document.getElementById('f-nombre').value, razon_social:document.getElementById('f-razon').value, contacto_nombre:document.getElementById('f-contacto').value, contacto_email:document.getElementById('f-email').value, contacto_telefono:document.getElementById('f-tel').value, iban:document.getElementById('f-iban').value, banco:document.getElementById('f-banco').value, condicion_pago_dias:parseInt(document.getElementById('f-dias').value)||30, direccion:document.getElementById('f-dir').value });
+    if (!error) { closeModal(); proveedores(); } else alert('Error: '+error.message);
   });
 }
-
 async function editProveedor(id) {
   const { data: p } = await sb.from('proveedores').select('*').eq('id',id).single();
   openModal('Editar proveedor', proveedorForm(p), async () => {
-    const { error } = await sb.from('proveedores').update({
-      nombre: document.getElementById('f-nombre').value,
-      razon_social: document.getElementById('f-razon').value,
-      contacto_nombre: document.getElementById('f-contacto').value,
-      contacto_email: document.getElementById('f-email').value,
-      contacto_telefono: document.getElementById('f-tel').value,
-      iban: document.getElementById('f-iban').value,
-      banco: document.getElementById('f-banco').value,
-      condicion_pago_dias: parseInt(document.getElementById('f-dias').value)||30,
-      direccion: document.getElementById('f-dir').value
-    }).eq('id',id);
-    if (!error) { closeModal(); proveedores(); } else alert('Error: ' + error.message);
+    const { error } = await sb.from('proveedores').update({ nombre:document.getElementById('f-nombre').value, razon_social:document.getElementById('f-razon').value, contacto_nombre:document.getElementById('f-contacto').value, contacto_email:document.getElementById('f-email').value, contacto_telefono:document.getElementById('f-tel').value, iban:document.getElementById('f-iban').value, banco:document.getElementById('f-banco').value, condicion_pago_dias:parseInt(document.getElementById('f-dias').value)||30, direccion:document.getElementById('f-dir').value }).eq('id',id);
+    if (!error) { closeModal(); proveedores(); } else alert('Error: '+error.message);
   });
 }
-
-async function toggleProveedor(id, activo) {
-  await sb.from('proveedores').update({activo: !activo}).eq('id', id);
-  proveedores();
-}
-
+async function toggleProveedor(id, activo) { await sb.from('proveedores').update({activo:!activo}).eq('id',id); proveedores(); }
 async function eliminarProveedor(id, nombre) {
-  if (!confirm(`¿Eliminar proveedor "${nombre}"? Esta acción no se puede deshacer.`)) return;
-  const { error } = await sb.from('proveedores').delete().eq('id', id);
-  if (!error) proveedores(); else alert('No se puede eliminar: tiene facturas asociadas.');
+  if (!confirm(`¿Eliminar "${nombre}"?`)) return;
+  const { error } = await sb.from('proveedores').delete().eq('id',id);
+  if (error) alert('No se puede eliminar: tiene facturas asociadas.'); else proveedores();
 }
 
-// ---- CATEGORIAS (genérico) ----
+// ---- CATEGORIAS ----
 async function gestionarCategorias(tabla, onClose) {
-  const { data: cats } = await sb.from(tabla).select('*').order('nombre');
   const renderCats = async () => {
     const { data } = await sb.from(tabla).select('*').order('nombre');
-    document.getElementById('cats-list').innerHTML = (data||[]).map(c => `
-      <div class="cat-item">
-        <span>${c.nombre}</span>
-        <div class="cat-item-actions">
-          <button class="btn btn-sm" onclick="editarCategoria('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}')">Editar</button>
-          <button class="btn btn-sm btn-danger" onclick="eliminarCategoria('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}')">Eliminar</button>
-        </div>
-      </div>`).join('') || '<div style="color:var(--text-faint);font-size:13px;padding:8px">Sin categorías</div>';
+    document.getElementById('cats-list').innerHTML = (data||[]).map(c=>`
+      <div class="cat-item"><span>${c.nombre}</span><div class="cat-item-actions">
+        <button class="btn btn-sm" onclick="editarCategoria('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}')">Editar</button>
+        <button class="btn btn-sm btn-danger" onclick="eliminarCategoria('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}')">✕</button>
+      </div></div>`).join('') || '<div style="color:var(--text-faint);font-size:13px;padding:8px">Sin categorías aún</div>';
   };
   openModal('Gestionar categorías', `
     <div style="display:flex;gap:8px;margin-bottom:14px">
-      <input id="f-nueva-cat" placeholder="Nueva categoría..." style="flex:1;font-size:13px;padding:7px 10px;border:0.5px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
-      <button class="btn btn-primary" onclick="agregarCategoria('${tabla}')">Agregar</button>
+      <input id="f-nueva-cat" placeholder="Nueva categoría..." style="flex:1;font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit" onkeydown="if(event.key==='Enter')agregarCategoria('${tabla}')">
+      <button class="btn btn-primary" onclick="agregarCategoria('${tabla}')">+ Agregar</button>
     </div>
-    <div class="cat-list" id="cats-list"></div>`, async () => { closeModal(); if(onClose) onClose(); });
+    <div class="cat-list" id="cats-list"><div class="loading">Cargando...</div></div>`,
+  async () => { closeModal(); if(onClose) onClose(); });
   await renderCats();
   window._renderCats = renderCats;
 }
-
 async function agregarCategoria(tabla) {
   const val = document.getElementById('f-nueva-cat').value.trim();
   if (!val) return;
-  const { error } = await sb.from(tabla).insert({nombre: val});
-  if (!error) { document.getElementById('f-nueva-cat').value = ''; await window._renderCats(); }
-  else alert('Error: ' + error.message);
+  const { error } = await sb.from(tabla).insert({nombre:val});
+  if (!error) { document.getElementById('f-nueva-cat').value=''; await window._renderCats(); } else alert('Error: '+error.message);
 }
-
 async function editarCategoria(tabla, id, nombre) {
   const nuevo = prompt('Nuevo nombre:', nombre);
-  if (!nuevo || nuevo === nombre) return;
-  await sb.from(tabla).update({nombre: nuevo}).eq('id', id);
+  if (!nuevo || nuevo===nombre) return;
+  await sb.from(tabla).update({nombre:nuevo}).eq('id',id);
   await window._renderCats();
 }
-
 async function eliminarCategoria(tabla, id, nombre) {
-  if (!confirm(`¿Eliminar categoría "${nombre}"?`)) return;
-  const { error } = await sb.from(tabla).delete().eq('id', id);
-  if (error) alert('No se puede eliminar: tiene registros asociados.');
-  else await window._renderCats();
+  if (!confirm(`¿Eliminar "${nombre}"?`)) return;
+  const { error } = await sb.from(tabla).delete().eq('id',id);
+  if (error) alert('No se puede eliminar: tiene registros asociados.'); else await window._renderCats();
 }
 
 // ---- PRODUCTOS ----
 async function productos() {
   loading();
-  setActions(`
-    <button class="btn" onclick="gestionarCategorias('categorias_producto', productos)">Gestionar categorías</button>
-    <button class="btn btn-primary" onclick="nuevoProducto()">+ Nuevo producto</button>`);
-  const [{ data }, { data: cats }, { data: provs }] = await Promise.all([
+  setActions(`<button class="btn" onclick="gestionarCategorias('categorias_producto',productos)">Categorías</button><button class="btn btn-primary" onclick="nuevoProducto()">+ Nuevo producto</button>`);
+  const [{ data },{ data:cats },{ data:provs }] = await Promise.all([
     sb.from('productos').select('*, categorias_producto(nombre), proveedores(nombre)').order('nombre'),
     sb.from('categorias_producto').select('*').order('nombre'),
     sb.from('proveedores').select('id,nombre').eq('activo',true).order('nombre')
   ]);
-  window._cats = cats; window._provs = provs;
+  window._cats=cats; window._provs=provs;
   document.getElementById('content').innerHTML = `<div class="card">
     ${!(data||[]).length ? '<div class="empty">Sin productos. Agregá el primero.</div>' :
-    `<table><thead><tr><th>Nombre</th><th>Categoría</th><th>Unidad</th><th>Proveedor habitual</th><th>Último precio</th><th></th></tr></thead><tbody>
+    `<div style="overflow-x:auto"><table><thead><tr><th>Nombre</th><th>Categoría</th><th>Unidad</th><th>Proveedor</th><th>Último precio</th><th></th></tr></thead><tbody>
     ${data.map(p=>`<tr>
       <td>${p.nombre}</td>
-      <td><span style="font-size:11px;border:0.5px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text-muted)">${p.categorias_producto?.nombre||'—'}</span></td>
-      <td>${p.unidad_medida}</td>
-      <td>${p.proveedores?.nombre||'—'}</td>
-      <td>${p.ultimo_precio ? fmt(p.ultimo_precio) : '—'}</td>
-      <td style="display:flex;gap:6px">
+      <td><span class="badge badge-gray">${p.categorias_producto?.nombre||'—'}</span></td>
+      <td>${p.unidad_medida}</td><td>${p.proveedores?.nombre||'—'}</td>
+      <td>${p.ultimo_precio?fmt(p.ultimo_precio):'—'}</td>
+      <td><div style="display:flex;gap:5px">
         <button class="btn btn-sm" onclick="editProducto('${p.id}')">Editar</button>
-        <button class="btn btn-sm btn-danger" onclick="eliminarProducto('${p.id}','${p.nombre.replace(/'/g,"\\'")}')">Eliminar</button>
-      </td>
+        <button class="btn btn-sm btn-danger" onclick="eliminarProducto('${p.id}','${p.nombre.replace(/'/g,"\\'")}')">✕</button>
+      </div></td>
     </tr>`).join('')}
-    </tbody></table>`}
+    </tbody></table></div>`}
   </div>`;
 }
-
 function productoForm(p={}) {
-  const cats = window._cats||[]; const provs = window._provs||[];
+  const cats=window._cats||[]; const provs=window._provs||[];
   return `<div class="form-grid">
     <div class="field full"><label>Nombre *</label><input id="f-nombre" value="${p.nombre||''}"></div>
-    <div class="field"><label>Categoría</label><select id="f-cat">
-      <option value="">— Seleccionar —</option>
-      ${cats.map(c=>`<option value="${c.id}" ${p.categoria_id===c.id?'selected':''}>${c.nombre}</option>`).join('')}
-    </select></div>
-    <div class="field"><label>Unidad de medida *</label><input id="f-unidad" placeholder="Kg, Litro, Unidad..." value="${p.unidad_medida||''}"></div>
-    <div class="field"><label>Proveedor habitual</label><select id="f-prov">
-      <option value="">— Ninguno —</option>
-      ${provs.map(v=>`<option value="${v.id}" ${p.proveedor_habitual_id===v.id?'selected':''}>${v.nombre}</option>`).join('')}
-    </select></div>
+    <div class="field"><label>Categoría</label><select id="f-cat"><option value="">— Seleccionar —</option>${cats.map(c=>`<option value="${c.id}" ${p.categoria_id===c.id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
+    <div class="field"><label>Unidad *</label><input id="f-unidad" placeholder="Kg, Litro, Unidad..." value="${p.unidad_medida||''}"></div>
+    <div class="field"><label>Proveedor habitual</label><select id="f-prov"><option value="">— Ninguno —</option>${provs.map(v=>`<option value="${v.id}" ${p.proveedor_habitual_id===v.id?'selected':''}>${v.nombre}</option>`).join('')}</select></div>
     <div class="field"><label>Último precio (€)</label><input id="f-precio" type="number" step="0.0001" value="${p.ultimo_precio||''}"></div>
   </div>`;
 }
-
 async function nuevoProducto() {
   if (!window._cats) { const {data:c}=await sb.from('categorias_producto').select('*').order('nombre'); window._cats=c; }
   if (!window._provs) { const {data:v}=await sb.from('proveedores').select('id,nombre').eq('activo',true).order('nombre'); window._provs=v; }
   openModal('Nuevo producto', productoForm(), async () => {
-    const { error } = await sb.from('productos').insert({
-      nombre: document.getElementById('f-nombre').value,
-      categoria_id: document.getElementById('f-cat').value || null,
-      unidad_medida: document.getElementById('f-unidad').value,
-      proveedor_habitual_id: document.getElementById('f-prov').value || null,
-      ultimo_precio: parseFloat(document.getElementById('f-precio').value)||null
-    });
-    if (!error) { closeModal(); productos(); } else alert('Error: ' + error.message);
+    const { error } = await sb.from('productos').insert({ nombre:document.getElementById('f-nombre').value, categoria_id:document.getElementById('f-cat').value||null, unidad_medida:document.getElementById('f-unidad').value, proveedor_habitual_id:document.getElementById('f-prov').value||null, ultimo_precio:parseFloat(document.getElementById('f-precio').value)||null });
+    if (!error) { closeModal(); productos(); } else alert('Error: '+error.message);
   });
 }
-
 async function editProducto(id) {
-  const { data: p } = await sb.from('productos').select('*').eq('id',id).single();
+  const { data:p } = await sb.from('productos').select('*').eq('id',id).single();
   openModal('Editar producto', productoForm(p), async () => {
-    const { error } = await sb.from('productos').update({
-      nombre: document.getElementById('f-nombre').value,
-      categoria_id: document.getElementById('f-cat').value || null,
-      unidad_medida: document.getElementById('f-unidad').value,
-      proveedor_habitual_id: document.getElementById('f-prov').value || null,
-      ultimo_precio: parseFloat(document.getElementById('f-precio').value)||null
-    }).eq('id',id);
-    if (!error) { closeModal(); productos(); } else alert('Error: ' + error.message);
+    const { error } = await sb.from('productos').update({ nombre:document.getElementById('f-nombre').value, categoria_id:document.getElementById('f-cat').value||null, unidad_medida:document.getElementById('f-unidad').value, proveedor_habitual_id:document.getElementById('f-prov').value||null, ultimo_precio:parseFloat(document.getElementById('f-precio').value)||null }).eq('id',id);
+    if (!error) { closeModal(); productos(); } else alert('Error: '+error.message);
   });
 }
-
 async function eliminarProducto(id, nombre) {
-  if (!confirm(`¿Eliminar producto "${nombre}"?`)) return;
-  const { error } = await sb.from('productos').delete().eq('id', id);
-  if (error) alert('No se puede eliminar: tiene registros asociados.');
-  else productos();
+  if (!confirm(`¿Eliminar "${nombre}"?`)) return;
+  const { error } = await sb.from('productos').delete().eq('id',id);
+  if (error) alert('No se puede eliminar: tiene registros asociados.'); else productos();
 }
 
 // ---- FACTURAS ----
 async function facturas() {
   loading();
   setActions(`<button class="btn btn-primary" onclick="nuevaFactura()">+ Nueva factura</button>`);
-  const { data } = await sb.from('facturas').select('*, proveedores(nombre)').order('fecha_vencimiento', {ascending:true});
+  const { data } = await sb.from('facturas').select('*, proveedores(nombre)').order('fecha_vencimiento',{ascending:true});
   const hoy = today();
-  const tot_neto = (data||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
-  const tot_mwst = (data||[]).reduce((a,f)=>a+parseFloat(f.mwst_monto),0);
-  const tot_total = (data||[]).reduce((a,f)=>a+parseFloat(f.monto_total),0);
-  const tot_pend = (data||[]).filter(f=>f.estado!=='pagada').reduce((a,f)=>a+parseFloat(f.monto_total),0);
+  const tots = (data||[]).reduce((a,f)=>({ neto:a.neto+parseFloat(f.monto_neto), mwst:a.mwst+parseFloat(f.mwst_monto), total:a.total+parseFloat(f.monto_total), pend:a.pend+(f.estado!=='pagada'?parseFloat(f.monto_total):0) }), {neto:0,mwst:0,total:0,pend:0});
   document.getElementById('content').innerHTML = `
     <div class="card">
       <div class="filters">
         <input placeholder="Buscar proveedor o n° factura..." oninput="filterFacturas(this.value)" id="fact-search">
-        <select onchange="filterFacturasEstado(this.value)">
-          <option value="">Todos los estados</option>
-          <option>pendiente</option><option>pagada</option><option>vencida</option>
-        </select>
+        <select onchange="filterFacturasEstado(this.value)"><option value="">Todos los estados</option><option>pendiente</option><option>pagada</option><option>vencida</option></select>
       </div>
-      <div style="overflow-x:auto">
-      <table id="fact-table"><thead><tr>
-        <th>N° Factura</th><th>Proveedor</th><th>Emisión</th><th>Vencimiento</th>
-        <th>Neto</th><th>MwSt</th><th>Total</th><th>Estado</th><th></th>
-      </tr></thead><tbody>
+      <div style="overflow-x:auto"><table id="fact-table"><thead><tr><th>N° Factura</th><th>Proveedor</th><th>Emisión</th><th>Vencimiento</th><th>Neto</th><th>MwSt</th><th>Total</th><th>Estado</th><th></th></tr></thead><tbody>
       ${(data||[]).map(f=>`<tr data-nombre="${(f.proveedores?.nombre||'').toLowerCase()}" data-num="${f.numero_factura.toLowerCase()}" data-estado="${f.estado}">
-        <td>${f.numero_factura}</td>
-        <td>${f.proveedores?.nombre||'—'}</td>
+        <td style="font-family:monospace;font-size:12px">${f.numero_factura}</td><td>${f.proveedores?.nombre||'—'}</td>
         <td>${fmtDate(f.fecha_emision)}</td>
-        <td style="color:${f.estado==='vencida'?'var(--red)':f.fecha_vencimiento<=hoy&&f.estado==='pendiente'?'var(--amber)':'inherit'};font-weight:${f.estado==='vencida'?'500':'400'}">${fmtDate(f.fecha_vencimiento)}</td>
-        <td>${fmt(f.monto_neto)}</td><td>${fmt(f.mwst_monto)}</td><td>${fmt(f.monto_total)}</td>
+        <td style="color:${f.estado==='vencida'?'var(--red)':f.fecha_vencimiento<=hoy&&f.estado==='pendiente'?'var(--amber)':'inherit'};font-weight:${f.estado==='vencida'||f.fecha_vencimiento<=hoy?'600':'400'}">${fmtDate(f.fecha_vencimiento)}</td>
+        <td>${fmt(f.monto_neto)}</td><td>${fmt(f.mwst_monto)}</td><td style="font-weight:600">${fmt(f.monto_total)}</td>
         <td>${badgeEstado(f.estado)}</td>
         <td><button class="btn btn-sm" onclick="verFactura('${f.id}')">Ver</button></td>
       </tr>`).join('')}
       </tbody></table></div>
     </div>
-    <div class="card" style="padding:14px 20px">
-      <div style="display:flex;gap:24px;flex-wrap:wrap">
-        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Total neto</div><div style="font-size:16px;font-weight:500">${fmt(tot_neto)}</div></div>
-        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">MwSt total</div><div style="font-size:16px;font-weight:500">${fmt(tot_mwst)}</div></div>
-        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Total bruto</div><div style="font-size:16px;font-weight:500">${fmt(tot_total)}</div></div>
-        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Pendiente</div><div style="font-size:16px;font-weight:500;color:var(--amber)">${fmt(tot_pend)}</div></div>
+    <div class="card" style="padding:16px 20px">
+      <div style="display:flex;gap:28px;flex-wrap:wrap">
+        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Total neto</div><div style="font-size:16px;font-weight:700">${fmt(tots.neto)}</div></div>
+        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">MwSt total</div><div style="font-size:16px;font-weight:700">${fmt(tots.mwst)}</div></div>
+        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Total bruto</div><div style="font-size:16px;font-weight:700">${fmt(tots.total)}</div></div>
+        <div><div style="font-size:11px;color:var(--amber);margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Pendiente</div><div style="font-size:16px;font-weight:700;color:var(--amber)">${fmt(tots.pend)}</div></div>
       </div>
     </div>`;
 }
-
-function filterFacturas(q) {
-  document.querySelectorAll('#fact-table tbody tr').forEach(tr => {
-    tr.style.display = (tr.dataset.nombre.includes(q.toLowerCase()) || tr.dataset.num.includes(q.toLowerCase())) ? '' : 'none';
-  });
-}
-function filterFacturasEstado(e) {
-  document.querySelectorAll('#fact-table tbody tr').forEach(tr => {
-    tr.style.display = (!e || tr.dataset.estado === e) ? '' : 'none';
-  });
-}
-
+function filterFacturas(q) { document.querySelectorAll('#fact-table tbody tr').forEach(tr => { tr.style.display=(tr.dataset.nombre.includes(q.toLowerCase())||tr.dataset.num.includes(q.toLowerCase()))?'':'none'; }); }
+function filterFacturasEstado(e) { document.querySelectorAll('#fact-table tbody tr').forEach(tr => { tr.style.display=(!e||tr.dataset.estado===e)?'':'none'; }); }
 async function nuevaFactura() {
-  const { data: provs } = await sb.from('proveedores').select('id,nombre,condicion_pago_dias').eq('activo',true).order('nombre');
-  openModal('Nueva factura', `
-    <div class="form-grid">
-      <div class="field"><label>N° Factura *</label><input id="f-num"></div>
-      <div class="field"><label>Proveedor *</label><select id="f-prov" onchange="autoVenc()">
-        <option value="">— Seleccionar —</option>
-        ${(provs||[]).map(p=>`<option value="${p.id}" data-dias="${p.condicion_pago_dias}">${p.nombre}</option>`).join('')}
-      </select></div>
-      <div class="field"><label>Fecha de emisión *</label><input id="f-emision" type="date" value="${today()}" onchange="autoVenc()"></div>
-      <div class="field"><label>Fecha de vencimiento *</label><input id="f-venc" type="date"></div>
-      <div class="field"><label>Monto neto (sin MwSt) *</label><input id="f-neto" type="number" step="0.01" oninput="calcMwst()"></div>
-      <div class="field"><label>MwSt %</label><input id="f-mwst-pct" type="number" value="19" oninput="calcMwst()"></div>
-      <div class="field"><label>MwSt monto</label><input id="f-mwst-monto" type="number" step="0.01" oninput="calcTotal()"></div>
-      <div class="field"><label>Total factura</label><input id="f-total" type="number" step="0.01" readonly style="background:var(--bg)"></div>
-      <div class="field full"><label>Notas</label><input id="f-notas"></div>
-    </div>`, async () => {
-    const neto = parseFloat(document.getElementById('f-neto').value)||0;
-    const mwst = parseFloat(document.getElementById('f-mwst-monto').value)||0;
-    const { error } = await sb.from('facturas').insert({
-      numero_factura: document.getElementById('f-num').value,
-      proveedor_id: document.getElementById('f-prov').value,
-      fecha_emision: document.getElementById('f-emision').value,
-      fecha_vencimiento: document.getElementById('f-venc').value,
-      monto_neto: neto, mwst_porcentaje: parseFloat(document.getElementById('f-mwst-pct').value)||19,
-      mwst_monto: mwst, monto_total: neto+mwst, notas: document.getElementById('f-notas').value
-    });
-    if (!error) { closeModal(); facturas(); } else alert('Error: ' + error.message);
+  const [{ data:provs },{ data:temps }] = await Promise.all([
+    sb.from('proveedores').select('id,nombre,condicion_pago_dias').eq('activo',true).order('nombre'),
+    sb.from('temporadas').select('*').order('fecha_inicio',{ascending:false})
+  ]);
+  openModal('Nueva factura', `<div class="form-grid">
+    <div class="field"><label>N° Factura *</label><input id="f-num"></div>
+    <div class="field"><label>Proveedor *</label><select id="f-prov" onchange="autoVenc()"><option value="">— Seleccionar —</option>${(provs||[]).map(p=>`<option value="${p.id}" data-dias="${p.condicion_pago_dias}">${p.nombre}</option>`).join('')}</select></div>
+    <div class="field"><label>Fecha emisión *</label><input id="f-emision" type="date" value="${today()}" onchange="autoVenc()"></div>
+    <div class="field"><label>Fecha vencimiento *</label><input id="f-venc" type="date"></div>
+    <div class="field"><label>Monto neto *</label><input id="f-neto" type="number" step="0.01" oninput="calcMwst()"></div>
+    <div class="field"><label>MwSt %</label><input id="f-mwst-pct" type="number" value="19" oninput="calcMwst()"></div>
+    <div class="field"><label>MwSt monto</label><input id="f-mwst-monto" type="number" step="0.01" oninput="calcTotal()"></div>
+    <div class="field"><label>Total factura</label><input id="f-total" type="number" readonly style="background:var(--surface2)"></div>
+    <div class="field"><label>Temporada</label><select id="f-temp"><option value="">— Seleccionar —</option>${(temps||[]).map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <div class="field full"><label>Notas</label><input id="f-notas"></div>
+  </div>`, async () => {
+    const neto=parseFloat(document.getElementById('f-neto').value)||0;
+    const mwst=parseFloat(document.getElementById('f-mwst-monto').value)||0;
+    const { error } = await sb.from('facturas').insert({ numero_factura:document.getElementById('f-num').value, proveedor_id:document.getElementById('f-prov').value, fecha_emision:document.getElementById('f-emision').value, fecha_vencimiento:document.getElementById('f-venc').value, monto_neto:neto, mwst_porcentaje:parseFloat(document.getElementById('f-mwst-pct').value)||19, mwst_monto:mwst, monto_total:neto+mwst, notas:document.getElementById('f-notas').value });
+    if (!error) { closeModal(); facturas(); } else alert('Error: '+error.message);
   });
 }
-
-function autoVenc() {
-  const sel = document.getElementById('f-prov');
-  const dias = parseInt(sel.options[sel.selectedIndex]?.dataset.dias)||30;
-  const emision = document.getElementById('f-emision').value;
-  if (emision) { const d = new Date(emision); d.setDate(d.getDate()+dias); document.getElementById('f-venc').value = d.toISOString().split('T')[0]; }
-}
-function calcMwst() {
-  const neto = parseFloat(document.getElementById('f-neto').value)||0;
-  const pct = parseFloat(document.getElementById('f-mwst-pct').value)||19;
-  const mwst = Math.round(neto * pct) / 100;
-  document.getElementById('f-mwst-monto').value = mwst.toFixed(2);
-  document.getElementById('f-total').value = (neto+mwst).toFixed(2);
-}
-function calcTotal() {
-  const neto = parseFloat(document.getElementById('f-neto').value)||0;
-  const mwst = parseFloat(document.getElementById('f-mwst-monto').value)||0;
-  document.getElementById('f-total').value = (neto+mwst).toFixed(2);
-}
-
+function autoVenc() { const sel=document.getElementById('f-prov'); const dias=parseInt(sel.options[sel.selectedIndex]?.dataset.dias)||30; const em=document.getElementById('f-emision').value; if(em){const d=new Date(em);d.setDate(d.getDate()+dias);document.getElementById('f-venc').value=d.toISOString().split('T')[0];} }
+function calcMwst() { const n=parseFloat(document.getElementById('f-neto').value)||0; const p=parseFloat(document.getElementById('f-mwst-pct').value)||19; const m=Math.round(n*p)/100; document.getElementById('f-mwst-monto').value=m.toFixed(2); document.getElementById('f-total').value=(n+m).toFixed(2); }
+function calcTotal() { const n=parseFloat(document.getElementById('f-neto').value)||0; const m=parseFloat(document.getElementById('f-mwst-monto').value)||0; document.getElementById('f-total').value=(n+m).toFixed(2); }
 async function verFactura(id) {
-  const { data: f } = await sb.from('facturas').select('*, proveedores(nombre)').eq('id',id).single();
-  openModal('Detalle de factura', `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      <div><div style="font-size:11px;color:var(--text-muted)">Proveedor</div><div style="font-weight:500">${f.proveedores?.nombre}</div></div>
-      <div><div style="font-size:11px;color:var(--text-muted)">N° Factura</div><div style="font-weight:500">${f.numero_factura}</div></div>
-      <div><div style="font-size:11px;color:var(--text-muted)">Emisión</div><div>${fmtDate(f.fecha_emision)}</div></div>
-      <div><div style="font-size:11px;color:var(--text-muted)">Vencimiento</div><div>${fmtDate(f.fecha_vencimiento)}</div></div>
-      <div><div style="font-size:11px;color:var(--text-muted)">Neto</div><div>${fmt(f.monto_neto)}</div></div>
-      <div><div style="font-size:11px;color:var(--text-muted)">MwSt (${f.mwst_porcentaje}%)</div><div>${fmt(f.mwst_monto)}</div></div>
-      <div><div style="font-size:11px;color:var(--text-muted)">Total</div><div style="font-weight:500;font-size:16px">${fmt(f.monto_total)}</div></div>
-      <div><div style="font-size:11px;color:var(--text-muted)">Estado</div><div>${badgeEstado(f.estado)}</div></div>
+  const { data:f } = await sb.from('facturas').select('*, proveedores(nombre)').eq('id',id).single();
+  openModal('Factura', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px">Proveedor</div><div style="font-weight:600">${f.proveedores?.nombre}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px">N° Factura</div><div style="font-family:monospace">${f.numero_factura}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px">Emisión</div><div>${fmtDate(f.fecha_emision)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px">Vencimiento</div><div>${fmtDate(f.fecha_vencimiento)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px">Neto</div><div>${fmt(f.monto_neto)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px">MwSt (${f.mwst_porcentaje}%)</div><div>${fmt(f.mwst_monto)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px">Total</div><div style="font-weight:700;font-size:18px">${fmt(f.monto_total)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px">Estado</div><div>${badgeEstado(f.estado)}</div></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="marcarPagada('${f.id}')">Marcar como pagada</button>
-      <button class="btn btn-sm" onclick="marcarVencida('${f.id}')">Marcar vencida</button>
-      <button class="btn btn-sm btn-danger" onclick="eliminarFactura('${f.id}')">Eliminar factura</button>
-    </div>`, () => {});
-  document.getElementById('modal-save').style.display = 'none';
+      <button class="btn btn-sm" onclick="marcarPagada('${f.id}')">✓ Marcar pagada</button>
+      <button class="btn btn-sm btn-ghost" onclick="marcarVencida('${f.id}')">Marcar vencida</button>
+      <button class="btn btn-sm btn-danger" onclick="eliminarFactura('${f.id}')">Eliminar</button>
+    </div>`, ()=>{});
+  document.getElementById('modal-save').style.display='none';
 }
 async function marcarPagada(id) { await sb.from('facturas').update({estado:'pagada'}).eq('id',id); closeModal(); facturas(); }
 async function marcarVencida(id) { await sb.from('facturas').update({estado:'vencida'}).eq('id',id); closeModal(); facturas(); }
-async function eliminarFactura(id) {
-  if (!confirm('¿Eliminar esta factura? No se puede deshacer.')) return;
-  await sb.from('facturas').delete().eq('id', id);
-  closeModal(); facturas();
-}
+async function eliminarFactura(id) { if(!confirm('¿Eliminar esta factura?'))return; await sb.from('facturas').delete().eq('id',id); closeModal(); facturas(); }
 
 // ---- PAGOS ----
 async function pagos() {
   loading();
   setActions(`<button class="btn btn-primary" onclick="nuevoPago()">+ Registrar pago</button>`);
-  const { data } = await sb.from('pagos').select('*, facturas(numero_factura, proveedores(nombre))').order('fecha_pago', {ascending:false});
+  const { data } = await sb.from('pagos').select('*, facturas(numero_factura, proveedores(nombre))').order('fecha_pago',{ascending:false});
   document.getElementById('content').innerHTML = `<div class="card">
     ${!(data||[]).length ? '<div class="empty">Sin pagos registrados.</div>' :
-    `<table><thead><tr><th>Fecha pago</th><th>Factura</th><th>Proveedor</th><th>Monto</th><th>Medio</th><th>Referencia</th><th>Gasto bancario</th></tr></thead><tbody>
+    `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Factura</th><th>Proveedor</th><th>Monto</th><th>Medio</th><th>Referencia</th><th>Gasto banco</th></tr></thead><tbody>
     ${data.map(p=>`<tr>
-      <td>${fmtDate(p.fecha_pago)}</td>
-      <td>${p.facturas?.numero_factura||'—'}</td>
-      <td>${p.facturas?.proveedores?.nombre||'—'}</td>
-      <td>${fmt(p.monto)}</td>
-      <td><span style="font-size:11px;border:0.5px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text-muted)">${p.medio_pago}</span></td>
-      <td style="font-size:12px">${p.referencia_transferencia||'—'}</td>
+      <td>${fmtDate(p.fecha_pago)}</td><td style="font-family:monospace;font-size:12px">${p.facturas?.numero_factura||'—'}</td>
+      <td>${p.facturas?.proveedores?.nombre||'—'}</td><td style="font-weight:600">${fmt(p.monto)}</td>
+      <td><span class="badge badge-gray">${p.medio_pago}</span></td>
+      <td style="font-size:12px;font-family:monospace">${p.referencia_transferencia||'—'}</td>
       <td>${p.gasto_bancario>0?fmt(p.gasto_bancario):'—'}</td>
     </tr>`).join('')}
-    </tbody></table>`}
+    </tbody></table></div>`}
   </div>`;
 }
-
 async function nuevoPago() {
-  const { data: facts } = await sb.from('facturas').select('id,numero_factura,monto_total,proveedores(nombre)').eq('estado','pendiente').order('fecha_vencimiento');
-  openModal('Registrar pago', `
-    <div class="form-grid">
-      <div class="field full"><label>Factura *</label><select id="f-fact">
-        <option value="">— Seleccionar —</option>
-        ${(facts||[]).map(f=>`<option value="${f.id}">${f.numero_factura} — ${f.proveedores?.nombre} (${fmt(f.monto_total)})</option>`).join('')}
-      </select></div>
-      <div class="field"><label>Fecha de pago *</label><input id="f-fecha" type="date" value="${today()}"></div>
-      <div class="field"><label>Monto pagado *</label><input id="f-monto" type="number" step="0.01"></div>
-      <div class="field"><label>Medio de pago</label><select id="f-medio">
-        <option value="transferencia">Transferencia</option>
-        <option value="efectivo">Efectivo</option>
-        <option value="otro">Otro</option>
-      </select></div>
-      <div class="field"><label>Referencia / N° transferencia</label><input id="f-ref"></div>
-      <div class="field"><label>Gasto bancario (€)</label><input id="f-gasto-banco" type="number" step="0.01" value="0"></div>
-      <div class="field full"><label>Notas</label><input id="f-notas"></div>
-    </div>`, async () => {
-    const factId = document.getElementById('f-fact').value;
-    const gb = parseFloat(document.getElementById('f-gasto-banco').value)||0;
-    const { error } = await sb.from('pagos').insert({
-      factura_id: factId, fecha_pago: document.getElementById('f-fecha').value,
-      monto: parseFloat(document.getElementById('f-monto').value)||0,
-      medio_pago: document.getElementById('f-medio').value,
-      referencia_transferencia: document.getElementById('f-ref').value,
-      gasto_bancario: gb, notas: document.getElementById('f-notas').value
-    });
+  const { data:facts } = await sb.from('facturas').select('id,numero_factura,monto_total,proveedores(nombre)').eq('estado','pendiente').order('fecha_vencimiento');
+  openModal('Registrar pago', `<div class="form-grid">
+    <div class="field full"><label>Factura *</label><select id="f-fact"><option value="">— Seleccionar —</option>${(facts||[]).map(f=>`<option value="${f.id}">${f.numero_factura} — ${f.proveedores?.nombre} (${fmt(f.monto_total)})</option>`).join('')}</select></div>
+    <div class="field"><label>Fecha de pago *</label><input id="f-fecha" type="date" value="${today()}"></div>
+    <div class="field"><label>Monto pagado *</label><input id="f-monto" type="number" step="0.01"></div>
+    <div class="field"><label>Medio de pago</label><select id="f-medio"><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="otro">Otro</option></select></div>
+    <div class="field"><label>Referencia</label><input id="f-ref"></div>
+    <div class="field"><label>Gasto bancario (€)</label><input id="f-gasto-banco" type="number" step="0.01" value="0"></div>
+    <div class="field full"><label>Notas</label><input id="f-notas"></div>
+  </div>`, async () => {
+    const factId=document.getElementById('f-fact').value;
+    const gb=parseFloat(document.getElementById('f-gasto-banco').value)||0;
+    const { error } = await sb.from('pagos').insert({ factura_id:factId, fecha_pago:document.getElementById('f-fecha').value, monto:parseFloat(document.getElementById('f-monto').value)||0, medio_pago:document.getElementById('f-medio').value, referencia_transferencia:document.getElementById('f-ref').value, gasto_bancario:gb, notas:document.getElementById('f-notas').value });
     if (!error) {
-      await sb.from('facturas').update({estado:'pagada'}).eq('id', factId);
-      if (gb > 0) {
-        const { data: catFin } = await sb.from('categorias_gasto').select('id').eq('nombre','Comisión bancaria').single();
-        if (catFin) await sb.from('gastos').insert({ fecha: document.getElementById('f-fecha').value, concepto: 'Comisión bancaria por transferencia', categoria_id: catFin.id, monto: gb });
-      }
+      await sb.from('facturas').update({estado:'pagada'}).eq('id',factId);
+      if (gb>0) { const {data:catFin}=await sb.from('categorias_gasto').select('id').eq('nombre','Comisión bancaria').single(); if(catFin) await sb.from('gastos').insert({fecha:document.getElementById('f-fecha').value,concepto:'Comisión bancaria por transferencia',categoria_id:catFin.id,monto:gb}); }
       closeModal(); pagos();
-    } else alert('Error: ' + error.message);
+    } else alert('Error: '+error.message);
   });
 }
 
 // ---- VENCIMIENTOS ----
-let _semanaOffset = 0;
+let _semanaOffset=0;
 async function vencimientos() {
   loading();
   setActions(`<button class="btn" onclick="_semanaOffset--;vencimientos()">← Anterior</button><button class="btn" onclick="_semanaOffset=0;vencimientos()">Hoy</button><button class="btn" onclick="_semanaOffset++;vencimientos()">Siguiente →</button>`);
-  const hoy = new Date();
-  const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - ((hoy.getDay()+6)%7) + (_semanaOffset*7));
-  const domingo = new Date(lunes); domingo.setDate(lunes.getDate()+6);
-  const lunesS = lunes.toISOString().split('T')[0];
-  const domingoS = domingo.toISOString().split('T')[0];
+  const hoy=new Date(); const lunes=new Date(hoy); lunes.setDate(hoy.getDate()-((hoy.getDay()+6)%7)+(_semanaOffset*7));
+  const domingo=new Date(lunes); domingo.setDate(lunes.getDate()+6);
+  const lunesS=lunes.toISOString().split('T')[0]; const domingoS=domingo.toISOString().split('T')[0];
   const { data } = await sb.from('facturas').select('*, proveedores(nombre)').in('estado',['pendiente','vencida']).order('fecha_vencimiento');
-  const dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-  const cols = Array.from({length:7}, (_,i) => { const d=new Date(lunes); d.setDate(lunes.getDate()+i); return d; });
-  const hoyS = today();
-  const colsHtml = cols.map((d,i) => {
-    const ds = d.toISOString().split('T')[0];
-    const facts = (data||[]).filter(f => f.fecha_vencimiento === ds);
-    return `<div class="day-col${ds===hoyS?' today':''}">
-      <div class="day-name">${dias[i]} ${d.getDate()}</div>
-      ${facts.map(f=>`<div class="venc-chip${f.estado==='vencida'?' vencida':''}">
-        <div class="vp">${f.proveedores?.nombre||'—'}</div>
-        <div class="vm">${fmt(f.monto_total)}</div>
-      </div>`).join('')}
-    </div>`;
-  }).join('');
-  const totalSemana = (data||[]).filter(f=>f.fecha_vencimiento>=lunesS&&f.fecha_vencimiento<=domingoS).reduce((a,f)=>a+parseFloat(f.monto_total),0);
-  const totalVencido = (data||[]).filter(f=>f.estado==='vencida').reduce((a,f)=>a+parseFloat(f.monto_total),0);
-  document.getElementById('content').innerHTML = `
-    <div style="margin-bottom:10px;font-size:13px;color:var(--text-muted)">Semana del ${lunes.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})} al ${domingo.toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'})}</div>
+  const dias=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  const hoyS=today();
+  const colsHtml=Array.from({length:7},(_,i)=>{const d=new Date(lunes);d.setDate(lunes.getDate()+i);const ds=d.toISOString().split('T')[0];const facts=(data||[]).filter(f=>f.fecha_vencimiento===ds);return `<div class="day-col${ds===hoyS?' today':''}"><div class="day-name">${dias[i]} ${d.getDate()}</div>${facts.map(f=>`<div class="venc-chip${f.estado==='vencida'?' vencida':''}"><div class="vp">${f.proveedores?.nombre||'—'}</div><div class="vm">${fmt(f.monto_total)}</div></div>`).join('')}</div>`;}).join('');
+  const totalSemana=(data||[]).filter(f=>f.fecha_vencimiento>=lunesS&&f.fecha_vencimiento<=domingoS).reduce((a,f)=>a+parseFloat(f.monto_total),0);
+  const totalVencido=(data||[]).filter(f=>f.estado==='vencida').reduce((a,f)=>a+parseFloat(f.monto_total),0);
+  document.getElementById('content').innerHTML=`
+    <div style="margin-bottom:12px;font-size:13px;color:var(--text-muted);font-weight:500">Semana del ${lunes.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})} al ${domingo.toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'})}</div>
     <div class="week-grid">${colsHtml}</div>
-    <div class="card" style="padding:14px 20px">
-      <div style="display:flex;gap:24px;flex-wrap:wrap">
-        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Por pagar esta semana</div><div style="font-size:18px;font-weight:500">${fmt(totalSemana)}</div></div>
-        <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Facturas vencidas (total)</div><div style="font-size:18px;font-weight:500;color:var(--red)">${fmt(totalVencido)}</div></div>
-      </div>
-    </div>`;
+    <div class="card" style="padding:16px 20px"><div style="display:flex;gap:28px;flex-wrap:wrap">
+      <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px;font-weight:600;text-transform:uppercase">Esta semana</div><div style="font-size:18px;font-weight:700">${fmt(totalSemana)}</div></div>
+      <div><div style="font-size:11px;color:var(--red);margin-bottom:3px;font-weight:600;text-transform:uppercase">Vencidas (total)</div><div style="font-size:18px;font-weight:700;color:var(--red)">${fmt(totalVencido)}</div></div>
+    </div></div>`;
 }
 
 // ---- GASTOS ----
 async function gastos() {
   loading();
-  setActions(`
-    <button class="btn" onclick="gestionarCategorias('categorias_gasto', gastos)">Gestionar categorías</button>
-    <button class="btn btn-primary" onclick="nuevoGasto()">+ Nuevo gasto</button>`);
-  const { data } = await sb.from('gastos').select('*, categorias_gasto(nombre, tipo)').order('fecha', {ascending:false});
-  document.getElementById('content').innerHTML = `<div class="card">
-    ${!(data||[]).length ? '<div class="empty">Sin gastos registrados.</div>' :
-    `<table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Período</th><th>Monto</th><th></th></tr></thead><tbody>
+  setActions(`<button class="btn" onclick="gestionarCategorias('categorias_gasto',gastos)">Categorías</button><button class="btn btn-primary" onclick="nuevoGasto()">+ Nuevo gasto</button>`);
+  const { data } = await sb.from('gastos').select('*, categorias_gasto(nombre,tipo)').order('fecha',{ascending:false});
+  document.getElementById('content').innerHTML=`<div class="card">
+    ${!(data||[]).length?'<div class="empty">Sin gastos registrados.</div>':
+    `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Período</th><th>Monto</th><th></th></tr></thead><tbody>
     ${data.map(g=>`<tr>
-      <td>${fmtDate(g.fecha)}</td>
-      <td>${g.concepto}</td>
-      <td><span style="font-size:11px;border:0.5px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text-muted)">${g.categorias_gasto?.nombre||'—'}</span></td>
-      <td style="font-size:12px;color:var(--text-muted)">${g.periodo_correspondiente ? fmtDate(g.periodo_correspondiente) : '—'}</td>
-      <td>${fmt(g.monto)}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="eliminarGasto('${g.id}')">Eliminar</button></td>
+      <td>${fmtDate(g.fecha)}</td><td>${g.concepto}</td>
+      <td><span class="badge badge-gray">${g.categorias_gasto?.nombre||'—'}</span></td>
+      <td style="font-size:12px;color:var(--text-muted)">${g.periodo_correspondiente?fmtDate(g.periodo_correspondiente):'—'}</td>
+      <td style="color:var(--red);font-weight:600">${fmt(g.monto)}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="eliminarGasto('${g.id}')">✕</button></td>
     </tr>`).join('')}
-    </tbody></table>`}
+    </tbody></table></div>`}
   </div>`;
 }
-
 async function nuevoGasto() {
-  const { data: cats } = await sb.from('categorias_gasto').select('*').order('nombre');
-  openModal('Nuevo gasto', `
-    <div class="form-grid">
-      <div class="field"><label>Fecha *</label><input id="f-fecha" type="date" value="${today()}"></div>
-      <div class="field"><label>Monto (€) *</label><input id="f-monto" type="number" step="0.01"></div>
-      <div class="field full"><label>Concepto *</label><input id="f-concepto"></div>
-      <div class="field"><label>Categoría</label><select id="f-cat">
-        <option value="">— Seleccionar —</option>
-        ${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}
-      </select></div>
-      <div class="field"><label>Período al que corresponde</label><input id="f-periodo" type="date"></div>
-      <div class="field full"><label>Notas</label><input id="f-notas"></div>
-    </div>`, async () => {
-    const { error } = await sb.from('gastos').insert({
-      fecha: document.getElementById('f-fecha').value,
-      concepto: document.getElementById('f-concepto').value,
-      categoria_id: document.getElementById('f-cat').value || null,
-      monto: parseFloat(document.getElementById('f-monto').value)||0,
-      periodo_correspondiente: document.getElementById('f-periodo').value || null,
-      notas: document.getElementById('f-notas').value
-    });
-    if (!error) { closeModal(); gastos(); } else alert('Error: ' + error.message);
+  const [{ data:cats },{ data:temps }] = await Promise.all([
+    sb.from('categorias_gasto').select('*').order('nombre'),
+    sb.from('temporadas').select('*').order('fecha_inicio',{ascending:false})
+  ]);
+  openModal('Nuevo gasto', `<div class="form-grid">
+    <div class="field"><label>Fecha *</label><input id="f-fecha" type="date" value="${today()}"></div>
+    <div class="field"><label>Monto (€) *</label><input id="f-monto" type="number" step="0.01"></div>
+    <div class="field full"><label>Concepto *</label><input id="f-concepto"></div>
+    <div class="field"><label>Categoría</label><select id="f-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
+    <div class="field"><label>Temporada</label><select id="f-temp"><option value="">— Seleccionar —</option>${(temps||[]).map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <div class="field"><label>Período que corresponde</label><input id="f-periodo" type="date"></div>
+    <div class="field full"><label>Notas</label><input id="f-notas"></div>
+  </div>`, async () => {
+    const { error } = await sb.from('gastos').insert({ fecha:document.getElementById('f-fecha').value, concepto:document.getElementById('f-concepto').value, categoria_id:document.getElementById('f-cat').value||null, monto:parseFloat(document.getElementById('f-monto').value)||0, periodo_correspondiente:document.getElementById('f-periodo').value||null, notas:document.getElementById('f-notas').value });
+    if (!error) { closeModal(); gastos(); } else alert('Error: '+error.message);
   });
 }
-
-async function eliminarGasto(id) {
-  if (!confirm('¿Eliminar este gasto?')) return;
-  await sb.from('gastos').delete().eq('id', id);
-  gastos();
-}
+async function eliminarGasto(id) { if(!confirm('¿Eliminar este gasto?'))return; await sb.from('gastos').delete().eq('id',id); gastos(); }
 
 // ---- CAJA ----
 async function caja() {
   loading();
   setActions(`<button class="btn btn-primary" onclick="nuevoCierre()">+ Registrar cierre</button>`);
-  const { data } = await sb.from('cierres_caja').select('*').order('fecha', {ascending:false});
-  document.getElementById('content').innerHTML = `<div class="card">
-    ${!(data||[]).length ? '<div class="empty">Sin cierres registrados.</div>' :
-    `<table><thead><tr><th>Fecha</th><th>Ef. inicial</th><th>Ingresos</th><th>Egresos</th><th>Ef. final</th><th>Diferencia</th><th>Obs.</th><th></th></tr></thead><tbody>
+  const { data } = await sb.from('cierres_caja').select('*').order('fecha',{ascending:false});
+  document.getElementById('content').innerHTML=`<div class="card">
+    ${!(data||[]).length?'<div class="empty">Sin cierres registrados.</div>':
+    `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Ef. inicial</th><th>Ingresos</th><th>Egresos</th><th>Ef. final</th><th>Diferencia</th><th>Obs.</th><th></th></tr></thead><tbody>
     ${data.map(c=>`<tr>
-      <td>${fmtDate(c.fecha)}</td>
-      <td>${fmt(c.efectivo_inicial)}</td>
-      <td style="color:var(--green);font-weight:500">${fmt(c.ingresos_dia)}</td>
-      <td>${fmt(c.egresos_efectivo)}</td>
-      <td>${fmt(c.efectivo_final_contado)}</td>
-      <td style="color:${(c.diferencia_caja||0)>=0?'var(--green)':'var(--red)'};font-weight:500">${fmt(c.diferencia_caja||0)}</td>
+      <td>${fmtDate(c.fecha)}</td><td>${fmt(c.efectivo_inicial)}</td>
+      <td style="color:var(--green);font-weight:700">${fmt(c.ingresos_dia)}</td>
+      <td>${fmt(c.egresos_efectivo)}</td><td>${fmt(c.efectivo_final_contado)}</td>
+      <td style="color:${(c.diferencia_caja||0)>=0?'var(--green)':'var(--red)'};font-weight:600">${fmt(c.diferencia_caja||0)}</td>
       <td style="font-size:12px;color:var(--text-muted)">${c.observaciones||'—'}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="eliminarCierre('${c.id}')">Eliminar</button></td>
+      <td><button class="btn btn-sm btn-danger" onclick="eliminarCierre('${c.id}')">✕</button></td>
     </tr>`).join('')}
-    </tbody></table>`}
+    </tbody></table></div>`}
   </div>`;
 }
-
 function nuevoCierre() {
-  openModal('Cierre de caja diario', `
-    <div class="form-grid">
-      <div class="field"><label>Fecha *</label><input id="f-fecha" type="date" value="${today()}"></div>
-      <div class="field"><label>Efectivo inicial</label><input id="f-inicial" type="number" step="0.01" value="0"></div>
-      <div class="field"><label>Ingresos del día *</label><input id="f-ingresos" type="number" step="0.01" oninput="calcDif()"></div>
-      <div class="field"><label>Egresos en efectivo</label><input id="f-egresos" type="number" step="0.01" value="0" oninput="calcDif()"></div>
-      <div class="field"><label>Efectivo final (contado)</label><input id="f-final" type="number" step="0.01" oninput="calcDif()"></div>
-      <div class="field"><label>Diferencia</label><input id="f-dif" readonly style="background:var(--bg)" value="0"></div>
-      <div class="field full"><label>Observaciones</label><input id="f-obs" placeholder="Ej: día lluvioso, evento especial..."></div>
-    </div>`, async () => {
-    const ini = parseFloat(document.getElementById('f-inicial').value)||0;
-    const ing = parseFloat(document.getElementById('f-ingresos').value)||0;
-    const egr = parseFloat(document.getElementById('f-egresos').value)||0;
-    const fin = parseFloat(document.getElementById('f-final').value)||0;
-    const { error } = await sb.from('cierres_caja').insert({
-      fecha: document.getElementById('f-fecha').value,
-      efectivo_inicial: ini, ingresos_dia: ing, egresos_efectivo: egr,
-      efectivo_final_contado: fin, diferencia_caja: parseFloat((fin-(ini+ing-egr)).toFixed(2)),
-      observaciones: document.getElementById('f-obs').value
-    });
-    if (!error) { closeModal(); caja(); } else alert('Error: ' + error.message);
+  openModal('Cierre de caja diario', `<div class="form-grid">
+    <div class="field"><label>Fecha *</label><input id="f-fecha" type="date" value="${today()}"></div>
+    <div class="field"><label>Efectivo inicial</label><input id="f-inicial" type="number" step="0.01" value="0"></div>
+    <div class="field"><label>Ingresos del día *</label><input id="f-ingresos" type="number" step="0.01" oninput="calcDif()"></div>
+    <div class="field"><label>Egresos en efectivo</label><input id="f-egresos" type="number" step="0.01" value="0" oninput="calcDif()"></div>
+    <div class="field"><label>Efectivo final (contado)</label><input id="f-final" type="number" step="0.01" oninput="calcDif()"></div>
+    <div class="field"><label>Diferencia (calculada)</label><input id="f-dif" readonly style="background:var(--surface2)" value="0"></div>
+    <div class="field full"><label>Observaciones</label><input id="f-obs" placeholder="Ej: día lluvioso, evento especial..."></div>
+  </div>`, async () => {
+    const ini=parseFloat(document.getElementById('f-inicial').value)||0;
+    const ing=parseFloat(document.getElementById('f-ingresos').value)||0;
+    const egr=parseFloat(document.getElementById('f-egresos').value)||0;
+    const fin=parseFloat(document.getElementById('f-final').value)||0;
+    const { error } = await sb.from('cierres_caja').insert({ fecha:document.getElementById('f-fecha').value, efectivo_inicial:ini, ingresos_dia:ing, egresos_efectivo:egr, efectivo_final_contado:fin, diferencia_caja:parseFloat((fin-(ini+ing-egr)).toFixed(2)), observaciones:document.getElementById('f-obs').value });
+    if (!error) { closeModal(); caja(); } else alert('Error: '+error.message);
   });
 }
-function calcDif() {
-  const ini = parseFloat(document.getElementById('f-inicial').value)||0;
-  const ing = parseFloat(document.getElementById('f-ingresos').value)||0;
-  const egr = parseFloat(document.getElementById('f-egresos').value)||0;
-  const fin = parseFloat(document.getElementById('f-final').value)||0;
-  document.getElementById('f-dif').value = (fin-(ini+ing-egr)).toFixed(2);
-}
-async function eliminarCierre(id) {
-  if (!confirm('¿Eliminar este cierre de caja?')) return;
-  await sb.from('cierres_caja').delete().eq('id', id);
-  caja();
-}
+function calcDif() { const i=parseFloat(document.getElementById('f-inicial').value)||0; const ing=parseFloat(document.getElementById('f-ingresos').value)||0; const e=parseFloat(document.getElementById('f-egresos').value)||0; const f=parseFloat(document.getElementById('f-final').value)||0; document.getElementById('f-dif').value=(f-(i+ing-e)).toFixed(2); }
+async function eliminarCierre(id) { if(!confirm('¿Eliminar este cierre?'))return; await sb.from('cierres_caja').delete().eq('id',id); caja(); }
 
 // ---- STOCK ----
 async function stock() {
   loading();
   setActions(`<button class="btn btn-primary" onclick="nuevoStock()">+ Registrar stock</button>`);
-  const { data } = await sb.from('stock').select('*, productos(nombre, unidad_medida, categorias_producto(nombre)), temporadas(nombre)').order('tipo').order('created_at');
-  const inicial = (data||[]).filter(s=>s.tipo==='inicial');
-  const final = (data||[]).filter(s=>s.tipo==='final');
-  const { data: factsData } = await sb.from('facturas').select('monto_neto').neq('estado','anulada');
-  const totalCompras = (factsData||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
-  const totIni = inicial.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
-  const totFin = final.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
-  const cmv = totIni + totalCompras - totFin;
-
-  const renderTable = (rows, label) => rows.length===0 ? `<div class="empty">Sin registros de stock ${label}.</div>` :
-    `<table><thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Cantidad</th><th>Precio unit.</th><th>Valor total</th><th></th></tr></thead><tbody>
-    ${rows.map(s=>`<tr>
-      <td>${s.productos?.nombre||'—'}</td>
-      <td>${s.productos?.categorias_producto?.nombre||'—'}</td>
-      <td>${s.productos?.unidad_medida||'—'}</td>
-      <td>${s.cantidad}</td><td>${fmt(s.precio_unitario)}</td><td>${fmt(s.valor_total)}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="eliminarStock('${s.id}')">Eliminar</button></td>
-    </tr>`).join('')}
+  const [{ data },{ data:factsData }] = await Promise.all([
+    sb.from('stock').select('*, productos(nombre,unidad_medida,categorias_producto(nombre)), temporadas(nombre)').order('tipo').order('created_at'),
+    sb.from('facturas').select('monto_neto')
+  ]);
+  const inicial=(data||[]).filter(s=>s.tipo==='inicial');
+  const final=(data||[]).filter(s=>s.tipo==='final');
+  const totalCompras=(factsData||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
+  const totIni=inicial.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const totFin=final.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const cmv=totIni+totalCompras-totFin;
+  const renderTable=(rows,label)=>rows.length===0?`<div class="empty">Sin registros de stock ${label}.</div>`:
+    `<div style="overflow-x:auto"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Cantidad</th><th>Precio unit.</th><th>Valor total</th><th></th></tr></thead><tbody>
+    ${rows.map(s=>`<tr><td>${s.productos?.nombre||'—'}</td><td><span class="badge badge-gray">${s.productos?.categorias_producto?.nombre||'—'}</span></td><td>${s.productos?.unidad_medida||'—'}</td><td>${s.cantidad}</td><td>${fmt(s.precio_unitario)}</td><td style="font-weight:600">${fmt(s.valor_total)}</td><td><button class="btn btn-sm btn-danger" onclick="eliminarStock('${s.id}')">✕</button></td></tr>`).join('')}
     <tr class="total-row"><td colspan="5">Total</td><td>${fmt(rows.reduce((a,s)=>a+parseFloat(s.valor_total||0),0))}</td><td></td></tr>
-    </tbody></table>`;
-
-  document.getElementById('content').innerHTML = `
-    <div class="card" style="padding:14px 20px;margin-bottom:16px">
-      <div style="font-size:12px;font-weight:500;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.04em">Cálculo de CMV</div>
-      <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:13px">
-        <div><div style="color:var(--text-muted);margin-bottom:3px">Stock inicial</div><div style="font-weight:500">${fmt(totIni)}</div></div>
-        <div style="font-size:18px;color:var(--text-faint);align-self:flex-end;padding-bottom:2px">+</div>
-        <div><div style="color:var(--text-muted);margin-bottom:3px">Compras (neto)</div><div style="font-weight:500">${fmt(totalCompras)}</div></div>
-        <div style="font-size:18px;color:var(--text-faint);align-self:flex-end;padding-bottom:2px">−</div>
-        <div><div style="color:var(--text-muted);margin-bottom:3px">Stock final</div><div style="font-weight:500">${fmt(totFin)}</div></div>
-        <div style="font-size:18px;color:var(--text-faint);align-self:flex-end;padding-bottom:2px">=</div>
-        <div><div style="color:var(--text-muted);margin-bottom:3px">CMV</div><div style="font-weight:500;font-size:18px;color:var(--red)">${fmt(cmv)}</div></div>
+    </tbody></table></div>`;
+  document.getElementById('content').innerHTML=`
+    <div class="card" style="padding:18px 20px;margin-bottom:16px;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-color:#bae6fd">
+      <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">Cálculo de CMV</div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;font-size:13px">
+        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Stock inicial</div><div style="font-weight:700;font-size:16px">${fmt(totIni)}</div></div>
+        <div style="font-size:20px;color:var(--text-faint)">+</div>
+        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Compras netas</div><div style="font-weight:700;font-size:16px">${fmt(totalCompras)}</div></div>
+        <div style="font-size:20px;color:var(--text-faint)">−</div>
+        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Stock final</div><div style="font-weight:700;font-size:16px">${fmt(totFin)}</div></div>
+        <div style="font-size:20px;color:var(--text-faint)">=</div>
+        <div style="background:white;border-radius:10px;padding:10px 16px;border:1px solid #bae6fd"><div style="color:#0369a1;margin-bottom:3px;font-size:11px;font-weight:700">CMV</div><div style="font-weight:800;font-size:22px;color:#0c4a6e">${fmt(cmv)}</div></div>
       </div>
-      ${totFin===0?'<div style="margin-top:10px;font-size:12px;color:var(--amber)">Stock final aún no registrado — el CMV es provisorio.</div>':''}
+      ${totFin===0?'<div style="margin-top:10px;font-size:12px;color:var(--amber);font-weight:600">⚠ Stock final aún no registrado — CMV provisorio.</div>':''}
     </div>
     <div class="card"><div class="card-title">Stock inicial</div>${renderTable(inicial,'inicial')}</div>
     <div class="card"><div class="card-title">Stock final</div>${renderTable(final,'final')}</div>`;
 }
-
 async function nuevoStock() {
-  const [{ data: prods }, { data: temps }] = await Promise.all([
-    sb.from('productos').select('id,nombre,unidad_medida').eq('activo',true).order('nombre'),
-    sb.from('temporadas').select('*').order('fecha_inicio',{ascending:false})
-  ]);
-  openModal('Registrar stock', `
-    <div class="form-grid">
-      <div class="field"><label>Temporada *</label><select id="f-temp">
-        ${(temps||[]).map(t=>`<option value="${t.id}">${t.nombre}</option>`).join('')}
-      </select></div>
-      <div class="field"><label>Tipo *</label><select id="f-tipo">
-        <option value="inicial">Inicial (apertura)</option>
-        <option value="final">Final (cierre)</option>
-      </select></div>
-      <div class="field"><label>Producto *</label><select id="f-prod">
-        <option value="">— Seleccionar —</option>
-        ${(prods||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.unidad_medida})</option>`).join('')}
-      </select></div>
-      <div class="field"><label>Cantidad</label><input id="f-cant" type="number" step="0.001"></div>
-      <div class="field"><label>Precio unitario (€)</label><input id="f-precio" type="number" step="0.0001"></div>
-    </div>`, async () => {
-    const { error } = await sb.from('stock').insert({
-      temporada_id: document.getElementById('f-temp').value,
-      tipo: document.getElementById('f-tipo').value,
-      producto_id: document.getElementById('f-prod').value,
-      cantidad: parseFloat(document.getElementById('f-cant').value)||0,
-      precio_unitario: parseFloat(document.getElementById('f-precio').value)||0
-    });
-    if (!error) { closeModal(); stock(); } else alert('Error: ' + error.message);
+  const [{data:prods},{data:temps}]=await Promise.all([sb.from('productos').select('id,nombre,unidad_medida').eq('activo',true).order('nombre'),sb.from('temporadas').select('*').order('fecha_inicio',{ascending:false})]);
+  openModal('Registrar stock',`<div class="form-grid">
+    <div class="field"><label>Temporada *</label><select id="f-temp">${(temps||[]).map(t=>`<option value="${t.id}">${t.nombre}</option>`).join('')}</select></div>
+    <div class="field"><label>Tipo *</label><select id="f-tipo"><option value="inicial">Inicial (apertura)</option><option value="final">Final (cierre)</option></select></div>
+    <div class="field"><label>Producto *</label><select id="f-prod"><option value="">— Seleccionar —</option>${(prods||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.unidad_medida})</option>`).join('')}</select></div>
+    <div class="field"><label>Cantidad</label><input id="f-cant" type="number" step="0.001"></div>
+    <div class="field"><label>Precio unitario (€)</label><input id="f-precio" type="number" step="0.0001"></div>
+  </div>`,async()=>{
+    const {error}=await sb.from('stock').insert({temporada_id:document.getElementById('f-temp').value,tipo:document.getElementById('f-tipo').value,producto_id:document.getElementById('f-prod').value,cantidad:parseFloat(document.getElementById('f-cant').value)||0,precio_unitario:parseFloat(document.getElementById('f-precio').value)||0});
+    if(!error){closeModal();stock();}else alert('Error: '+error.message);
   });
 }
-
-async function eliminarStock(id) {
-  if (!confirm('¿Eliminar este registro de stock?')) return;
-  await sb.from('stock').delete().eq('id', id);
-  stock();
-}
+async function eliminarStock(id){if(!confirm('¿Eliminar este registro?'))return;await sb.from('stock').delete().eq('id',id);stock();}
 
 // ---- REPORTE COMPRAS ----
 async function repCompras() {
   loading();
-  const { data: facts } = await sb.from('facturas').select('*, proveedores(nombre)').order('fecha_emision');
-  const byProv = {};
-  (facts||[]).forEach(f => {
-    const n = f.proveedores?.nombre||'—';
-    if (!byProv[n]) byProv[n] = {count:0, neto:0, mwst:0, total:0};
-    byProv[n].count++; byProv[n].neto += parseFloat(f.monto_neto);
-    byProv[n].mwst += parseFloat(f.mwst_monto); byProv[n].total += parseFloat(f.monto_total);
-  });
-  const totNeto = Object.values(byProv).reduce((a,v)=>a+v.neto,0);
-  const totMwst = Object.values(byProv).reduce((a,v)=>a+v.mwst,0);
-  const totTotal = Object.values(byProv).reduce((a,v)=>a+v.total,0);
-  document.getElementById('content').innerHTML = `
-    <div class="kpi-grid">
-      <div class="kpi-card"><div class="kpi-label">Total bruto</div><div class="kpi-value">${fmt(totTotal)}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Total neto (sin MwSt)</div><div class="kpi-value">${fmt(totNeto)}</div></div>
-      <div class="kpi-card"><div class="kpi-label">MwSt total soportada</div><div class="kpi-value">${fmt(totMwst)}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Facturas registradas</div><div class="kpi-value">${(facts||[]).length}</div></div>
+  const temps=await getTemporadas();
+  const activeTemp=temps.find(t=>t.activa)||temps[0];
+  let filtroHTML=`<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+    <div class="field"><label>Temporada</label><select id="f-temp-filter" onchange="repComprasCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
+      ${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}
+    </select></div>
+  </div><div id="rep-compras-body"></div>`;
+  document.getElementById('content').innerHTML=filtroHTML;
+  repComprasCargar();
+}
+async function repComprasCargar() {
+  const tempId=document.getElementById('f-temp-filter')?.value;
+  document.getElementById('rep-compras-body').innerHTML='<div class="loading">Cargando...</div>';
+  const {data:facts}=await sb.from('facturas').select('*, proveedores(nombre)').order('fecha_emision');
+  const byProv={};
+  (facts||[]).forEach(f=>{const n=f.proveedores?.nombre||'—';if(!byProv[n])byProv[n]={count:0,neto:0,mwst:0,total:0};byProv[n].count++;byProv[n].neto+=parseFloat(f.monto_neto);byProv[n].mwst+=parseFloat(f.mwst_monto);byProv[n].total+=parseFloat(f.monto_total);});
+  const totNeto=Object.values(byProv).reduce((a,v)=>a+v.neto,0);
+  const totMwst=Object.values(byProv).reduce((a,v)=>a+v.mwst,0);
+  const totTotal=Object.values(byProv).reduce((a,v)=>a+v.total,0);
+  document.getElementById('rep-compras-body').innerHTML=`
+    <div class="kpi-grid" style="margin-bottom:16px">
+      <div class="kpi-card blue"><div class="kpi-label">Total bruto</div><div class="kpi-value">${fmt(totTotal)}</div></div>
+      <div class="kpi-card green"><div class="kpi-label">Total neto</div><div class="kpi-value">${fmt(totNeto)}</div></div>
+      <div class="kpi-card amber"><div class="kpi-label">MwSt soportada</div><div class="kpi-value">${fmt(totMwst)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Facturas</div><div class="kpi-value">${(facts||[]).length}</div></div>
     </div>
-    <div class="card">
-      <div class="card-title">Por proveedor — toda la temporada</div>
-      <table><thead><tr><th>Proveedor</th><th>Facturas</th><th>Neto</th><th>MwSt</th><th>Total bruto</th><th>% del total</th></tr></thead><tbody>
-      ${Object.entries(byProv).map(([n,v])=>`<tr>
-        <td>${n}</td><td>${v.count}</td><td>${fmt(v.neto)}</td><td>${fmt(v.mwst)}</td><td>${fmt(v.total)}</td>
-        <td>${totTotal>0?(v.total/totTotal*100).toFixed(1):'0'}%</td>
-      </tr>`).join('')}
+    <div class="card"><div class="card-title">Por proveedor</div>
+      <table><thead><tr><th>Proveedor</th><th>Facturas</th><th>Neto</th><th>MwSt</th><th>Total bruto</th><th>%</th></tr></thead><tbody>
+      ${Object.entries(byProv).map(([n,v])=>`<tr><td>${n}</td><td>${v.count}</td><td>${fmt(v.neto)}</td><td>${fmt(v.mwst)}</td><td style="font-weight:600">${fmt(v.total)}</td><td><span class="badge badge-gray">${totTotal>0?(v.total/totTotal*100).toFixed(1):'0'}%</span></td></tr>`).join('')}
       <tr class="total-row"><td>Total</td><td>${(facts||[]).length}</td><td>${fmt(totNeto)}</td><td>${fmt(totMwst)}</td><td>${fmt(totTotal)}</td><td>100%</td></tr>
       </tbody></table>
     </div>`;
@@ -1065,128 +988,138 @@ async function repCompras() {
 // ---- ESTADO DE RESULTADOS ----
 async function repResultados() {
   loading();
-  const [{ data: ventasD }, { data: comprasD }, { data: gastosD }, { data: stockD }, { data: configD }] = await Promise.all([
+  const temps=await getTemporadas();
+  document.getElementById('content').innerHTML=`
+    <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+      <div class="field"><label>Temporada</label><select id="f-temp-err" onchange="repResultadosCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
+        ${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}
+      </select></div>
+      <div class="field"><label>Alícuota impositiva (%)</label><input type="number" id="f-alicuota" value="0" step="0.5" style="width:100px;font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit" oninput="repResultadosCargar()"></div>
+      <div style="font-size:12px;color:var(--text-muted);padding-bottom:6px">Confirmá la alícuota con tu contadora.</div>
+    </div>
+    <div id="err-body"></div>`;
+  await cargarAlicuotaGuardada();
+  repResultadosCargar();
+}
+async function cargarAlicuotaGuardada() {
+  const {data:configD}=await sb.from('config_impositiva').select('alicuota_porcentaje').order('created_at',{ascending:false}).limit(1);
+  if(configD?.[0]) { const el=document.getElementById('f-alicuota'); if(el) el.value=configD[0].alicuota_porcentaje; }
+}
+async function repResultadosCargar() {
+  const tempId=document.getElementById('f-temp-err')?.value;
+  const alicuota=parseFloat(document.getElementById('f-alicuota')?.value)||0;
+  document.getElementById('err-body').innerHTML='<div class="loading">Calculando...</div>';
+  const [{data:ventasD},{data:comprasD},{data:gastosD},{data:stockD}]=await Promise.all([
     sb.from('cierres_caja').select('ingresos_dia'),
     sb.from('facturas').select('monto_neto'),
-    sb.from('gastos').select('monto, categorias_gasto(nombre, tipo)'),
-    sb.from('stock').select('tipo, valor_total'),
-    sb.from('config_impositiva').select('alicuota_porcentaje').order('created_at',{ascending:false}).limit(1)
+    sb.from('gastos').select('monto,categorias_gasto(nombre,tipo)'),
+    sb.from('stock').select('tipo,valor_total')
   ]);
-  const ventas = (ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
-  const compras = (comprasD||[]).reduce((a,v)=>a+parseFloat(v.monto_neto),0);
-  const stockIni = (stockD||[]).filter(s=>s.tipo==='inicial').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
-  const stockFin = (stockD||[]).filter(s=>s.tipo==='final').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
-  const cmv = stockIni + compras - stockFin;
-  const utilBruta = ventas - cmv;
-  const opex = {}; let gFin = 0; let anticipos = 0;
-  (gastosD||[]).forEach(g => {
-    const tipo = g.categorias_gasto?.tipo; const nom = g.categorias_gasto?.nombre||'Otros'; const m = parseFloat(g.monto);
-    if (tipo==='financiero') { gFin+=m; return; }
-    if (tipo==='anticipo_impuesto') { anticipos+=m; return; }
-    if (tipo==='impuesto') return;
-    if (!opex[nom]) opex[nom]=0; opex[nom]+=m;
-  });
-  const ebit = utilBruta - Object.values(opex).reduce((a,v)=>a+v,0);
-  const ebt = ebit - gFin;
-  const alicuota = parseFloat(configD?.[0]?.alicuota_porcentaje)||0;
-  const impTotal = Math.round(ebt * alicuota) / 100;
-  const saldoPend = Math.max(0, impTotal - anticipos);
-  const neto = ebt - impTotal;
-  const c = n => n>=0 ? 'var(--green)' : 'var(--red)';
-  document.getElementById('content').innerHTML = `
-    <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
-      <div><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Alícuota impositiva (%)</label>
-      <input type="number" value="${alicuota}" step="0.5" style="width:100px;font-size:13px;padding:6px 10px;border:0.5px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit" onchange="guardarAlicuota(this.value)"></div>
-      <div style="font-size:12px;color:var(--text-muted);padding-bottom:8px">Confirmá con tu contadora. Se guarda automáticamente.</div>
-    </div>
-    <div class="card" style="max-width:560px">
-      <div style="font-size:15px;font-weight:500;margin-bottom:2px">Estado de resultados</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:18px">Temporada activa · datos reales</div>
-      <table class="stmt">
-        <tr><td>Ventas netas</td><td style="color:var(--text)">${fmt(ventas)}</td></tr>
-        <tr class="sh"><td colspan="2">Costo de mercadería vendida</td></tr>
-        <tr class="ind"><td>Stock inicial</td><td>${fmt(stockIni)}</td></tr>
-        <tr class="ind"><td>+ Compras netas (sin MwSt)</td><td>${fmt(compras)}</td></tr>
-        <tr class="ind"><td>- Stock final</td><td>(${fmt(stockFin)})</td></tr>
-        <tr class="st"><td>CMV</td><td style="color:var(--red)">(${fmt(cmv)})</td></tr>
-        <tr class="st" style="border-top:2px solid var(--border-md)"><td>Utilidad bruta</td><td style="color:${c(utilBruta)}">${fmt(utilBruta)}</td></tr>
-        <tr class="sh"><td colspan="2">Gastos operativos</td></tr>
-        ${Object.entries(opex).map(([n,v])=>`<tr class="ind"><td>${n}</td><td>(${fmt(v)})</td></tr>`).join('')}
-        <tr class="st"><td>Resultado operativo (EBIT)</td><td style="color:${c(ebit)}">${fmt(ebit)}</td></tr>
-        <tr class="sh"><td colspan="2">Resultado no operativo</td></tr>
-        <tr class="ind"><td>Gastos financieros</td><td>(${fmt(gFin)})</td></tr>
-        <tr class="st" style="border-top:2px solid var(--border-md)"><td>Resultado antes de impuestos (EBT)</td><td style="color:${c(ebt)};font-weight:500">${fmt(ebt)}</td></tr>
-        <tr class="sh"><td colspan="2">Impuestos devengados (${alicuota}%)</td></tr>
-        <tr class="ind"><td>Impuesto total estimado</td><td style="color:var(--red)">(${fmt(impTotal)})</td></tr>
-        <tr class="ind2" style="padding-left:32px"><td>Anticipos pagados <span class="badge badge-success" style="font-size:10px">Ya en caja</span></td><td style="color:var(--green)">${fmt(anticipos)}</td></tr>
-        <tr class="ind2" style="padding-left:32px"><td>Saldo pendiente <span class="badge badge-warning" style="font-size:10px">Pago futuro</span></td><td style="color:var(--amber)">(${fmt(saldoPend)})</td></tr>
-        <tr class="tt"><td>Resultado neto del período</td><td style="color:${c(neto)}">${fmt(neto)}</td></tr>
-      </table>
-    </div>`;
+  const ventas=(ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
+  const compras=(comprasD||[]).reduce((a,v)=>a+parseFloat(v.monto_neto),0);
+  const stockIni=(stockD||[]).filter(s=>s.tipo==='inicial').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const stockFin=(stockD||[]).filter(s=>s.tipo==='final').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const cmv=stockIni+compras-stockFin;
+  const utilBruta=ventas-cmv;
+  const opex={}; let gFin=0; let anticipos=0;
+  (gastosD||[]).forEach(g=>{const tipo=g.categorias_gasto?.tipo;const nom=g.categorias_gasto?.nombre||'Otros';const m=parseFloat(g.monto);if(tipo==='financiero'){gFin+=m;return;}if(tipo==='anticipo_impuesto'){anticipos+=m;return;}if(tipo==='impuesto')return;if(!opex[nom])opex[nom]=0;opex[nom]+=m;});
+  const ebit=utilBruta-Object.values(opex).reduce((a,v)=>a+v,0);
+  const ebt=ebit-gFin;
+  const impTotal=Math.round(ebt*alicuota)/100;
+  const saldoPend=Math.max(0,impTotal-anticipos);
+  const neto=ebt-impTotal;
+  const c=n=>n>=0?'var(--green)':'var(--red)';
+  if(alicuota>0) guardarAlicuota(alicuota);
+  document.getElementById('err-body').innerHTML=`<div class="card" style="max-width:580px">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">Estado de resultados</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Datos reales cargados en el sistema</div>
+    <table class="stmt">
+      <tr><td>Ventas netas</td><td style="font-weight:600">${fmt(ventas)}</td></tr>
+      <tr class="sh"><td colspan="2">Costo de mercadería vendida</td></tr>
+      <tr class="ind"><td>Stock inicial</td><td>${fmt(stockIni)}</td></tr>
+      <tr class="ind"><td>+ Compras netas (sin MwSt)</td><td>${fmt(compras)}</td></tr>
+      <tr class="ind"><td>- Stock final</td><td>(${fmt(stockFin)})</td></tr>
+      <tr class="st"><td>CMV</td><td style="color:var(--red)">(${fmt(cmv)})</td></tr>
+      <tr class="st" style="border-top:2px solid var(--border-md)"><td>Utilidad bruta</td><td style="color:${c(utilBruta)};font-weight:700">${fmt(utilBruta)}</td></tr>
+      <tr class="sh"><td colspan="2">Gastos operativos</td></tr>
+      ${Object.entries(opex).map(([n,v])=>`<tr class="ind"><td>${n}</td><td>(${fmt(v)})</td></tr>`).join('')}
+      <tr class="st"><td>Resultado operativo (EBIT)</td><td style="color:${c(ebit)}">${fmt(ebit)}</td></tr>
+      <tr class="sh"><td colspan="2">Resultado no operativo</td></tr>
+      <tr class="ind"><td>Gastos financieros</td><td>(${fmt(gFin)})</td></tr>
+      <tr class="st" style="border-top:2px solid var(--border-md)"><td>Resultado antes de impuestos (EBT)</td><td style="color:${c(ebt)};font-weight:700">${fmt(ebt)}</td></tr>
+      <tr class="sh"><td colspan="2">Impuestos devengados (${alicuota}%)</td></tr>
+      <tr class="ind"><td>Impuesto total estimado</td><td style="color:var(--red)">(${fmt(impTotal)})</td></tr>
+      <tr class="ind2"><td>Anticipos pagados <span class="badge badge-success" style="font-size:10px">En caja</span></td><td style="color:var(--green)">${fmt(anticipos)}</td></tr>
+      <tr class="ind2"><td>Saldo pendiente <span class="badge badge-warning" style="font-size:10px">Pago futuro</span></td><td style="color:var(--amber)">(${fmt(saldoPend)})</td></tr>
+      <tr class="tt"><td>Resultado neto del período</td><td style="color:${c(neto)}">${fmt(neto)}</td></tr>
+    </table>
+  </div>`;
 }
-
 async function guardarAlicuota(val) {
-  const { data: temps } = await sb.from('temporadas').select('id').eq('activa',true).limit(1);
-  if (!temps?.length) return;
-  const { data: existing } = await sb.from('config_impositiva').select('id').eq('temporada_id', temps[0].id).limit(1);
-  if (existing?.length) await sb.from('config_impositiva').update({alicuota_porcentaje: parseFloat(val)}).eq('id', existing[0].id);
-  else await sb.from('config_impositiva').insert({temporada_id: temps[0].id, alicuota_porcentaje: parseFloat(val)});
+  const {data:temps}=await sb.from('temporadas').select('id').eq('activa',true).limit(1);
+  if(!temps?.length)return;
+  const {data:ex}=await sb.from('config_impositiva').select('id').eq('temporada_id',temps[0].id).limit(1);
+  if(ex?.length)await sb.from('config_impositiva').update({alicuota_porcentaje:parseFloat(val)}).eq('id',ex[0].id);
+  else await sb.from('config_impositiva').insert({temporada_id:temps[0].id,alicuota_porcentaje:parseFloat(val)});
 }
 
 // ---- FLUJO DE CAJA ----
 async function repFlujo() {
   loading();
-  const [{ data: ventasD }, { data: pagosD }, { data: gastosD }] = await Promise.all([
+  const temps=await getTemporadas();
+  document.getElementById('content').innerHTML=`
+    <div style="margin-bottom:16px">
+      <div class="field" style="display:inline-block"><label>Temporada</label><select id="f-temp-flujo" onchange="repFlujoCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
+        ${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}
+      </select></div>
+    </div>
+    <div id="flujo-body"></div>`;
+  repFlujoCargar();
+}
+async function repFlujoCargar() {
+  document.getElementById('flujo-body').innerHTML='<div class="loading">Calculando...</div>';
+  const [{data:ventasD},{data:pagosD},{data:gastosD}]=await Promise.all([
     sb.from('cierres_caja').select('ingresos_dia'),
-    sb.from('pagos').select('monto, gasto_bancario'),
-    sb.from('gastos').select('monto, categorias_gasto(tipo)')
+    sb.from('pagos').select('monto,gasto_bancario'),
+    sb.from('gastos').select('monto,categorias_gasto(tipo)')
   ]);
-  const totVentas = (ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
-  const totPagos = (pagosD||[]).reduce((a,p)=>a+parseFloat(p.monto),0);
-  const totGastosOp = (gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='operativo').reduce((a,g)=>a+parseFloat(g.monto),0);
-  const totGastosFinanc = (gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='financiero').reduce((a,g)=>a+parseFloat(g.monto),0);
-  const totAnticipos = (gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='anticipo_impuesto').reduce((a,g)=>a+parseFloat(g.monto),0);
-  const totImpPagados = (gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='impuesto').reduce((a,g)=>a+parseFloat(g.monto),0);
-  const totSalidas = totPagos + totGastosOp + totGastosFinanc + totAnticipos + totImpPagados;
-  const flujoNeto = totVentas - totSalidas;
-  const c = n => n>=0 ? 'var(--green)' : 'var(--red)';
-  document.getElementById('content').innerHTML = `
-    <div class="card" style="max-width:560px">
-      <div style="font-size:15px;font-weight:500;margin-bottom:2px">Flujo de caja</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:18px">Temporada activa · método directo</div>
-      <table class="stmt">
-        <tr class="sh"><td colspan="2">Entradas de efectivo</td></tr>
-        <tr class="ind"><td>Cobros por ventas (efectivo)</td><td>${fmt(totVentas)}</td></tr>
-        <tr class="st"><td>Total entradas</td><td style="color:var(--green)">${fmt(totVentas)}</td></tr>
-        <tr class="sh"><td colspan="2">Salidas de efectivo</td></tr>
-        <tr class="ind"><td>Pagos a proveedores</td><td style="color:var(--red)">(${fmt(totPagos)})</td></tr>
-        <tr class="ind"><td>Gastos operativos</td><td style="color:var(--red)">(${fmt(totGastosOp)})</td></tr>
-        <tr class="ind"><td>Gastos financieros</td><td style="color:var(--red)">(${fmt(totGastosFinanc)})</td></tr>
-        <tr class="ind"><td>Anticipos impuesto (Vorauszahlung)</td><td style="color:var(--red)">(${fmt(totAnticipos)})</td></tr>
-        <tr class="ind"><td>Pagos impuesto temporadas anteriores</td><td style="color:var(--red)">${totImpPagados>0?'('+fmt(totImpPagados)+')':'—'}</td></tr>
-        <tr class="st"><td>Total salidas</td><td style="color:var(--red)">(${fmt(totSalidas)})</td></tr>
-        <tr class="sh"><td colspan="2">Posición de caja</td></tr>
-        <tr class="tt"><td>Flujo neto del período</td><td style="color:${c(flujoNeto)}">${flujoNeto<0?'(':''}${fmt(flujoNeto)}${flujoNeto<0?')':''}</td></tr>
-      </table>
-    </div>`;
+  const totVentas=(ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
+  const totPagos=(pagosD||[]).reduce((a,p)=>a+parseFloat(p.monto),0);
+  const totGastosOp=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='operativo').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totGastosFinanc=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='financiero').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totAnticipos=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='anticipo_impuesto').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totImpPagados=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='impuesto').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totSalidas=totPagos+totGastosOp+totGastosFinanc+totAnticipos+totImpPagados;
+  const flujoNeto=totVentas-totSalidas;
+  const c=n=>n>=0?'var(--green)':'var(--red)';
+  document.getElementById('flujo-body').innerHTML=`<div class="card" style="max-width:580px">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">Flujo de caja</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Método directo · datos reales</div>
+    <table class="stmt">
+      <tr class="sh"><td colspan="2">Entradas de efectivo</td></tr>
+      <tr class="ind"><td>Cobros por ventas</td><td>${fmt(totVentas)}</td></tr>
+      <tr class="st"><td>Total entradas</td><td style="color:var(--green);font-weight:700">${fmt(totVentas)}</td></tr>
+      <tr class="sh"><td colspan="2">Salidas de efectivo</td></tr>
+      <tr class="ind"><td>Pagos a proveedores</td><td style="color:var(--red)">(${fmt(totPagos)})</td></tr>
+      <tr class="ind"><td>Gastos operativos</td><td style="color:var(--red)">(${fmt(totGastosOp)})</td></tr>
+      <tr class="ind"><td>Gastos financieros</td><td style="color:var(--red)">(${fmt(totGastosFinanc)})</td></tr>
+      <tr class="ind"><td>Anticipos impuesto (Vorauszahlung)</td><td style="color:var(--red)">(${fmt(totAnticipos)})</td></tr>
+      <tr class="ind"><td>Pagos impuesto temporadas anteriores</td><td style="color:var(--red)">${totImpPagados>0?'('+fmt(totImpPagados)+')':'—'}</td></tr>
+      <tr class="st"><td>Total salidas</td><td style="color:var(--red);font-weight:700">(${fmt(totSalidas)})</td></tr>
+      <tr class="tt"><td>Flujo neto del período</td><td style="color:${c(flujoNeto)}">${flujoNeto<0?'(':''}${fmt(flujoNeto)}${flujoNeto<0?')':''}</td></tr>
+    </table>
+  </div>`;
 }
 
 // ---- INIT ----
-document.getElementById('modal').addEventListener('click', function(e) {
-  if (e.target === this) { closeModal(); }
-});
+document.getElementById('modal').addEventListener('click', function(e) { if(e.target===this) closeModal(); });
 
 sb.auth.onAuthStateChange((event, session) => {
-  if (event === 'SIGNED_IN' && session) showApp();
-  if (event === 'SIGNED_OUT') {
-    document.getElementById('app-screen').style.display = 'none';
-    document.getElementById('auth-screen').style.display = 'flex';
-  }
+  if (event==='SIGNED_IN' && session) showApp();
+  if (event==='SIGNED_OUT') { if(_refreshInterval) clearInterval(_refreshInterval); document.getElementById('app-screen').style.display='none'; document.getElementById('auth-screen').style.display='flex'; }
 });
 
-sb.auth.getSession().then(({ data: { session } }) => {
-  if (session) showApp();
-});
+sb.auth.getSession().then(({ data: { session } }) => { if (session) showApp(); });
 </script>
 </body>
 </html>
