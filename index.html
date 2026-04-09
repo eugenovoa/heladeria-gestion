@@ -389,7 +389,11 @@ function fileToB64(f){return new Promise((res,rej)=>{const r=new FileReader();r.
 async function uploadAdjunto(file,carpeta,nombre){
   if(!file)return null;
   const ext=file.name.split('.').pop().toLowerCase();
-  const path=`${carpeta}/${nombre}.${ext}`;
+  // Sanitize path: remove accents, special chars, spaces
+  const sanitize=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9_\-]/g,'_');
+  const safeCarpeta=carpeta.split('/').map(sanitize).join('/');
+  const safeNombre=sanitize(nombre);
+  const path=`${safeCarpeta}/${safeNombre}.${ext}`;
   const{error}=await sb.storage.from('adjuntos').upload(path,file,{upsert:true,contentType:file.type});
   if(error){console.error('Upload:',error.message);return null}
   const{data:signed}=await sb.storage.from('adjuntos').createSignedUrl(path,60*60*24*365*10);
@@ -1943,7 +1947,11 @@ function fileToB64(f){return new Promise((res,rej)=>{const r=new FileReader();r.
 async function uploadAdjunto(file,carpeta,nombre){
   if(!file)return null;
   const ext=file.name.split('.').pop().toLowerCase();
-  const path=`${carpeta}/${nombre}.${ext}`;
+  // Sanitize path: remove accents, special chars, spaces
+  const sanitize=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9_\-]/g,'_');
+  const safeCarpeta=carpeta.split('/').map(sanitize).join('/');
+  const safeNombre=sanitize(nombre);
+  const path=`${safeCarpeta}/${safeNombre}.${ext}`;
   const{error}=await sb.storage.from('adjuntos').upload(path,file,{upsert:true,contentType:file.type});
   if(error){console.error('Upload:',error.message);return null}
   const{data:signed}=await sb.storage.from('adjuntos').createSignedUrl(path,60*60*24*365*10);
