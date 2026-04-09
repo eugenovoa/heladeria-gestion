@@ -354,7 +354,7 @@ function nav(p){
 // ---- HELPERS ----
 const fmt=n=>'€\u202f'+(parseFloat(n)||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtD=d=>{if(!d)return'—';const[y,m,dd]=d.split('-');return`${dd}/${m}/${String(y).slice(2)}`};
-const today=()=>new Date().toISOString().split('T')[0];
+const today=()=>{const n=new Date();return`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`};
 const loading=()=>document.getElementById('ct').innerHTML='<div class="ld">Cargando...</div>';
 const setR=h=>document.getElementById('tbar-r').innerHTML=h;
 function openMo(title,body,saveFn,noSave=false){document.getElementById('mo-title').textContent=title;document.getElementById('mo-body').innerHTML=body;_moFn=saveFn;document.getElementById('mo-save').textContent='Guardar';document.getElementById('mo-save').style.display=noSave?'none':'';document.getElementById('mo').classList.add('open')}
@@ -431,8 +431,8 @@ function swTab(id,el){document.querySelectorAll('.tab').forEach(t=>t.classList.r
 // ---- DASHBOARD ----
 async function dashboard(){
   loading();
-  const hoy=today(),en7=new Date();en7.setDate(en7.getDate()+7);const en7s=en7.toISOString().split('T')[0];
-  const mes=new Date(new Date().setDate(1)).toISOString().split('T')[0];
+  const hoy=today(),en7=new Date();en7.setDate(en7.getDate()+7);const en7s=`${en7.getFullYear()}-${String(en7.getMonth()+1).padStart(2,'0')}-${String(en7.getDate()).padStart(2,'0')}`;
+  const mes=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
   const[{data:fv},{data:fp},{data:vr},{data:rp},{data:cm},{data:vm},{data:vc}]=await Promise.all([
     sb.from('facturas').select('monto_total').eq('estado','vencida'),
     sb.from('facturas').select('id,numero_factura,monto_total,fecha_vencimiento,proveedores(nombre)').eq('estado','pendiente').lte('fecha_vencimiento',en7s).order('fecha_vencimiento'),
@@ -664,7 +664,7 @@ async function newFactMan(){
     closeMo();facturas();
   });
 }
-function autoVenc(sel){const d=parseInt(sel.options[sel.selectedIndex]?.dataset.d)||30;const fe=document.getElementById('ffe').value;if(fe){const dt=new Date(fe+'T00:00:00');dt.setDate(dt.getDate()+d);document.getElementById('ffv').value=dt.toISOString().split('T')[0]}}
+function autoVenc(sel){const d=parseInt(sel.options[sel.selectedIndex]?.dataset.d)||30;const fe=document.getElementById('ffe').value;if(fe){const dt=new Date(fe+'T00:00:00');dt.setDate(dt.getDate()+d);document.getElementById('ffv').value=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`}}
 
 async function verFact(id){
   const[{data:f},{data:ls}]=await Promise.all([sb.from('facturas').select('*,proveedores(nombre)').eq('id',id).single(),sb.from('lineas_factura').select('*').eq('factura_id',id)]);
@@ -750,14 +750,15 @@ async function vencimientos(){
   loading();setR(`<button class="btn btn-sm" onclick="_semOff--;vencimientos()">← Ant.</button><button class="btn btn-sm" onclick="_semOff=0;vencimientos()">Hoy</button><button class="btn btn-sm" onclick="_semOff++;vencimientos()">Sig. →</button>`);
   const hoy=new Date();const lun=new Date(hoy);lun.setDate(hoy.getDate()-((hoy.getDay()+6)%7)+_semOff*7);
   const dom=new Date(lun);dom.setDate(lun.getDate()+6);
-  const lS=lun.toISOString().split('T')[0],dS=dom.toISOString().split('T')[0],hS=today();
+  const localStr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const lS=localStr(lun),dS=localStr(dom),hS=today();
   const[{data:facts},{data:recs}]=await Promise.all([
     sb.from('facturas').select('*,proveedores(nombre)').in('estado',['pendiente','vencida']).order('fecha_vencimiento'),
     sb.from('vencimientos_recurrentes').select('*,gastos_recurrentes(concepto,sucursal_id)').in('estado',['pendiente','vencido']).order('fecha_vencimiento')
   ]);
   const dias=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   const cols=Array.from({length:7},(_,i)=>{
-    const d=new Date(lun);d.setDate(lun.getDate()+i);const ds=d.toISOString().split('T')[0];
+    const d=new Date(lun);d.setDate(lun.getDate()+i);const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const ff=(facts||[]).filter(f=>f.fecha_vencimiento===ds);
     const rr=(recs||[]).filter(r=>r.fecha_vencimiento===ds);
     return`<div class="wk-day${ds===hS?' today':''}">
