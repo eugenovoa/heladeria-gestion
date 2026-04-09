@@ -698,6 +698,7 @@ async function verFact(id){
     ${ls.map(l=>`<tr><td>${l.descripcion||'—'}</td><td>${l.cantidad||'—'}</td><td>${fmt(l.monto_neto)}</td><td>${l.mwst_porcentaje}%</td></tr>`).join('')}
     </tbody></table>`:''}
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      ${f.adjunto_url?`<button class="btn btn-sm" onclick="window.open('${f.adjunto_url}','_blank')">📎 Ver adjunto</button>`:''}
       <button class="btn btn-sm btn-ok" onclick="setFactEst('${f.id}','pagada')">✓ Marcar pagada</button>
       <button class="btn btn-sm btn-g" onclick="setFactEst('${f.id}','vencida')">Marcar vencida</button>
       <button class="btn btn-sm btn-d" onclick="delFact('${f.id}')">Eliminar</button>
