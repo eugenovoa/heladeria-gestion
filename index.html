@@ -951,7 +951,7 @@ async function gastos(){
       <td>${fmt(g.monto_neto||g.monto)}</td>
       <td>${(g.mwst_monto||0)>0?fmt(g.mwst_monto):'—'}</td>
       <td style="font-weight:600;color:var(--red)">${fmt(g.monto)}</td>
-      <td><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button></td>
+      <td><div style="display:flex;gap:5px"><button class="btn btn-sm" onclick="verGasto('${g.id}')">Ver</button><button class="btn btn-sm" onclick="editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button></div></td>
     </tr>`).join('')}
     </tbody></table>`}
   </div></div>`;
@@ -2505,7 +2505,7 @@ async function gastos(){
       <td>${fmt(g.monto_neto||g.monto)}</td>
       <td>${(g.mwst_monto||0)>0?fmt(g.mwst_monto):'—'}</td>
       <td style="font-weight:600;color:var(--red)">${fmt(g.monto)}</td>
-      <td><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button></td>
+      <td><div style="display:flex;gap:5px"><button class="btn btn-sm" onclick="verGasto('${g.id}')">Ver</button><button class="btn btn-sm" onclick="editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button></div></td>
     </tr>`).join('')}
     </tbody></table>`}
   </div></div>`;
