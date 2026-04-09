@@ -782,7 +782,7 @@ async function newFactMan(){
   const{data:provs}=await sb.from('proveedores').select('id,nombre,condicion_pago_dias').eq('activo',true).order('nombre');
   const liHeader='<div style="display:grid;grid-template-columns:1fr 70px 90px 75px 32px;gap:8px;padding:0 10px;margin-bottom:4px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Descripción</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Cant.</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Neto €</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">MwSt</div><div></div></div>';
   openMo('Nueva factura — manual',`<div class="fg" style="margin-bottom:14px">
-    <div class="f"><label>Tipo</label><select id="ft"><option value="factura">Factura</option><option value="gutschrift">Gutschrift</option></select></div>
+    <div class="f"><label>Tipo</label><select id="fnew-tipo"><option value="factura">Factura</option><option value="gutschrift">Gutschrift</option></select></div>
     <div class="f"><label>N° Documento *</label><input id="fn"></div>
     <div class="f"><label>Proveedor *</label><select id="fp" onchange="autoVenc(this)">${(provs||[]).map(p=>`<option value="${p.id}" data-d="${p.condicion_pago_dias||30}">${p.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Fecha emisión *</label><input id="ffe" type="date" value="${today()}" oninput="autoVenc(document.getElementById('fp'))"></div>
@@ -797,7 +797,7 @@ async function newFactMan(){
     const fe=document.getElementById('ffe').value,pv=document.getElementById('fp').value;
     if(!pv){alert('Seleccioná proveedor.');return}
     await getOrCreateTmp(fe);
-    const tp=document.getElementById('ft').value,mult=tp==='gutschrift'?-1:1;
+    const tp=document.getElementById('fnew-tipo').value,mult=tp==='gutschrift'?-1:1;
     const lis=getLis('ml');
     const n7=lis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
     const n19=lis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
