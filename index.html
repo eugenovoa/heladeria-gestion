@@ -340,6 +340,16 @@ function setupNav(){
 
 const _titles={dashboard:'Dashboard',proveedores:'Proveedores',productos:'Productos / Materias primas',facturas:'Facturas de proveedores',pagos:'Pagos',vencimientos:'Vencimientos',gastos:'Gastos al contado',recurrentes:'Gastos recurrentes',caja:'Cierre de caja',stock:'Stock','rep-compras':'Compras por período','rep-err':'Estado de resultados','rep-flujo':'Flujo de caja','rep-comp':'Comparativo de temporadas',config:'Configuración'};
 
+
+async function autoMarcarVencidas(){
+  const hoy=today();
+  await sb.from('facturas')
+    .update({estado:'vencida'})
+    .eq('estado','pendiente')
+    .eq('tipo','factura')
+    .lt('fecha_vencimiento',hoy);
+}
+
 function nav(p){
   if(_rol==='readonly'&&['facturas','pagos','gastos','recurrentes','caja','stock','proveedores','productos'].includes(p))p='dashboard';
   if(_rol==='operador'&&['rep-compras','rep-err','rep-flujo','rep-comp','config'].includes(p))p='dashboard';
@@ -347,6 +357,7 @@ function nav(p){
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.p===p));
   document.getElementById('ptitle').textContent=_titles[p]||p;
   document.getElementById('tbar-r').innerHTML='';
+  if(p==='facturas'||p==='vencimientos')autoMarcarVencidas();
   const map={dashboard,proveedores,productos,facturas,pagos,vencimientos,gastos,recurrentes,caja,stock,'rep-compras':repCompras,'rep-err':repErr,'rep-flujo':repFlujo,'rep-comp':repComp,config:configPage};
   if(map[p])map[p]();
 }
@@ -426,7 +437,7 @@ Reglas: fechas YYYY-MM-DD. mwst_pct es 7 o 19. Si es Gutschrift montos negativos
   }catch(e){console.error('iaFactura:',e);return null}
 }
 async function iaTicket(b64,mime){
-  const prompt=`Analizá este ticket/factura. Devolvé SOLO JSON: {"concepto":"","fecha":"","monto_total":0,"monto_neto":0,"mwst_pct":19,"mwst_monto":0,"proveedor":""}. Fechas YYYY-MM-DD.`;
+  const prompt=`Sos un extractor de facturas y tickets de compras alemanas. Devolvé SOLO JSON válido sin markdown:\n{"proveedor":"","fecha":"","lineas":[{"descripcion":"","cantidad":0,"monto_neto":0,"mwst_pct":7}],"neto_7":0,"mwst_7":0,"neto_19":0,"mwst_19":0,"total_bruto":0}\nReglas: fechas YYYY-MM-DD. mwst_pct solo puede ser 7 o 19. Alimentos=7%, limpieza/drogueria/higiene=19%. monto_neto es precio sin IVA por linea. En facturas EDEKA columna St indica grupo IVA (1=7%, 2=19%). total_bruto es el total pagado (Gesamtbetrag o Zahlbetrag).`;
   try{
     const isImg=!mime.includes('pdf');
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:IA_HEADERS,body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:[{type:isImg?'image':'document',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]}]})});
@@ -443,29 +454,87 @@ function swTab(id,el){document.querySelectorAll('.tab').forEach(t=>t.classList.r
 // ---- DASHBOARD ----
 async function dashboard(){
   loading();
-  const hoy=today(),en7=new Date();en7.setDate(en7.getDate()+7);const en7s=`${en7.getFullYear()}-${String(en7.getMonth()+1).padStart(2,'0')}-${String(en7.getDate()).padStart(2,'0')}`;
-  const mes=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
-  const[{data:fv},{data:fp},{data:vr},{data:rp},{data:cm},{data:vm},{data:vc}]=await Promise.all([
+  // Build filter bar
+  const sucOpsD=`<option value="">Todas las sucursales</option>${_sucs.filter(s=>!s.es_centro_produccion).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}`;
+  document.getElementById('ct').innerHTML=`
+    <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:flex-end">
+      <div class="f"><label>Período</label>
+        <select id="db-per" onchange="dbChangePer()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+          <option value="mes">Mes en curso</option>
+          <option value="semana">Semana en curso</option>
+          <option value="custom">Personalizado</option>
+        </select>
+      </div>
+      <div class="f" id="db-custom-wrap" style="display:none">
+        <label>Desde</label><input type="date" id="db-desde" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit">
+      </div>
+      <div class="f" id="db-custom-wrap2" style="display:none">
+        <label>Hasta</label><input type="date" id="db-hasta" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit">
+      </div>
+      <div class="f"><label>Sucursal</label>
+        <select id="db-suc" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${sucOpsD}</select>
+      </div>
+      <button class="btn btn-p" onclick="loadDashboard()">Aplicar</button>
+    </div>
+    <div id="db-body"><div class="ld">Cargando...</div></div>`;
+  loadDashboard();
+}
+
+function dbChangePer(){
+  const v=document.getElementById('db-per').value;
+  document.getElementById('db-custom-wrap').style.display=v==='custom'?'':'none';
+  document.getElementById('db-custom-wrap2').style.display=v==='custom'?'':'none';
+}
+
+async function loadDashboard(){
+  const per=document.getElementById('db-per')?.value||'mes';
+  const sucId=document.getElementById('db-suc')?.value||'';
+  const hoy=today();
+  const now=new Date();
+  let desde,hasta=hoy;
+  if(per==='semana'){
+    const lun=new Date(now);lun.setDate(now.getDate()-((now.getDay()+6)%7));
+    desde=`${lun.getFullYear()}-${String(lun.getMonth()+1).padStart(2,'0')}-${String(lun.getDate()).padStart(2,'0')}`;
+  } else if(per==='custom'){
+    desde=document.getElementById('db-desde')?.value||hoy;
+    hasta=document.getElementById('db-hasta')?.value||hoy;
+  } else {
+    desde=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  }
+  const en7=new Date(now);en7.setDate(now.getDate()+7);
+  const en7s=`${en7.getFullYear()}-${String(en7.getMonth()+1).padStart(2,'0')}-${String(en7.getDate()).padStart(2,'0')}`;
+
+  // Build ventas query with optional sucursal filter
+  let qV=sb.from('cierres_caja').select('ingresos_dia,fecha,sucursal_id').gte('fecha',desde).lte('fecha',hasta).order('fecha');
+  if(sucId)qV=qV.eq('sucursal_id',sucId);
+  let qVm=sb.from('cierres_caja').select('ingresos_dia').gte('fecha',desde).lte('fecha',hasta);
+  if(sucId)qVm=qVm.eq('sucursal_id',sucId);
+
+  const[{data:fv},{data:fp},{data:rp},{data:cm},{data:vm},{data:vc}]=await Promise.all([
     sb.from('facturas').select('monto_total').eq('estado','vencida'),
     sb.from('facturas').select('id,numero_factura,monto_total,fecha_vencimiento,proveedores(nombre)').eq('estado','pendiente').lte('fecha_vencimiento',en7s).order('fecha_vencimiento'),
-    sb.from('cierres_caja').select('ingresos_dia,fecha,sucursal_id').order('fecha',{ascending:false}).limit(6),
     sb.from('vencimientos_recurrentes').select('id,monto,fecha_vencimiento,gastos_recurrentes(concepto,sucursal_id)').eq('estado','pendiente').lte('fecha_vencimiento',en7s).limit(4),
-    sb.from('facturas').select('monto_neto').gte('fecha_emision',mes).eq('tipo','factura'),
-    sb.from('cierres_caja').select('ingresos_dia').gte('fecha',mes),
-    sb.from('cierres_caja').select('ingresos_dia,fecha').gte('fecha',mes).order('fecha')
+    sb.from('facturas').select('monto_neto').gte('fecha_emision',desde).lte('fecha_emision',hasta).eq('tipo','factura'),
+    qVm,
+    qV
   ]);
+
   const totV=(fv||[]).reduce((a,f)=>a+parseFloat(f.monto_total),0);
   const totP=(fp||[]).reduce((a,f)=>a+parseFloat(f.monto_total),0);
   const totC=(cm||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
   const totVm=(vm||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
-  document.getElementById('ct').innerHTML=`
+
+  const perLabel={mes:'mes en curso',semana:'semana en curso',custom:`${fmtD(desde)} — ${fmtD(hasta)}`}[per];
+  const sucLabel=sucId?(_sucs.find(s=>s.id===sucId)?.nombre||''):'Todas las sucursales';
+
+  document.getElementById('db-body').innerHTML=`
     <div class="kpi-grid">
-      <div class="kpi b"><div class="kpi-l">Ventas del mes</div><div class="kpi-v">${fmt(totVm)}</div><div class="kpi-s">Todas las sucursales</div></div>
-      <div class="kpi g"><div class="kpi-l">Compras del mes</div><div class="kpi-v">${fmt(totC)}</div><div class="kpi-s">Neto sin MwSt</div></div>
+      <div class="kpi b"><div class="kpi-l">Ventas — ${perLabel}</div><div class="kpi-v">${fmt(totVm)}</div><div class="kpi-s">${sucLabel}</div></div>
+      <div class="kpi g"><div class="kpi-l">Compras — ${perLabel}</div><div class="kpi-v">${fmt(totC)}</div><div class="kpi-s">Neto sin MwSt</div></div>
       <div class="kpi a"><div class="kpi-l">Por vencer (7 días)</div><div class="kpi-v">${fmt(totP)}</div><div class="kpi-s">${(fp||[]).length+(rp||[]).length} vencimiento(s)</div></div>
       <div class="kpi r"><div class="kpi-l">Facturas vencidas</div><div class="kpi-v">${fmt(totV)}</div><div class="kpi-s">${(fv||[]).length} factura(s)</div></div>
     </div>
-    <div class="card"><div class="card-t">Ventas diarias — mes en curso</div><div class="cw"><canvas id="ch-v"></canvas></div></div>
+    <div class="card"><div class="card-t">Ventas diarias — ${perLabel} · ${sucLabel}</div><div class="cw"><canvas id="ch-v"></canvas></div></div>
     <div class="g2">
       <div class="card"><div class="card-t">Próximos vencimientos</div>
         ${!(fp||[]).length&&!(rp||[]).length?'<div class="empty" style="padding:20px">Sin vencimientos próximos ✓</div>':`
@@ -474,17 +543,21 @@ async function dashboard(){
         ${(rp||[]).map(r=>`<tr><td><span class="bd bd-pur" style="font-size:10px">Rec.</span> ${r.gastos_recurrentes?.concepto||'—'}</td><td>${fmtD(r.fecha_vencimiento)}</td><td>${fmt(r.monto)}</td></tr>`).join('')}
         </tbody></table>`}
       </div>
-      <div class="card"><div class="card-t">Últimas ventas por sucursal</div>
-        ${!(vr||[]).length?'<div class="empty" style="padding:20px">Sin ventas</div>':`
+      <div class="card"><div class="card-t">Ventas por día</div>
+        ${!(vc||[]).length?'<div class="empty" style="padding:20px">Sin ventas en este período</div>':`
         <table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Ingresos</th></tr></thead><tbody>
-        ${vr.map(v=>`<tr><td>${fmtD(v.fecha)}</td><td><span class="bd bd-gray" style="font-size:10px">${sucNom(v.sucursal_id)}</span></td><td style="font-weight:600;color:var(--green)">${fmt(v.ingresos_dia)}</td></tr>`).join('')}
+        ${(vc||[]).slice(-8).map(v=>`<tr><td>${fmtD(v.fecha)}</td><td><span class="bd bd-gray" style="font-size:10px">${sucNom(v.sucursal_id)}</span></td><td style="font-weight:600;color:var(--green)">${fmt(v.ingresos_dia)}</td></tr>`).join('')}
         </tbody></table>`}
       </div>
     </div>`;
-  const labs=(vc||[]).map(v=>new Date(v.fecha+'T00:00:00').getDate());
+
+  const labs=(vc||[]).map(v=>v.fecha.substring(8,10)+'/'+v.fecha.substring(5,7));
   const vals=(vc||[]).map(v=>parseFloat(v.ingresos_dia)||0);
-  if(labs.length&&document.getElementById('ch-v')){new Chart(document.getElementById('ch-v'),{type:'bar',data:{labels:labs,datasets:[{label:'€',data:vals,backgroundColor:'rgba(59,130,246,.7)',borderRadius:6,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'},ticks:{callback:v=>'€'+v}}}}})}
-  else if(document.getElementById('ch-v'))document.querySelector('.cw').innerHTML='<div class="empty">Sin ventas este mes</div>';
+  if(labs.length&&document.getElementById('ch-v')){
+    new Chart(document.getElementById('ch-v'),{type:'bar',data:{labels:labs,datasets:[{label:'Ventas (€)',data:vals,backgroundColor:'rgba(59,130,246,.7)',borderRadius:6,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'},ticks:{callback:v=>'€'+v}}}}});
+  } else if(document.getElementById('ch-v')){
+    document.querySelector('.cw').innerHTML='<div class="empty">Sin ventas en este período</div>';
+  }
 }
 
 // ---- PROVEEDORES ----
@@ -704,11 +777,20 @@ async function verFact(id){
     <table style="font-size:12px"><thead><tr><th>Descripción</th><th>Cant.</th><th>Neto</th><th>MwSt</th></tr></thead><tbody>
     ${ls.map(l=>`<tr><td>${l.descripcion||'—'}</td><td>${l.cantidad||'—'}</td><td>${fmt(l.monto_neto)}</td><td>${l.mwst_porcentaje}%</td></tr>`).join('')}
     </tbody></table>`:''}
-    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
-      ${f.adjunto_url?`<button class="btn btn-sm" onclick="window.open('${f.adjunto_url}','_blank')">📎 Ver adjunto</button>`:''}
-      <button class="btn btn-sm btn-ok" onclick="setFactEst('${f.id}','pagada')">✓ Marcar pagada</button>
-      <button class="btn btn-sm btn-g" onclick="setFactEst('${f.id}','vencida')">Marcar vencida</button>
-      <button class="btn btn-sm btn-d" onclick="delFact('${f.id}')">Eliminar</button>
+    <div style="margin-top:16px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        ${f.adjunto_url?`<button class="btn btn-sm" onclick="window.open('${f.adjunto_url}','_blank')">📎 Ver adjunto</button>`:''}
+        <button class="btn btn-sm btn-ok" onclick="setFactEst('${f.id}','pagada')">✓ Marcar pagada</button>
+        <button class="btn btn-sm btn-g" onclick="setFactEst('${f.id}','vencida')">Marcar vencida</button>
+        <button class="btn btn-sm btn-d" onclick="delFact('${f.id}')">Eliminar</button>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:12px">
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">${f.adjunto_url?'Reemplazar adjunto':'Subir adjunto PDF/imagen'}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="file" id="fact-adj-up" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:6px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;flex:1">
+          <button class="btn btn-sm btn-p" onclick="subirAdjFact('${f.id}','${(f.proveedores?.nombre||'varios').replace(/'/g,"\'")}','${f.fecha_emision||today()}')">Subir</button>
+        </div>
+      </div>
     </div>`,()=>{},true);
 }
 async function editFact(id){
@@ -732,6 +814,29 @@ async function editFact(id){
   });
 }
 function calcEd(){const n=parseFloat(document.getElementById('emn').value)||0,p=parseFloat(document.getElementById('emp').value)||7,m=n*p/100;document.getElementById('emm').value=m.toFixed(2);document.getElementById('eto').value=(n+m).toFixed(2)}
+
+async function subirAdjFact(factId, provNombre, fecha){
+  const file=document.getElementById('fact-adj-up')?.files[0];
+  if(!file){alert('Seleccioná un archivo primero.');return}
+  const btn=event.target;btn.textContent='Subiendo...';btn.disabled=true;
+  const yr=fecha.substring(0,4);
+  const url=await uploadAdjunto(file,`facturas/${yr}/${provNombre}`,`fact-${factId}`);
+  if(url){
+    await sb.from('facturas').update({adjunto_url:url}).eq('id',factId);
+    btn.textContent='✓ Subido';
+    // Refresh the view button
+    const viewBtn=document.querySelector(`button[onclick*="${factId}"][onclick*="window.open"]`);
+    if(!viewBtn){
+      const div=btn.closest('div').previousElementSibling;
+      if(div)div.insertAdjacentHTML('afterbegin',`<button class="btn btn-sm" onclick="window.open('${url}','_blank')">📎 Ver adjunto</button>`);
+    }
+  } else {
+    btn.textContent='Error';
+    alert('No se pudo subir el archivo. Verificá las políticas de Storage en Supabase.');
+  }
+  btn.disabled=false;
+}
+
 async function setFactEst(id,est){await sb.from('facturas').update({estado:est}).eq('id',id);closeMo();facturas()}
 async function delFact(id){if(!confirm('¿Eliminar?'))return;await sb.from('facturas').delete().eq('id',id);closeMo();facturas()}
 
@@ -864,9 +969,6 @@ async function newGastoIA(){
         <div class="f"><label>Fecha *</label><input id="gi-d" type="date"></div>
         <div class="f"><label>Total (€) *</label><input id="gi-t" type="number" step="0.01"></div>
         <div class="f full"><label>Proveedor / Concepto *</label><input id="gi-c" placeholder="Ej: Supermercado Lidl"></div>
-        <div class="f"><label>Neto (sin MwSt)</label><input id="gi-n" type="number" step="0.01" oninput="calcGM()"></div>
-        <div class="f"><label>MwSt %</label><input id="gi-p" type="number" value="19" oninput="calcGM()"></div>
-        <div class="f"><label>MwSt monto</label><input id="gi-m" type="number" step="0.01"></div>
         <div class="f"><label>Categoría</label><select id="gi-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
         <div class="f"><label>Sucursal</label><select id="gi-s"><option value="">General</option>${sucOpts()}</select></div>
       </div>
@@ -886,7 +988,14 @@ async function newGastoIA(){
     const fecha=document.getElementById('gi-d').value;if(!fecha){alert('Completá la fecha.');return}
     await getOrCreateTmp(fecha);
     const monto=parseFloat(document.getElementById('gi-t').value)||0;
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto,monto_neto:parseFloat(document.getElementById('gi-n').value)||monto,mwst_porcentaje:parseFloat(document.getElementById('gi-p').value)||0,mwst_monto:parseFloat(document.getElementById('gi-m').value)||0,sucursal_id:document.getElementById('gi-s').value||null}).select('id').single();
+    // Calculate neto/mwst from lines
+    const giLis=document.getElementById('gi-lis')?getLis('gi-lis'):[];
+    const giN7=giLis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
+    const giN19=giLis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
+    const giM7=giN7*0.07,giM19=giN19*0.19;
+    const giNeto=giN7+giN19||monto;
+    const giMwst=giM7+giM19;
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:monto||giNeto+giMwst,monto_neto:giNeto,mwst_porcentaje:giN19>=giN7?19:7,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gi-adj').files[0];
     if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
@@ -914,9 +1023,7 @@ async function procGastoIA(file){
   document.getElementById('gi-c').value=r.proveedor||'';
   // Calculate neto/mwst totals
   const n7=r.neto_7||0,n19=r.neto_19||0,m7=r.mwst_7||0,m19=r.mwst_19||0;
-  document.getElementById('gi-n').value=(n7+n19).toFixed(2);
-  document.getElementById('gi-p').value=n19>=n7?19:7;
-  document.getElementById('gi-m').value=(m7+m19).toFixed(2);
+  // neto/mwst calculated from lines
   // Render lines
   const lisContainer=document.getElementById('gi-lis');
   if(lisContainer){
@@ -930,7 +1037,7 @@ async function procGastoIA(file){
       </div>`).join('');
   }
 }
-function calcGM(){const n=parseFloat(document.getElementById('gi-n').value)||0,p=parseFloat(document.getElementById('gi-p').value)||0;document.getElementById('gi-m').value=(n*p/100).toFixed(2)}
+function calcGM(){} // removed - handled via lines
 async function newGastoMan(){
   const{data:cats}=await sb.from('categorias_gasto').select('*').order('nombre');
   openMo('Nuevo gasto al contado',`<div class="fg">
@@ -951,7 +1058,14 @@ async function newGastoMan(){
   <div style="margin-top:14px">${adjuntoField('gm-adj')}</div>`,async()=>{
     const fecha=document.getElementById('gm-d').value;await getOrCreateTmp(fecha);
     const file=document.getElementById('gm-adj').files[0];
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:parseFloat(document.getElementById('gm-t').value)||0,monto_neto:parseFloat(document.getElementById('gm-n').value)||parseFloat(document.getElementById('gm-t').value)||0,mwst_porcentaje:parseFloat(document.getElementById('gm-p').value)||0,mwst_monto:parseFloat(document.getElementById('gm-m').value)||0,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value}).select('id').single();
+    const gmMonto=parseFloat(document.getElementById('gm-t').value)||0;
+    const gmLis=document.getElementById('gm-lis')?getLis('gm-lis'):[];
+    const gmN7=gmLis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
+    const gmN19=gmLis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
+    const gmM7=gmN7*0.07,gmM19=gmN19*0.19;
+    const gmNeto=gmN7+gmN19||parseFloat(document.getElementById('gm-n').value)||gmMonto;
+    const gmMwst=gmM7+gmM19||parseFloat(document.getElementById('gm-m').value)||0;
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:gmMonto||gmNeto+gmMwst,monto_neto:gmNeto,mwst_porcentaje:gmN19>=gmN7?19:7,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value}).select('id').single();
     if(error){alert(error.message);return}
     if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
     closeMo();gastos();
