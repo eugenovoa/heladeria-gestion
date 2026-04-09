@@ -625,7 +625,14 @@ async function procFactIA(file){
       <div class="f"><label>Fecha emisión</label><input id="ia-fe" type="date" value="${r.fecha||today()}"></div>
       <div class="f"><label>Fecha vencimiento</label><input id="ia-fv" type="date" value="${r.fecha_vencimiento||''}"></div>
     </div>
-    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Líneas de detalle</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Líneas de detalle</div>
+    <div style="display:grid;grid-template-columns:1fr 70px 90px 75px 32px;gap:8px;padding:0 10px;margin-bottom:4px">
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Descripción</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Cant.</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Neto €</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">MwSt</div>
+  <div></div>
+</div>
     <div id="ia-lis">${(r.lineas||[]).map(l=>`<div class="li"><input value="${l.descripcion||''}"><input type="number" value="${l.cantidad||0}"><input type="number" value="${(l.monto_neto||0).toFixed(2)}" step="0.01"><select><option value="7" ${l.mwst_pct===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div>`).join('')}</div>
     <button class="btn btn-sm" style="margin-top:8px" onclick="addLi('ia-lis')">+ Línea</button>
     <div style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--r);font-size:12px">
@@ -863,7 +870,14 @@ async function newGastoIA(){
         <div class="f"><label>Categoría</label><select id="gi-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
         <div class="f"><label>Sucursal</label><select id="gi-s"><option value="">General</option>${sucOpts()}</select></div>
       </div>
-      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Líneas de detalle</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas de detalle</div>
+      <div style="display:grid;grid-template-columns:1fr 70px 90px 75px 32px;gap:8px;padding:0 10px;margin-bottom:4px">
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Descripción</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Cant.</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Neto €</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">MwSt</div>
+  <div></div>
+</div>
       <div id="gi-lis"></div>
       <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('gi-lis')">+ Línea</button>
       <div style="margin-top:12px"><label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Adjuntar archivo (opcional)</label><input type="file" id="gi-adj" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%"></div>
@@ -929,8 +943,12 @@ async function newGastoMan(){
     <div class="f"><label>Categoría</label><select id="gm-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="gm-s"><option value="">General</option>${sucOpts()}</select></div>
     <div class="f full"><label>Notas</label><input id="gm-no"></div>
-    ${adjuntoField('gm-adj')}
-  </div>`,async()=>{
+  </div>
+  <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas de detalle (opcional)</div>
+  <div style="display:grid;grid-template-columns:1fr 70px 90px 75px 32px;gap:8px;padding:0 10px;margin-bottom:4px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Descripción</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Cant.</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Neto €</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">MwSt</div><div></div></div>
+  <div id="gm-lis"><div class="li"><input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div></div>
+  <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('gm-lis')">+ Línea</button>
+  <div style="margin-top:14px">${adjuntoField('gm-adj')}</div>`,async()=>{
     const fecha=document.getElementById('gm-d').value;await getOrCreateTmp(fecha);
     const file=document.getElementById('gm-adj').files[0];
     const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:parseFloat(document.getElementById('gm-t').value)||0,monto_neto:parseFloat(document.getElementById('gm-n').value)||parseFloat(document.getElementById('gm-t').value)||0,mwst_porcentaje:parseFloat(document.getElementById('gm-p').value)||0,mwst_monto:parseFloat(document.getElementById('gm-m').value)||0,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value}).select('id').single();
