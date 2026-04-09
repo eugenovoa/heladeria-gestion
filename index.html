@@ -305,6 +305,7 @@ async function initApp(user){
   _rol=rd?.rol||'admin';_sucId=rd?.sucursal_id||null;
   const{data:sd}=await sb.from('sucursales').select('*').order('nombre');
   _sucs=sd||[];
+  await loadApiKey();
   const cfg=localStorage.getItem('hg_cfg');if(cfg)_cfg=JSON.parse(cfg);
   document.getElementById('auth').style.display='none';
   document.getElementById('app').style.display='block';
@@ -388,15 +389,39 @@ async function editCat(t,id,n){const nn=prompt('Nuevo nombre:',n);if(!nn||nn===n
 async function delCat(t,id,n){if(!confirm(`¿Eliminar "${n}"?`))return;const{error}=await sb.from(t).delete().eq('id',id);if(error)alert('No se puede eliminar: tiene registros asociados.');else await window._rCats()}
 
 // ---- IA ----
+const IA_HEADERS={'Content-Type':'application/json','x-api-key':'','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
+// API key loaded from Supabase after login
+async function loadApiKey(){
+  try{
+    const{data}=await sb.from('app_config').select('value').eq('key','anthropic_api_key').single();
+    if(data?.value)IA_HEADERS['x-api-key']=data.value;
+  }catch(e){console.log('No API key configured yet')}
+}
+async function setApiKey(k){
+  IA_HEADERS['x-api-key']=k;
+  await sb.from('app_config').upsert({key:'anthropic_api_key',value:k,updated_at:new Date().toISOString()},{onConflict:'key'});
+}
+
 async function iaFactura(b64,mime){
   const prompt=`Sos un extractor de facturas alemanas. Devolvé SOLO JSON sin markdown ni explicaciones:
 {"numero_factura":"","fecha":"","proveedor":"","es_gutschrift":false,"fecha_vencimiento":"","lineas":[{"descripcion":"","cantidad":0,"monto_neto":0,"mwst_pct":7}],"neto_7":0,"mwst_7":0,"neto_19":0,"mwst_19":0,"total_bruto":0}
 Reglas: fechas YYYY-MM-DD. mwst_pct es 7 o 19. Si es Gutschrift montos negativos.`;
-  try{const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]}]})});const d=await r.json();return JSON.parse((d.content?.[0]?.text||'').replace(/```json|```/g,'').trim())}catch(e){return null}
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:IA_HEADERS,body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]}]})});
+    if(!r.ok){console.error('IA HTTP',r.status,await r.text());return null}
+    const d=await r.json();
+    return JSON.parse((d.content?.[0]?.text||'').replace(/```json|```/g,'').trim());
+  }catch(e){console.error('iaFactura:',e);return null}
 }
 async function iaTicket(b64,mime){
   const prompt=`Analizá este ticket/factura. Devolvé SOLO JSON: {"concepto":"","fecha":"","monto_total":0,"monto_neto":0,"mwst_pct":19,"mwst_monto":0,"proveedor":""}. Fechas YYYY-MM-DD.`;
-  try{const isImg=!mime.includes('pdf');const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:[{type:isImg?'image':'document',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]}]})});const d=await r.json();return JSON.parse((d.content?.[0]?.text||'').replace(/```json|```/g,'').trim())}catch(e){return null}
+  try{
+    const isImg=!mime.includes('pdf');
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:IA_HEADERS,body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:[{type:isImg?'image':'document',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]}]})});
+    if(!r.ok){console.error('IA HTTP',r.status,await r.text());return null}
+    const d=await r.json();
+    return JSON.parse((d.content?.[0]?.text||'').replace(/```json|```/g,'').trim());
+  }catch(e){console.error('iaTicket:',e);return null}
 }
 
 // ---- MODAL TABS ----
@@ -1221,7 +1246,39 @@ async function loadCfgUsr(){
 async function newRol(){openMo('Asignar rol',`<div class="fg"><div class="f full"><label>User ID de Supabase Auth</label><input id="ro-id" placeholder="UUID del usuario"></div><div class="f"><label>Rol</label><select id="ro-r"><option value="admin">Admin — acceso total</option><option value="operador">Operador — caja y gastos de su sucursal</option><option value="readonly">Solo lectura — reportes</option></select></div><div class="f"><label>Sucursal (para operadores)</label><select id="ro-s"><option value="">Todas</option>${sucOpts()}</select></div></div>`,async()=>{const uid=document.getElementById('ro-id').value.trim();if(!uid){alert('Ingresá el UUID.');return}const{error}=await sb.from('user_roles').insert({user_id:uid,rol:document.getElementById('ro-r').value,sucursal_id:document.getElementById('ro-s').value||null});if(!error){closeMo();loadCfgUsr()}else alert(error.message)})}
 async function editRol(id,rolAct){openMo('Editar rol',`<div class="fg"><div class="f"><label>Rol</label><select id="ro-r"><option value="admin" ${rolAct==='admin'?'selected':''}>Admin</option><option value="operador" ${rolAct==='operador'?'selected':''}>Operador</option><option value="readonly" ${rolAct==='readonly'?'selected':''}>Solo lectura</option></select></div><div class="f"><label>Sucursal</label><select id="ro-s"><option value="">Todas</option>${sucOpts()}</select></div></div>`,async()=>{await sb.from('user_roles').update({rol:document.getElementById('ro-r').value,sucursal_id:document.getElementById('ro-s').value||null}).eq('id',id);closeMo();loadCfgUsr()})}
 async function delRol(id){if(!confirm('¿Eliminar rol?'))return;await sb.from('user_roles').delete().eq('id',id);loadCfgUsr()}
-function loadCfgApp(){const cfg=JSON.parse(localStorage.getItem('hg_cfg')||'{}');document.getElementById('tab-app').innerHTML=`<div class="card" style="max-width:460px"><div class="card-t">Identidad visual</div><div class="fg"><div class="f full"><label>Nombre del negocio</label><input id="ca-n" value="${cfg.n||'Gestión'}"></div><div class="f full"><label>Subtítulo</label><input id="ca-s" value="${cfg.s||'Sistema de gestión'}"></div><div class="f full"><label>Logo URL</label><input id="ca-l" value="${cfg.logo||''}" placeholder="https://..."><span style="font-size:11px;color:var(--text-muted);margin-top:3px;display:block">Subí tu logo a imgur.com y pegá el link directo.</span></div></div><button class="btn btn-p" style="margin-top:14px;width:100%" onclick="saveCfgApp()">Guardar</button><div id="ca-ok"></div></div>`}
+function loadCfgApp(){
+  const cfg=JSON.parse(localStorage.getItem('hg_cfg')||'{}');
+  const apiKey=IA_HEADERS['x-api-key']||'';
+  document.getElementById('tab-app').innerHTML=`<div class="card" style="max-width:460px">
+    <div class="card-t">Identidad visual</div>
+    <div class="fg">
+      <div class="f full"><label>Nombre del negocio</label><input id="ca-n" value="${cfg.n||'Gestión'}"></div>
+      <div class="f full"><label>Subtítulo</label><input id="ca-s" value="${cfg.s||'Sistema de gestión'}"></div>
+      <div class="f full"><label>Logo URL</label><input id="ca-l" value="${cfg.logo||''}" placeholder="https://..."><span style="font-size:11px;color:var(--text-muted);margin-top:3px;display:block">Subí tu logo a imgur.com y pegá el link directo.</span></div>
+    </div>
+    <button class="btn btn-p" style="margin-top:14px;width:100%" onclick="saveCfgApp()">Guardar</button>
+    <div id="ca-ok"></div>
+  </div>
+  <div class="card" style="max-width:460px;margin-top:0">
+    <div class="card-t">API Key (IA — lectura de facturas)</div>
+    <div class="al al-info" style="margin-bottom:12px">Se guarda localmente en este dispositivo. Necesaria para la lectura de facturas y tickets con IA.</div>
+    <div class="f full">
+      <label>Anthropic API Key</label>
+      <input id="ca-ak" type="password" value="${apiKey}" placeholder="sk-ant-...">
+    </div>
+    <button class="btn btn-p" style="margin-top:12px;width:100%" onclick="saveApiKey()">Guardar API Key</button>
+    <div id="ca-ak-ok"></div>
+  </div>`;
+}
+
+async function saveApiKey(){
+  const k=document.getElementById('ca-ak').value.trim();
+  if(!k){alert('Ingresá la API key.');return}
+  const btn=event.target;btn.textContent='Guardando...';btn.disabled=true;
+  await setApiKey(k);
+  btn.textContent='Guardar API Key';btn.disabled=false;
+  document.getElementById('ca-ak-ok').innerHTML='<div class="al al-ok" style="margin-top:10px">✓ API Key guardada — disponible en todos los dispositivos</div>';
+}
 function saveCfgApp(){const cfg={n:document.getElementById('ca-n').value,s:document.getElementById('ca-s').value,logo:document.getElementById('ca-l').value};localStorage.setItem('hg_cfg',JSON.stringify(cfg));_cfg=cfg;applyBrand();document.getElementById('ca-ok').innerHTML='<div class="al al-ok" style="margin-top:10px">✓ Guardado</div>'}
 
 // ---- INIT ----
