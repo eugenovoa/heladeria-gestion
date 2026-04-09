@@ -1221,14 +1221,17 @@ async function delCierre(id){if(!confirm('¿Eliminar?'))return;await sb.from('ci
 // ---- STOCK ----
 async function stock(){
   loading();setR(`<button class="btn btn-p" onclick="newStock()">+ Registrar stock</button>`);
-  const[{data},{data:fd}]=await Promise.all([
+  const[{data},{data:fd},{data:gmp}]=await Promise.all([
     sb.from('stock').select('*,productos(nombre,unidad_medida,categorias_producto(nombre)),temporadas(nombre)').order('tipo').order('created_at'),
-    sb.from('facturas').select('monto_neto').eq('tipo','factura')
+    sb.from('facturas').select('monto_neto').eq('tipo','factura'),
+    sb.from('gastos').select('monto_neto,monto,categorias_gasto(nombre)').not('categoria_id','is',null)
   ]);
   const ini=(data||[]).filter(s=>s.tipo==='inicial'),fin=(data||[]).filter(s=>s.tipo==='final');
   const tC=(fd||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
+  // Add gastos of "Materias Primas" category to CMV
+  const gastosMP=(gmp||[]).filter(g=>/materia|prima/i.test(g.categorias_gasto?.nombre||'')).reduce((a,g)=>a+parseFloat(g.monto_neto||g.monto),0);
   const tI=ini.reduce((a,s)=>a+parseFloat(s.valor_total||0),0),tF=fin.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
-  const cmv=tI+tC-tF;
+  const cmv=tI+tC+gastosMP-tF;
   const renderT=(rows,lbl)=>rows.length===0?`<div class="empty" style="padding:20px">Sin stock ${lbl}</div>`:`<div style="overflow-x:auto"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Cant.</th><th>Precio unit.</th><th>Valor total</th><th></th></tr></thead><tbody>${rows.map(s=>`<tr><td>${s.productos?.nombre||'—'}</td><td><span class="bd bd-gray">${s.productos?.categorias_producto?.nombre||'—'}</span></td><td>${s.productos?.unidad_medida||'—'}</td><td>${s.cantidad}</td><td>${fmt(s.precio_unitario)}</td><td style="font-weight:600">${fmt(s.valor_total)}</td><td><button class="btn btn-sm btn-d" onclick="delStock('${s.id}')">✕</button></td></tr>`).join('')}<tr class="trow-t"><td colspan="5">Total</td><td>${fmt(rows.reduce((a,s)=>a+parseFloat(s.valor_total||0),0))}</td><td></td></tr></tbody></table></div>`;
   document.getElementById('ct').innerHTML=`
     <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-color:#bae6fd">
@@ -1312,16 +1315,22 @@ async function loadErr(){
   // CMV
   const{data:cd}=await sb.from('facturas').select('monto_neto').eq('tipo','factura').gte('fecha_emision',desde).lte('fecha_emision',hasta);
   const compras=(cd||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
+  // Gastos de Materias Primas incluidos en CMV
+  const{data:gmpD}=await sb.from('gastos').select('monto_neto,monto,categorias_gasto(nombre)').gte('fecha',desde).lte('fecha',hasta).not('categoria_id','is',null);
+  const comprasMP=(gmpD||[]).filter(g=>/materia|prima/i.test(g.categorias_gasto?.nombre||'')).reduce((a,g)=>a+parseFloat(g.monto_neto||g.monto),0);
   const{data:sd}=await sb.from('stock').select('tipo,valor_total').eq('temporada_id',tid);
   const sI=(sd||[]).filter(s=>s.tipo==='inicial').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
   const sF=(sd||[]).filter(s=>s.tipo==='final').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
-  const cmv=sI+compras-sF,ub=totV-cmv;
+  const cmv=sI+compras+comprasMP-sF,ub=totV-cmv;
 
   // Gastos
-  const{data:gd}=await sb.from('gastos').select('monto,sucursal_id,categorias_gasto(tipo)').gte('fecha',desde).lte('fecha',hasta);
+  const{data:gd}=await sb.from('gastos').select('monto,sucursal_id,categorias_gasto(nombre,tipo)').gte('fecha',desde).lte('fecha',hasta);
   const gSuc={};sucsV.forEach(s=>{gSuc[s.id]={nombre:s.nombre,total:0}});
   let gGen=0,gFin=0,gAnts=0;
-  (gd||[]).forEach(g=>{const tp=g.categorias_gasto?.tipo,m=parseFloat(g.monto);if(tp==='financiero'){gFin+=m;return}if(tp==='anticipo_impuesto'){gAnts+=m;return}if(tp==='impuesto')return;if(g.sucursal_id&&gSuc[g.sucursal_id])gSuc[g.sucursal_id].total+=m;else gGen+=m});
+  (gd||[]).forEach(g=>{const tp=g.categorias_gasto?.tipo,nm=g.categorias_gasto?.nombre||'',m=parseFloat(g.monto);
+    if(tp==='financiero'){gFin+=m;return}if(tp==='anticipo_impuesto'){gAnts+=m;return}if(tp==='impuesto')return;
+    if(/materia|prima/i.test(nm))return; // MP already in CMV
+    if(g.sucursal_id&&gSuc[g.sucursal_id])gSuc[g.sucursal_id].total+=m;else gGen+=m});
   const totG=Object.values(gSuc).reduce((a,v)=>a+v.total,0)+gGen;
   const ebit=ub-totG,ebt=ebit-gFin;
 
@@ -1353,7 +1362,8 @@ async function loadErr(){
         <tr class="st"><td>Total ventas</td><td style="color:${c(totV)};font-weight:700">${fmt(totV)}</td></tr>
         <tr class="hd"><td colspan="2">CMV — consolidado</td></tr>
         <tr class="ind"><td>Stock inicial</td><td>${fmt(sI)}</td></tr>
-        <tr class="ind"><td>+ Compras netas (sin MwSt)</td><td>${fmt(compras)}</td></tr>
+        <tr class="ind"><td>+ Compras netas facturas (sin MwSt)</td><td>${fmt(compras)}</td></tr>
+        ${comprasMP>0?`<tr class="ind"><td>+ Compras MP gastos al contado</td><td>${fmt(comprasMP)}</td></tr>`:''}
         <tr class="ind"><td>- Stock final</td><td>(${fmt(sF)})</td></tr>
         <tr class="st"><td>CMV</td><td style="color:var(--red)">(${fmt(cmv)})</td></tr>
         <tr class="st" style="border-top:2px solid var(--border-md)"><td>Utilidad bruta</td><td style="color:${c(ub)};font-weight:700">${fmt(ub)}</td></tr>
@@ -1450,8 +1460,11 @@ async function calcMetrics(tid){
   const{data:sd}=await sb.from('stock').select('tipo,valor_total').eq('temporada_id',tid);
   const si=(sd||[]).filter(s=>s.tipo==='inicial').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
   const sf=(sd||[]).filter(s=>s.tipo==='final').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
-  const cmv=si+c-sf;
-  return{nombre:tm?.nombre||'?',v,c,cmv,g,gf,ub:v-cmv,ebit:v-cmv-g,ebt:v-cmv-g-gf};
+  const cMP=(gd||[]).filter(x=>/materia|prima/i.test(x.categorias_gasto?.nombre||'')).reduce((a,x)=>a+parseFloat(x.monto),0);
+  const cmv=si+c+cMP-sf;
+  // Remove MP from operational gastos to avoid double counting
+  const gOp=g-cMP;
+  return{nombre:tm?.nombre||'?',v,c,cmv,g:gOp,gf,ub:v-cmv,ebit:v-cmv-gOp,ebt:v-cmv-gOp-gf};
 }
 async function loadComp(){
   document.getElementById('comp-body').innerHTML='<div class="ld">Calculando...</div>';
