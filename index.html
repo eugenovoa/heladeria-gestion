@@ -357,7 +357,7 @@ const fmtD=d=>d?new Date(d+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit
 const today=()=>new Date().toISOString().split('T')[0];
 const loading=()=>document.getElementById('ct').innerHTML='<div class="ld">Cargando...</div>';
 const setR=h=>document.getElementById('tbar-r').innerHTML=h;
-function openMo(title,body,saveFn,noSave=false){document.getElementById('mo-title').textContent=title;document.getElementById('mo-body').innerHTML=body;_moFn=saveFn;document.getElementById('mo-save').style.display=noSave?'none':'';document.getElementById('mo').classList.add('open')}
+function openMo(title,body,saveFn,noSave=false){document.getElementById('mo-title').textContent=title;document.getElementById('mo-body').innerHTML=body;_moFn=saveFn;document.getElementById('mo-save').textContent='Guardar';document.getElementById('mo-save').style.display=noSave?'none':'';document.getElementById('mo').classList.add('open')}
 function closeMo(){document.getElementById('mo').classList.remove('open');_moFn=null}
 async function saveMo(){if(_moFn)await _moFn()}
 function bEst(e){const m={pendiente:'warn',pagada:'ok',vencida:'err',pagado:'ok',vencido:'err'};return`<span class="bd bd-${m[e]||'gray'}">${e}</span>`}
@@ -929,11 +929,23 @@ async function newRec(){const html=await recFrm();openMo('Nuevo gasto recurrente
 async function editRec(id){const{data:r}=await sb.from('gastos_recurrentes').select('*').eq('id',id).single();const html=await recFrm(r);openMo('Editar gasto recurrente',html,async()=>{const{error}=await sb.from('gastos_recurrentes').update({concepto:document.getElementById('rc-c').value,monto:parseFloat(document.getElementById('rc-m').value)||0,frecuencia:document.getElementById('rc-fr').value,dia_del_mes:parseInt(document.getElementById('rc-d').value)||1,categoria_id:document.getElementById('rc-cat').value||null,sucursal_id:document.getElementById('rc-s').value||null,fecha_inicio:document.getElementById('rc-fi').value,fecha_fin:document.getElementById('rc-ff').value||null,notas:document.getElementById('rc-no').value}).eq('id',id);if(!error){closeMo();await genVencs(id,false);recurrentes()}else alert(error.message)})}
 async function genVencs(gid,alert_ok=false){
   const{data:gr}=await sb.from('gastos_recurrentes').select('*').eq('id',gid).single();if(!gr)return;
-  const inicio=new Date(gr.fecha_inicio+'T00:00:00');
-  const fin=gr.fecha_fin?new Date(gr.fecha_fin+'T00:00:00'):new Date(new Date().getFullYear()+1,11,31);
+  // Parse dates as local to avoid UTC timezone shift
+  const parseFecha=s=>{const[y,m,d]=s.split('-').map(Number);return{y,m:m-1,d}};
+  const ini=parseFecha(gr.fecha_inicio);
+  const finParts=gr.fecha_fin?parseFecha(gr.fecha_fin):{y:new Date().getFullYear()+1,m:11,d:31};
+  const finMs=new Date(finParts.y,finParts.m,finParts.d).getTime();
   const salto={mensual:1,trimestral:3,semestral:6,anual:12}[gr.frecuencia]||1;
-  const vs=[];let cur=new Date(inicio.getFullYear(),inicio.getMonth(),gr.dia_del_mes),cnt=0;
-  while(cur<=fin&&cnt<120){vs.push({gasto_recurrente_id:gid,fecha_vencimiento:cur.toISOString().split('T')[0],monto:gr.monto,estado:'pendiente'});cur=new Date(cur.getFullYear(),cur.getMonth()+salto,gr.dia_del_mes);cnt++}
+  const dia=gr.dia_del_mes;
+  const vs=[];let yr=ini.y,mo=ini.m,cnt=0;
+  while(cnt<120){
+    const cur=new Date(yr,mo,dia);
+    if(cur.getTime()>finMs)break;
+    // Format as YYYY-MM-DD using local date parts
+    const ds=`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+    vs.push({gasto_recurrente_id:gid,fecha_vencimiento:ds,monto:gr.monto,estado:'pendiente'});
+    mo+=salto;if(mo>11){yr+=Math.floor(mo/12);mo=mo%12}
+    cnt++;
+  }
   await sb.from('vencimientos_recurrentes').delete().eq('gasto_recurrente_id',gid).eq('estado','pendiente');
   if(vs.length)await sb.from('vencimientos_recurrentes').insert(vs);
   if(alert_ok)alert(`✓ Generados ${vs.length} vencimientos.`);
@@ -1118,7 +1130,7 @@ async function loadErr(){
         <tr class="hd"><td colspan="2">Gastos operativos</td></tr>
         ${sucsV.filter(s=>(gSuc[s.id]?.total||0)>0).map(s=>`<tr class="suc"><td>${s.nombre}</td><td>(${fmt(gSuc[s.id].total)})</td></tr>`).join('')}
         ${gGen>0?`<tr class="ind"><td>Gastos generales</td><td>(${fmt(gGen)})</td></tr>`:''}
-        <tr class="st"><td>EBIT</td><td style="color:${c(ebit)}">${fmt(ebit)}</td></tr>
+        <tr class="st"><td>Resultado operativo</td><td style="color:${c(ebit)}">${fmt(ebit)}</td></tr>
         ${gFin>0?`<tr class="ind"><td>Gastos financieros</td><td>(${fmt(gFin)})</td></tr>`:''}
         <tr class="st" style="border-top:2px solid var(--border-md)"><td><strong>EBT</strong></td><td style="color:${c(ebt)};font-weight:700">${fmt(ebt)}</td></tr>
         <tr class="hd"><td colspan="2">Impuestos</td></tr>
@@ -1216,7 +1228,7 @@ async function loadComp(){
   const row=(lbl,va,vb)=>{const d=vb-va,p=va!==0?(d/Math.abs(va)*100).toFixed(1):'—',col=d>=0?'var(--green)':'var(--red)';return`<tr><td>${lbl}</td><td style="text-align:right">${fmt(va)}</td><td style="text-align:right">${fmt(vb)}</td><td style="text-align:right;color:${col};font-weight:600">${d>=0?'+':''}${fmt(d)}</td><td style="text-align:right;font-size:12px;color:${col}">${p!=='—'?p+'%':'—'}</td></tr>`};
   document.getElementById('comp-body').innerHTML=`<div class="card" style="max-width:680px">
     <table><thead><tr><th>Concepto</th><th style="text-align:right">${a.nombre}</th><th style="text-align:right">${b.nombre}</th><th style="text-align:right">Diferencia</th><th style="text-align:right">Var.%</th></tr></thead><tbody>
-    ${row('Ventas netas',a.v,b.v)}${row('CMV',a.cmv,b.cmv)}${row('Utilidad bruta',a.ub,b.ub)}${row('Gastos operativos',a.g,b.g)}${row('EBIT',a.ebit,b.ebit)}${row('Gastos financieros',a.gf,b.gf)}${row('EBT',a.ebt,b.ebt)}
+    ${row('Ventas netas',a.v,b.v)}${row('CMV',a.cmv,b.cmv)}${row('Utilidad bruta',a.ub,b.ub)}${row('Gastos operativos',a.g,b.g)}${row('Resultado operativo',a.ebit,b.ebit)}${row('Gastos financieros',a.gf,b.gf)}${row('Resultado antes de impuestos',a.ebt,b.ebt)}
     </tbody></table>
   </div>`;
 }
