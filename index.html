@@ -856,31 +856,65 @@ async function newGastoIA(){
       <div class="fg">
         <div class="f"><label>Fecha *</label><input id="gi-d" type="date"></div>
         <div class="f"><label>Total (€) *</label><input id="gi-t" type="number" step="0.01"></div>
-        <div class="f full"><label>Concepto *</label><input id="gi-c"></div>
-        <div class="f"><label>Neto</label><input id="gi-n" type="number" step="0.01" oninput="calcGM()"></div>
+        <div class="f full"><label>Proveedor / Concepto *</label><input id="gi-c" placeholder="Ej: Supermercado Lidl"></div>
+        <div class="f"><label>Neto (sin MwSt)</label><input id="gi-n" type="number" step="0.01" oninput="calcGM()"></div>
         <div class="f"><label>MwSt %</label><input id="gi-p" type="number" value="19" oninput="calcGM()"></div>
         <div class="f"><label>MwSt monto</label><input id="gi-m" type="number" step="0.01"></div>
         <div class="f"><label>Categoría</label><select id="gi-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
         <div class="f"><label>Sucursal</label><select id="gi-s"><option value="">General</option>${sucOpts()}</select></div>
       </div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Líneas de detalle</div>
+      <div id="gi-lis"></div>
+      <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('gi-lis')">+ Línea</button>
+      <div style="margin-top:12px"><label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Adjuntar archivo (opcional)</label><input type="file" id="gi-adj" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%"></div>
     </div>`,
   async()=>{
     const fecha=document.getElementById('gi-d').value;if(!fecha){alert('Completá la fecha.');return}
     await getOrCreateTmp(fecha);
     const monto=parseFloat(document.getElementById('gi-t').value)||0;
-    const{error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto,monto_neto:parseFloat(document.getElementById('gi-n').value)||monto,mwst_porcentaje:parseFloat(document.getElementById('gi-p').value)||0,mwst_monto:parseFloat(document.getElementById('gi-m').value)||0,sucursal_id:document.getElementById('gi-s').value||null});
-    if(!error){closeMo();gastos()}else alert(error.message);
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto,monto_neto:parseFloat(document.getElementById('gi-n').value)||monto,mwst_porcentaje:parseFloat(document.getElementById('gi-p').value)||0,mwst_monto:parseFloat(document.getElementById('gi-m').value)||0,sucursal_id:document.getElementById('gi-s').value||null}).select('id').single();
+    if(error){alert(error.message);return}
+    const file=document.getElementById('gi-adj').files[0];
+    if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
+    closeMo();gastos();
   });
 }
 function handleGDrop(e){e.preventDefault();e.currentTarget.classList.remove('over');if(e.dataTransfer.files[0])procGastoIA(e.dataTransfer.files[0])}
 async function procGastoIA(file){
-  document.getElementById('g-ias').innerHTML='<div class="al al-info">⏳ Analizando ticket...</div>';
+  document.getElementById('g-ias').innerHTML='<div class="al al-info">⏳ Analizando ticket con IA...</div>';
   const b64=await fileToB64(file);const r=await iaTicket(b64,file.type||'image/jpeg');
-  document.getElementById('g-ias').innerHTML=r?'<div class="al al-ok">✓ Leído — verificá y completá.</div>':'<div class="al al-warn">No se pudo leer. Completá manualmente.</div>';
+  if(!r){
+    document.getElementById('g-ias').innerHTML='<div class="al al-warn">No se pudo leer. Completá manualmente.</div>';
+    document.getElementById('g-iaf').style.display='block';
+    document.getElementById('gi-d').value=today();
+    document.getElementById('mo-save').style.display='';
+    return;
+  }
+  window._iaTicketR=r;
+  document.getElementById('g-ias').innerHTML='<div class="al al-ok">✓ Leído — verificá y guardá.</div>';
   document.getElementById('g-iaf').style.display='block';
   document.getElementById('mo-save').style.display='';
-  if(r){document.getElementById('gi-d').value=r.fecha||today();document.getElementById('gi-t').value=r.monto_total||0;document.getElementById('gi-c').value=r.concepto||r.proveedor||'';document.getElementById('gi-n').value=r.monto_neto||r.monto_total||0;document.getElementById('gi-p').value=r.mwst_pct||19;document.getElementById('gi-m').value=r.mwst_monto||0;}
-  else{document.getElementById('gi-d').value=today();}
+  // Fill header fields
+  document.getElementById('gi-d').value=r.fecha||today();
+  document.getElementById('gi-t').value=(r.total_bruto||0).toFixed(2);
+  document.getElementById('gi-c').value=r.proveedor||'';
+  // Calculate neto/mwst totals
+  const n7=r.neto_7||0,n19=r.neto_19||0,m7=r.mwst_7||0,m19=r.mwst_19||0;
+  document.getElementById('gi-n').value=(n7+n19).toFixed(2);
+  document.getElementById('gi-p').value=n19>=n7?19:7;
+  document.getElementById('gi-m').value=(m7+m19).toFixed(2);
+  // Render lines
+  const lisContainer=document.getElementById('gi-lis');
+  if(lisContainer){
+    lisContainer.innerHTML=(r.lineas||[]).map(l=>`
+      <div class="li">
+        <input value="${l.descripcion||''}" placeholder="Descripción">
+        <input type="number" value="${l.cantidad||1}">
+        <input type="number" value="${(l.monto_neto||0).toFixed(2)}" step="0.01">
+        <select><option value="7" ${l.mwst_pct===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select>
+        <button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button>
+      </div>`).join('');
+  }
 }
 function calcGM(){const n=parseFloat(document.getElementById('gi-n').value)||0,p=parseFloat(document.getElementById('gi-p').value)||0;document.getElementById('gi-m').value=(n*p/100).toFixed(2)}
 async function newGastoMan(){
