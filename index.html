@@ -756,6 +756,10 @@ async function vencimientos(){
     sb.from('facturas').select('*,proveedores(nombre)').in('estado',['pendiente','vencida']).order('fecha_vencimiento'),
     sb.from('vencimientos_recurrentes').select('*,gastos_recurrentes(concepto,sucursal_id)').in('estado',['pendiente','vencido']).order('fecha_vencimiento')
   ]);
+  // DEBUG - remove after diagnosis
+  console.log('FACTS raw dates:', (facts||[]).map(f=>f.fecha_vencimiento));
+  console.log('RECS raw dates:', (recs||[]).map(r=>r.fecha_vencimiento));
+  console.log('WEEK days:', Array.from({length:7},(_,i)=>{const d=new Date(lun);d.setDate(lun.getDate()+i);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}));
   const dias=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   const cols=Array.from({length:7},(_,i)=>{
     const d=new Date(lun);d.setDate(lun.getDate()+i);const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
