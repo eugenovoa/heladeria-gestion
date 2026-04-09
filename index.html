@@ -347,7 +347,7 @@ async function autoMarcarVencidas(){
     .update({estado:'vencida'})
     .eq('estado','pendiente')
     .eq('tipo','factura')
-    .lt('fecha_vencimiento',hoy);
+    .lte('fecha_vencimiento',hoy);
 }
 
 function nav(p){
