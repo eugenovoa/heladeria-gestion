@@ -375,6 +375,18 @@ async function getOrCreateTmp(fecha){
   return n?.id||null;
 }
 function fileToB64(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(f)})}
+async function uploadAdjunto(file,carpeta,nombre){
+  if(!file)return null;
+  const ext=file.name.split('.').pop().toLowerCase();
+  const path=`${carpeta}/${nombre}.${ext}`;
+  const{error}=await sb.storage.from('adjuntos').upload(path,file,{upsert:true,contentType:file.type});
+  if(error){console.error('Upload:',error.message);return null}
+  const{data:signed}=await sb.storage.from('adjuntos').createSignedUrl(path,60*60*24*365*10);
+  return signed?.signedUrl||null;
+}
+function adjuntoField(id='adj-file'){return`<div class="f full" style="margin-top:4px"><label>Adjuntar archivo (opcional)</label><input type="file" id="${id}" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%"></div>`}
+function verAdjunto(url){if(!url){alert('Sin adjunto.');return}window.open(url,'_blank')}
+
 function addLi(cid){const d=document.createElement('div');d.className='li';d.innerHTML=`<input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01" placeholder="Neto €"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button>`;document.getElementById(cid).appendChild(d)}
 function getLis(cid){return[...document.getElementById(cid).querySelectorAll('.li')].map(el=>{const ins=el.querySelectorAll('input'),sel=el.querySelector('select');return{desc:ins[0].value,qty:parseFloat(ins[1].value)||0,neto:parseFloat(ins[2].value)||0,mwst:parseInt(sel.value)||7}})}
 
@@ -567,7 +579,7 @@ async function facturas(){
         <td style="color:${f.estado==='vencida'?'var(--red)':''};font-weight:${f.estado==='vencida'?'600':'400'}">${fmtD(f.fecha_vencimiento)}</td>
         <td style="font-weight:600">${fmt(f.monto_total)}</td>
         <td>${bEst(f.estado)}</td>
-        <td><div style="display:flex;gap:4px"><button class="btn btn-sm" onclick="verFact('${f.id}')">Ver</button><button class="btn btn-sm btn-g" onclick="editFact('${f.id}')">Editar</button></div></td>
+        <td><div style="display:flex;gap:4px">${f.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${f.adjunto_url}')">📎</button>`:''}<button class="btn btn-sm" onclick="verFact('${f.id}')">Ver</button><button class="btn btn-sm btn-g" onclick="editFact('${f.id}')">Editar</button></div></td>
       </tr>`).join('')}
       </tbody></table></div>
     </div>
@@ -618,7 +630,8 @@ async function procFactIA(file){
     <button class="btn btn-sm" style="margin-top:8px" onclick="addLi('ia-lis')">+ Línea</button>
     <div style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--r);font-size:12px">
       Neto 7%: <strong>${fmt(r.neto_7||0)}</strong> MwSt 7%: <strong>${fmt(r.mwst_7||0)}</strong> · Neto 19%: <strong>${fmt(r.neto_19||0)}</strong> MwSt 19%: <strong>${fmt(r.mwst_19||0)}</strong> · Total: <strong>${fmt(r.total_bruto||0)}</strong>
-    </div>`;
+    </div>
+    ${adjuntoField('fi-fadj')}`;
   swMoTab(document.querySelector('.mo-tab:last-child'),'tab-ver');
   document.getElementById('mo-save').textContent='Guardar factura';document.getElementById('mo-save').style.display='';
 }
@@ -634,6 +647,8 @@ async function guardarFactIA(){
   const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('ia-nm').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ia-fv').value||fe,monto_neto:(n7+n19)*mult,mwst_porcentaje:n19>n7?19:7,mwst_monto:(m7+m19)*mult,monto_total:(n7+n19+m7+m19)*mult,tipo:tp,estado:'pendiente'}).select('id').single();
   if(error){alert(error.message);return}
   if(lis.length&&fact?.id)await sb.from('lineas_factura').insert(lis.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.neto*mult,mwst_porcentaje:l.mwst,mwst_monto:l.neto*l.mwst/100*mult})));
+  const adjFile=document.getElementById('fi-fadj')?.files[0];
+  if(adjFile&&fact?.id){const yr=fe.substring(0,4);const url=await uploadAdjunto(adjFile,`facturas/${yr}/${(window._iaProvs||[]).find(p=>p.id===pv)?.nombre||'varios'}`,`fact-${fact.id}`);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
   closeMo();facturas();
 }
 
@@ -648,7 +663,8 @@ async function newFactMan(){
   </div>
   <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Líneas</div>
   <div id="ml"><div class="li"><input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div></div>
-  <button class="btn btn-sm" style="margin-top:8px" onclick="addLi('ml')">+ Línea</button>`,
+  <button class="btn btn-sm" style="margin-top:8px" onclick="addLi('ml')">+ Línea</button>
+  <div style="margin-top:14px">${adjuntoField('fi-madj')}</div>`,
   async()=>{
     const fe=document.getElementById('ffe').value,pv=document.getElementById('fp').value;
     if(!pv){alert('Seleccioná proveedor.');return}
@@ -661,6 +677,8 @@ async function newFactMan(){
     const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('fn').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ffv').value||fe,monto_neto:(n7+n19)*mult,mwst_porcentaje:n19>n7?19:7,mwst_monto:(m7+m19)*mult,monto_total:(n7+n19+m7+m19)*mult,tipo:tp,estado:'pendiente'}).select('id').single();
     if(error){alert(error.message);return}
     if(lis.length&&fact?.id)await sb.from('lineas_factura').insert(lis.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.neto*mult,mwst_porcentaje:l.mwst,mwst_monto:l.neto*l.mwst/100*mult})));
+    const mAdj=document.getElementById('fi-madj')?.files[0];
+    if(mAdj&&fact?.id){const{data:pInfo}=await sb.from('proveedores').select('nombre').eq('id',pv).single();const url=await uploadAdjunto(mAdj,`facturas/${fe.substring(0,4)}/${pInfo?.nombre||'varios'}`,`fact-${fact.id}`);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
     closeMo();facturas();
   });
 }
@@ -753,13 +771,13 @@ async function vencimientos(){
   const localStr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const lS=localStr(lun),dS=localStr(dom),hS=today();
   const[{data:facts},{data:recs}]=await Promise.all([
-    sb.from('facturas').select('*,proveedores(nombre)').in('estado',['pendiente','vencida']).order('fecha_vencimiento'),
-    sb.from('vencimientos_recurrentes').select('*,gastos_recurrentes(concepto,sucursal_id)').in('estado',['pendiente','vencido']).order('fecha_vencimiento')
+    sb.from('facturas').select('id,numero_factura,monto_total,estado,tipo,fecha_vencimiento,proveedores(nombre)').in('estado',['pendiente','vencida']).order('fecha_vencimiento'),
+    sb.from('vencimientos_recurrentes').select('id,monto,estado,fecha_vencimiento,gastos_recurrentes(concepto,sucursal_id)').in('estado',['pendiente','vencido']).order('fecha_vencimiento')
   ]);
-  // DEBUG - remove after diagnosis
-  console.log('FACTS raw dates:', (facts||[]).map(f=>f.fecha_vencimiento));
-  console.log('RECS raw dates:', (recs||[]).map(r=>r.fecha_vencimiento));
-  console.log('WEEK days:', Array.from({length:7},(_,i)=>{const d=new Date(lun);d.setDate(lun.getDate()+i);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}));
+
+  // Normalize dates: strip any time/timezone component, keep only YYYY-MM-DD
+  (facts||[]).forEach(f=>{if(f.fecha_vencimiento)f.fecha_vencimiento=f.fecha_vencimiento.substring(0,10)});
+  (recs||[]).forEach(r=>{if(r.fecha_vencimiento)r.fecha_vencimiento=r.fecha_vencimiento.substring(0,10)});
   const dias=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   const cols=Array.from({length:7},(_,i)=>{
     const d=new Date(lun);d.setDate(lun.getDate()+i);const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -876,13 +894,51 @@ async function newGastoMan(){
     <div class="f"><label>Categoría</label><select id="gm-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="gm-s"><option value="">General</option>${sucOpts()}</select></div>
     <div class="f full"><label>Notas</label><input id="gm-no"></div>
+    ${adjuntoField('gm-adj')}
   </div>`,async()=>{
     const fecha=document.getElementById('gm-d').value;await getOrCreateTmp(fecha);
-    const{error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:parseFloat(document.getElementById('gm-t').value)||0,monto_neto:parseFloat(document.getElementById('gm-n').value)||parseFloat(document.getElementById('gm-t').value)||0,mwst_porcentaje:parseFloat(document.getElementById('gm-p').value)||0,mwst_monto:parseFloat(document.getElementById('gm-m').value)||0,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value});
-    if(!error){closeMo();gastos()}else alert(error.message);
+    const file=document.getElementById('gm-adj').files[0];
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:parseFloat(document.getElementById('gm-t').value)||0,monto_neto:parseFloat(document.getElementById('gm-n').value)||parseFloat(document.getElementById('gm-t').value)||0,mwst_porcentaje:parseFloat(document.getElementById('gm-p').value)||0,mwst_monto:parseFloat(document.getElementById('gm-m').value)||0,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value}).select('id').single();
+    if(error){alert(error.message);return}
+    if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
+    closeMo();gastos();
   });
 }
 function calcGMe(){const n=parseFloat(document.getElementById('gm-n').value)||0,p=parseFloat(document.getElementById('gm-p').value)||0;document.getElementById('gm-m').value=(n*p/100).toFixed(2)}
+async function editGasto(id){
+  const[{data:g},{data:cats}]=await Promise.all([
+    sb.from('gastos').select('*').eq('id',id).single(),
+    sb.from('categorias_gasto').select('*').order('nombre')
+  ]);
+  openMo('Editar gasto',`<div class="fg">
+    <div class="f"><label>Fecha *</label><input id="eg-d" type="date" value="${g.fecha}"></div>
+    <div class="f"><label>Total (€) *</label><input id="eg-t" type="number" step="0.01" value="${g.monto}"></div>
+    <div class="f full"><label>Concepto *</label><input id="eg-c" value="${g.concepto||''}"></div>
+    <div class="f"><label>Neto (sin MwSt)</label><input id="eg-n" type="number" step="0.01" value="${g.monto_neto||g.monto}" oninput="calcEGM()"></div>
+    <div class="f"><label>MwSt %</label><input id="eg-p" type="number" value="${g.mwst_porcentaje||0}" oninput="calcEGM()"></div>
+    <div class="f"><label>MwSt monto</label><input id="eg-m" type="number" step="0.01" value="${g.mwst_monto||0}"></div>
+    <div class="f"><label>Categoría</label><select id="eg-cat"><option value="">— Seleccionar —</option>${cats.map(c=>`<option value="${c.id}" ${c.id===g.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
+    <div class="f"><label>Sucursal</label><select id="eg-s"><option value="">General</option>${sucOpts()}</select></div>
+    <div class="f full"><label>Notas</label><input id="eg-no" value="${g.notas||''}"></div>
+  </div>`,async()=>{
+    const{error}=await sb.from('gastos').update({
+      fecha:document.getElementById('eg-d').value,
+      concepto:document.getElementById('eg-c').value,
+      categoria_id:document.getElementById('eg-cat').value||null,
+      monto:parseFloat(document.getElementById('eg-t').value)||0,
+      monto_neto:parseFloat(document.getElementById('eg-n').value)||0,
+      mwst_porcentaje:parseFloat(document.getElementById('eg-p').value)||0,
+      mwst_monto:parseFloat(document.getElementById('eg-m').value)||0,
+      sucursal_id:document.getElementById('eg-s').value||null,
+      notas:document.getElementById('eg-no').value
+    }).eq('id',id);
+    if(!error){closeMo();gastos()}else alert(error.message);
+  });
+  // Set sucursal after modal opens
+  setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id},50);
+}
+function calcEGM(){const n=parseFloat(document.getElementById('eg-n').value)||0,p=parseFloat(document.getElementById('eg-p').value)||0;document.getElementById('eg-m').value=(n*p/100).toFixed(2)}
+
 async function delGasto(id){if(!confirm('¿Eliminar?'))return;await sb.from('gastos').delete().eq('id',id);gastos()}
 
 // ---- GASTOS RECURRENTES ----
@@ -1039,7 +1095,7 @@ async function delStock(id){if(!confirm('¿Eliminar?'))return;await sb.from('sto
 // ---- REPORTE COMPRAS ----
 async function repCompras(){
   loading();const temps=await getTmps();
-  document.getElementById('ct').innerHTML=`<div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end;flex-wrap:wrap"><div class="f"><label>Temporada</label><select id="rc-tmp" onchange="loadRepCompras()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${tmOpts(temps)}</select></div></div><div id="rc-body"></div>`;
+  document.getElementById('ct').innerHTML=`<div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end;flex-wrap:wrap"><div class="f"><label>Temporada</label><select id="rc-tmp" onchange="loadRepCompras()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${tmOpts(temps)}</select></div><button class="btn" onclick="exportPDF('Reporte de compras')">⬇ Exportar PDF</button></div><div id="rc-body"></div>`;
   loadRepCompras();
 }
 async function loadRepCompras(){
@@ -1071,7 +1127,7 @@ async function loadRepCompras(){
 async function repErr(){
   loading();const temps=await getTmps();
   if(!temps.length){document.getElementById('ct').innerHTML='<div class="empty">Sin temporadas.</div>';return}
-  document.getElementById('ct').innerHTML=`<div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end;flex-wrap:wrap"><div class="f"><label>Temporada</label><select id="err-tmp" onchange="loadErr()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${tmOpts(temps)}</select></div></div><div id="err-body"></div>`;
+  document.getElementById('ct').innerHTML=`<div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end;flex-wrap:wrap"><div class="f"><label>Temporada</label><select id="err-tmp" onchange="loadErr()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${tmOpts(temps)}</select></div><button class="btn" onclick="exportPDF('Estado de resultados')">⬇ Exportar PDF</button></div><div id="err-body"></div>`;
   loadErr();
 }
 async function loadErr(){
@@ -1161,7 +1217,7 @@ async function saveImp(tid){
 // ---- FLUJO DE CAJA ----
 async function repFlujo(){
   loading();const temps=await getTmps();
-  document.getElementById('ct').innerHTML=`<div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end"><div class="f"><label>Temporada</label><select id="fl-tmp" onchange="loadFlujo()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${tmOpts(temps)}</select></div></div><div id="fl-body"></div>`;
+  document.getElementById('ct').innerHTML=`<div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end;flex-wrap:wrap"><div class="f"><label>Temporada</label><select id="fl-tmp" onchange="loadFlujo()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${tmOpts(temps)}</select></div><button class="btn" onclick="exportPDF('Flujo de caja')">⬇ Exportar PDF</button></div><div id="fl-body"></div>`;
   loadFlujo();
 }
 async function loadFlujo(){
@@ -1209,6 +1265,7 @@ async function repComp(){
     <div class="f"><label>Temporada A</label><select id="ca" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${temps.map((t,i)=>`<option value="${t.id}" ${i===1?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Temporada B</label><select id="cb" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${temps.map((t,i)=>`<option value="${t.id}" ${i===0?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
     <button class="btn btn-p" onclick="loadComp()">Comparar</button>
+    <button class="btn" onclick="exportPDF('Comparativo de temporadas')">⬇ Exportar PDF</button>
   </div><div id="comp-body"></div>`;
 }
 async function calcMetrics(tid){
@@ -1299,6 +1356,66 @@ async function saveApiKey(){
   document.getElementById('ca-ak-ok').innerHTML='<div class="al al-ok" style="margin-top:10px">✓ API Key guardada — disponible en todos los dispositivos</div>';
 }
 function saveCfgApp(){const cfg={n:document.getElementById('ca-n').value,s:document.getElementById('ca-s').value,logo:document.getElementById('ca-l').value};localStorage.setItem('hg_cfg',JSON.stringify(cfg));_cfg=cfg;applyBrand();document.getElementById('ca-ok').innerHTML='<div class="al al-ok" style="margin-top:10px">✓ Guardado</div>'}
+
+
+// =============================================
+// EXPORTAR A PDF
+// =============================================
+function exportPDF(titulo){
+  const body=document.getElementById('ct').innerHTML;
+  const win=window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>${titulo}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#1a1a2e;padding:32px;max-width:900px;margin:0 auto}
+      h1{font-size:20px;font-weight:700;margin-bottom:4px}
+      .sub{font-size:12px;color:#64748b;margin-bottom:24px}
+      table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px}
+      th{font-size:10px;font-weight:600;color:#64748b;text-align:left;padding:6px 8px;border-bottom:2px solid #e2e8f0;text-transform:uppercase;letter-spacing:.04em}
+      td{padding:8px;border-bottom:1px solid #f1f5f9}
+      .stmt td{padding:7px 8px}
+      .stmt .hd td{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;padding-top:14px;padding-bottom:3px;border:none}
+      .stmt .st td{border-top:1px solid #e2e8f0;font-weight:600;padding:9px 8px}
+      .stmt .tt td{border-top:2px solid #cbd5e1;background:#f8f9fb;font-weight:700;font-size:14px;padding:11px 10px}
+      .stmt .ind td:first-child{padding-left:20px;color:#64748b}
+      .stmt .ind2 td:first-child{padding-left:36px;color:#64748b;font-size:11px}
+      .stmt .suc td:first-child{padding-left:28px;color:#64748b}
+      .stmt td:last-child{text-align:right;white-space:nowrap}
+      .stmt .est td{font-style:italic;color:#d97706}
+      .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+      .kpi{background:#f8f9fb;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px}
+      .kpi-l{font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px}
+      .kpi-v{font-size:18px;font-weight:700}
+      .kpi-s{font-size:10px;color:#94a3b8;margin-top:3px}
+      .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px}
+      .card-t{font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+      .bd{display:inline-flex;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600}
+      .bd-ok{background:#f0fdf4;color:#16a34a}
+      .bd-warn{background:#fffbeb;color:#d97706}
+      .bd-err{background:#fef2f2;color:#dc2626}
+      .bd-info{background:#eff6ff;color:#1d4ed8}
+      .bd-gray{background:#f8f9fb;color:#64748b;border:1px solid #e2e8f0}
+      .bd-pur{background:#f5f3ff;color:#7c3aed}
+      .al-warn{background:#fffbeb;color:#d97706;border:1px solid #fcd34d;padding:10px 12px;border-radius:8px;font-size:12px;margin-top:12px}
+      .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+      .trow-t td{font-weight:600;background:#f8f9fb}
+      button,.btn,.upz,input,select{display:none!important}
+      #err-body>div:first-child{display:none!important}
+      .no-print{display:none!important}
+      @media print{body{padding:16px}}
+    </style>
+  </head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;border-bottom:2px solid #e2e8f0;padding-bottom:16px">
+      <div><h1>${titulo}</h1><div class="sub">Generado el ${new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div></div>
+      <div style="font-size:11px;color:#94a3b8;text-align:right">Heladería — Sistema de gestión</div>
+    </div>
+    ${body}
+  </body></html>`);
+  win.document.close();
+  setTimeout(()=>{win.focus();win.print();},500);
+}
 
 // ---- INIT ----
 document.getElementById('mo').addEventListener('click',e=>{if(e.target===document.getElementById('mo'))closeMo()});
