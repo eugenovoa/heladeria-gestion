@@ -938,12 +938,14 @@ async function genVencs(gid,alert_ok=false){
   const dia=gr.dia_del_mes;
   const vs=[];let yr=ini.y,mo=ini.m,cnt=0;
   while(cnt<120){
-    const cur=new Date(yr,mo,dia);
-    if(cur.getTime()>finMs)break;
-    // Format as YYYY-MM-DD using local date parts
-    const ds=`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+    // Clamp day to valid days in month (e.g. dia=31 in Feb → 28)
+    const maxDay=new Date(yr,mo+1,0).getDate();
+    const d=Math.min(dia,maxDay);
+    // Build string directly — NEVER use Date.toISOString() to avoid UTC timezone shift
+    const ds=`${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(new Date(yr,mo,d).getTime()>finMs)break;
     vs.push({gasto_recurrente_id:gid,fecha_vencimiento:ds,monto:gr.monto,estado:'pendiente'});
-    mo+=salto;if(mo>11){yr+=Math.floor(mo/12);mo=mo%12}
+    mo+=salto;if(mo>=12){yr+=Math.floor(mo/12);mo=mo%12}
     cnt++;
   }
   await sb.from('vencimientos_recurrentes').delete().eq('gasto_recurrente_id',gid).eq('estado','pendiente');
@@ -1132,7 +1134,7 @@ async function loadErr(){
         ${gGen>0?`<tr class="ind"><td>Gastos generales</td><td>(${fmt(gGen)})</td></tr>`:''}
         <tr class="st"><td>Resultado operativo</td><td style="color:${c(ebit)}">${fmt(ebit)}</td></tr>
         ${gFin>0?`<tr class="ind"><td>Gastos financieros</td><td>(${fmt(gFin)})</td></tr>`:''}
-        <tr class="st" style="border-top:2px solid var(--border-md)"><td><strong>EBT</strong></td><td style="color:${c(ebt)};font-weight:700">${fmt(ebt)}</td></tr>
+        <tr class="st" style="border-top:2px solid var(--border-md)"><td><strong>Resultado antes de impuestos</strong></td><td style="color:${c(ebt)};font-weight:700">${fmt(ebt)}</td></tr>
         <tr class="hd"><td colspan="2">Impuestos</td></tr>
         ${impFin!=null?`<tr class="ind"><td>Impuesto definitivo <span class="bd bd-ok" style="font-size:10px">Confirmado</span></td><td style="color:var(--red)">(${fmt(impFin)})</td></tr>`:`<tr class="ind est"><td>Impuesto estimado (${aliq}%) <span class="bd bd-warn" style="font-size:10px">Estimado</span></td><td style="color:var(--amber)">(${fmt(impEst)})</td></tr>`}
         ${gAnts>0?`<tr class="ind2"><td>Anticipos pagados</td><td style="color:var(--green)">${fmt(gAnts)}</td></tr>`:''}
