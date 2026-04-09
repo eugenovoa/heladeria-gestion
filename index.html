@@ -1072,6 +1072,55 @@ async function newGastoMan(){
   });
 }
 function calcGMe(){const n=parseFloat(document.getElementById('gm-n').value)||0,p=parseFloat(document.getElementById('gm-p').value)||0;document.getElementById('gm-m').value=(n*p/100).toFixed(2)}
+
+async function verGasto(id){
+  const{data:g}=await sb.from('gastos').select('*,categorias_gasto(nombre),sucursales(nombre)').eq('id',id).single();
+  openMo('Gasto al contado',`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Fecha</div><div style="font-weight:600">${fmtD(g.fecha)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Proveedor / Concepto</div><div style="font-weight:600">${g.concepto||'—'}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Categoría</div><div>${g.categorias_gasto?.nombre||'—'}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Sucursal</div><div>${g.sucursales?.nombre||'General'}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Neto / MwSt / Total</div>
+        <div>${fmt(g.monto_neto||g.monto)} / ${fmt(g.mwst_monto||0)} / <strong style="font-size:16px">${fmt(g.monto)}</strong></div>
+      </div>
+    </div>
+    ${g.notas?`<div style="padding:10px 12px;background:var(--surface2);border-radius:var(--r);font-size:13px;color:var(--text-muted);margin-bottom:14px">${g.notas}</div>`:''}
+    <div style="border-top:1px solid var(--border);padding-top:14px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        ${g.adjunto_url?`<button class="btn btn-sm" onclick="window.open('${g.adjunto_url}','_blank')">📎 Ver adjunto</button>`:''}
+        <button class="btn btn-sm" onclick="closeMo();editGasto('${g.id}')">Editar</button>
+        <button class="btn btn-sm btn-d" onclick="closeMo();delGasto('${g.id}')">Eliminar</button>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">${g.adjunto_url?'Reemplazar adjunto':'Subir adjunto PDF/imagen'}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="file" id="gasto-adj-up" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:6px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;flex:1">
+          <button class="btn btn-sm btn-p" onclick="subirAdjGasto('${g.id}','${g.fecha||today()}')">Subir</button>
+        </div>
+      </div>
+    </div>`,()=>{},true);
+}
+
+async function subirAdjGasto(gastoId, fecha){
+  const file=document.getElementById('gasto-adj-up')?.files[0];
+  if(!file){alert('Seleccioná un archivo primero.');return}
+  const btn=event.target;btn.textContent='Subiendo...';btn.disabled=true;
+  const yr=fecha.substring(0,4);
+  const url=await uploadAdjunto(file,`gastos/${yr}`,`gasto-${gastoId}`);
+  if(url){
+    await sb.from('gastos').update({adjunto_url:url}).eq('id',gastoId);
+    btn.textContent='✓ Subido';
+    // Show view button
+    const div=btn.closest('div').previousElementSibling;
+    if(div&&!div.querySelector('button[onclick*="window.open"]'))
+      div.insertAdjacentHTML('afterbegin',`<button class="btn btn-sm" onclick="window.open('${url}','_blank')">📎 Ver adjunto</button>`);
+  } else {
+    btn.textContent='Error';alert('No se pudo subir el archivo.');
+  }
+  btn.disabled=false;
+}
+
 async function editGasto(id){
   const[{data:g},{data:cats}]=await Promise.all([
     sb.from('gastos').select('*').eq('id',id).single(),
@@ -1087,6 +1136,11 @@ async function editGasto(id){
     <div class="f"><label>Categoría</label><select id="eg-cat"><option value="">— Seleccionar —</option>${cats.map(c=>`<option value="${c.id}" ${c.id===g.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="eg-s"><option value="">General</option>${sucOpts()}</select></div>
     <div class="f full"><label>Notas</label><input id="eg-no" value="${g.notas||''}"></div>
+    <div class="f full" style="margin-top:4px">
+      <label>${g.adjunto_url?'Reemplazar adjunto':'Subir adjunto (opcional)'}</label>
+      ${g.adjunto_url?`<div style="margin-bottom:6px"><button class="btn btn-sm" onclick="window.open('${g.adjunto_url}','_blank')">📎 Ver adjunto actual</button></div>`:''}
+      <input type="file" id="eg-adj" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%">
+    </div>
   </div>`,async()=>{
     const{error}=await sb.from('gastos').update({
       fecha:document.getElementById('eg-d').value,
@@ -1099,7 +1153,10 @@ async function editGasto(id){
       sucursal_id:document.getElementById('eg-s').value||null,
       notas:document.getElementById('eg-no').value
     }).eq('id',id);
-    if(!error){closeMo();gastos()}else alert(error.message);
+    if(error){alert(error.message);return}
+    const egFile=document.getElementById('eg-adj')?.files[0];
+    if(egFile){const url=await uploadAdjunto(egFile,`gastos/${document.getElementById('eg-d').value.substring(0,4)}`,`gasto-${id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
+    closeMo();gastos();
   });
   // Set sucursal after modal opens
   setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id},50);
