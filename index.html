@@ -443,7 +443,7 @@ const IA_HEADERS={'Content-Type':'application/json','x-api-key':'','anthropic-ve
 // API key loaded from Supabase after login
 async function loadApiKey(){
   try{
-    const{data}=await sb.from('app_config').select('value').eq('key','anthropic_api_key').single();
+    const{data}=await sb.from('app_config').select('value').eq('key','anthropic_api_key').maybeSingle();
     if(data?.value)IA_HEADERS['x-api-key']=data.value;
   }catch(e){console.log('No API key configured yet')}
 }
