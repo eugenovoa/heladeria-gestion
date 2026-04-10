@@ -1696,9 +1696,10 @@ async function saveCfgApp(){
   if(file){
     // Logo goes to public bucket
     const ext=file.name.split('.').pop().toLowerCase();
-    const{error}=await sb.storage.from('public-assets').upload(`logo.${ext}`,file,{upsert:true,contentType:file.type});
+    const fname=`logo_${Date.now()}.${ext}`;
+    const{error}=await sb.storage.from('public-assets').upload(fname,file,{upsert:false,contentType:file.type});
     if(error){alert('No se pudo subir el logo: '+error.message);btn.textContent='Guardar';btn.disabled=false;return;}
-    const{data:pub}=sb.storage.from('public-assets').getPublicUrl(`logo.${ext}`);
+    const{data:pub}=sb.storage.from('public-assets').getPublicUrl(fname);
     logoUrl=pub?.publicUrl||'';
   }
   const cfg={n:document.getElementById('ca-n').value,s:document.getElementById('ca-s').value,logo:logoUrl};
