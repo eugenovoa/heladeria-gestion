@@ -342,13 +342,7 @@ function applyBrand(){
     if(loginIco){loginIco.src=_cfg.logo;loginIco.style.display='block';document.getElementById('login-ico').style.display='none';}
   }
 }
-function editBrand(){
-  openMo('Personalizar identidad',`<div class="fg">
-    <div class="f full"><label>Nombre</label><input id="bn-n" value="${_cfg.n||'Gestión'}"></div>
-    <div class="f full"><label>Subtítulo</label><input id="bn-s" value="${_cfg.s||'Sistema de gestión'}"></div>
-    <div class="f full"><label>Logo URL</label><input id="bn-l" value="${_cfg.logo||''}" placeholder="https://..."><span style="font-size:11px;color:var(--text-muted);margin-top:3px;display:block">Subí tu logo a imgur.com y pegá el link directo.</span></div>
-  </div>`,()=>{_cfg.n=document.getElementById('bn-n').value;_cfg.s=document.getElementById('bn-s').value;_cfg.logo=document.getElementById('bn-l').value;localStorage.setItem('hg_cfg',JSON.stringify(_cfg));applyBrand();closeMo()});
-}
+function editBrand(){nav('config');}
 
 // ---- NAV ----
 function setupNav(){
@@ -415,6 +409,9 @@ async function uploadAdjunto(file,carpeta,nombre){
   const path=`${safeCarpeta}/${safeNombre}.${ext}`;
   const{error}=await sb.storage.from('adjuntos').upload(path,file,{upsert:true,contentType:file.type});
   if(error){console.error('Upload:',error.message);return null}
+  // Try public URL first, fall back to signed URL
+  const{data:pub}=sb.storage.from('adjuntos').getPublicUrl(path);
+  if(pub?.publicUrl&&!pub.publicUrl.includes('undefined'))return pub.publicUrl;
   const{data:signed}=await sb.storage.from('adjuntos').createSignedUrl(path,60*60*24*365*10);
   return signed?.signedUrl||null;
 }
@@ -1697,9 +1694,12 @@ async function saveCfgApp(){
   const file=document.getElementById('ca-logo-file')?.files[0];
   let logoUrl=_cfg.logo||'';
   if(file){
-    const url=await uploadAdjunto(file,'config','logo');
-    if(url)logoUrl=url;
-    else{alert('No se pudo subir el logo.');btn.textContent='Guardar';btn.disabled=false;return;}
+    // Logo goes to public bucket
+    const ext=file.name.split('.').pop().toLowerCase();
+    const{error}=await sb.storage.from('public-assets').upload(`logo.${ext}`,file,{upsert:true,contentType:file.type});
+    if(error){alert('No se pudo subir el logo: '+error.message);btn.textContent='Guardar';btn.disabled=false;return;}
+    const{data:pub}=sb.storage.from('public-assets').getPublicUrl(`logo.${ext}`);
+    logoUrl=pub?.publicUrl||'';
   }
   const cfg={n:document.getElementById('ca-n').value,s:document.getElementById('ca-s').value,logo:logoUrl};
   // Save to Supabase too
