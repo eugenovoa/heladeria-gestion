@@ -540,10 +540,10 @@ async function loadDashboard(){
       <div class="kpi r"><div class="kpi-l">Facturas vencidas</div><div class="kpi-v">${fmt(totV)}</div><div class="kpi-s">${(fv||[]).length} factura(s)</div></div>
     </div>
     <div class="g2" style="margin-bottom:0">
-      <div class="card" style="margin-bottom:0"><div class="card-t">Ventas diarias — ${perLabel} · ${sucLabel}</div><div class="cw" style="height:220px"><canvas id="ch-v"></canvas></div></div>
-      ${!sucId?`<div class="card" style="margin-bottom:0"><div class="card-t">% por sucursal — ${perLabel}</div><div class="cw" style="height:220px"><canvas id="ch-pie"></canvas></div></div>`:''}
+      <div class="card" style="margin-bottom:0"><div class="card-t">Ventas diarias — ${perLabel} · ${sucLabel}</div><div style="overflow-x:auto"><div id="ch-v-inner" style="position:relative;height:220px;min-width:100%"><canvas id="ch-v"></canvas></div></div></div>
+      ${!sucId?`<div class="card" style="margin-bottom:0"><div class="card-t">% por sucursal — ${perLabel}</div><div style="position:relative;height:260px"><canvas id="ch-pie"></canvas></div></div>`:''}
     </div>
-    <div class="g2">
+    <div class="g2" style="margin-top:16px">
       <div class="card"><div class="card-t">Próximos vencimientos</div>
         ${!(fp||[]).length&&!(rp||[]).length?'<div class="empty" style="padding:20px">Sin vencimientos próximos ✓</div>':`
         <table><thead><tr><th>Concepto</th><th>Vence</th><th>Monto</th></tr></thead><tbody>
@@ -590,6 +590,11 @@ async function loadDashboard(){
   }));
 
   if(fechas.length&&document.getElementById('ch-v')){
+    // Dynamic width: min 28px per bar group
+    const barGroups=fechas.length;
+    const barsPerGroup=sucId?1:sucNoCP.length;
+    const minW=Math.max(document.getElementById('ch-v-inner')?.offsetWidth||600, barGroups*barsPerGroup*28);
+    if(document.getElementById('ch-v-inner'))document.getElementById('ch-v-inner').style.minWidth=minW+'px';
     new Chart(document.getElementById('ch-v'),{
       type:'bar',
       data:{labels:labs,datasets},
@@ -633,15 +638,43 @@ async function loadDashboard(){
           labels:totPorSuc.map(s=>s.nombre),
           datasets:[{data:totPorSuc.map(s=>s.total),backgroundColor:totPorSuc.map(s=>s.color),borderWidth:2,borderColor:'#fff',hoverOffset:6}]
         },
-        options:{responsive:true,maintainAspectRatio:false,cutout:'58%',
+        options:{responsive:true,maintainAspectRatio:false,cutout:'52%',
           plugins:{
             legend:{position:'bottom',labels:{boxWidth:12,padding:14,font:{size:12}}},
             tooltip:{callbacks:{label:ctx=>{
               const pct=(ctx.raw/totPie*100).toFixed(1);
               return ' '+ctx.label+': €'+ctx.raw.toLocaleString('de-DE',{minimumFractionDigits:2})+' ('+pct+'%)';
-            }}}
+            }}},
+            datalabels:{
+              display:false
+            }
+          },
+          layout:{padding:10}
+        },
+        plugins:[{
+          id:'pieLabels',
+          afterDatasetsDraw(chart){
+            const{ctx,data}=chart;
+            const total=data.datasets[0].data.reduce((a,b)=>a+b,0);
+            chart.getDatasetMeta(0).data.forEach((arc,i)=>{
+              const pct=(data.datasets[0].data[i]/total*100);
+              if(pct<5)return;
+              const midAngle=arc.startAngle+(arc.endAngle-arc.startAngle)/2;
+              const r=(arc.outerRadius+arc.innerRadius)/2;
+              const x=arc.x+Math.cos(midAngle)*r;
+              const y=arc.y+Math.sin(midAngle)*r;
+              ctx.save();
+              ctx.fillStyle='#fff';
+              ctx.font='bold 13px -apple-system,sans-serif';
+              ctx.textAlign='center';
+              ctx.textBaseline='middle';
+              ctx.shadowColor='rgba(0,0,0,0.3)';
+              ctx.shadowBlur=3;
+              ctx.fillText(pct.toFixed(1)+'%',x,y);
+              ctx.restore();
+            });
           }
-        }
+        }]
       });
     }
   }
