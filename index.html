@@ -30,12 +30,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 #app{display:none;height:100vh;overflow:hidden}
 .shell{display:flex;height:100%}
 .sidebar{width:240px;min-width:240px;background:var(--sb);display:flex;flex-direction:column;overflow-y:auto;transition:transform .25s}
-.sb-brand{padding:16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:10px;cursor:pointer}
-.sb-brand:hover{background:var(--sb-h)}
-.sb-icon{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#3b82f6,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.sb-brand{padding:16px;border-bottom:1px solid rgba(0,0,0,.1);display:flex;align-items:center;gap:10px;cursor:pointer;background:#fff;border-radius:0}
+.sb-brand:hover{background:#f1f5f9}
+.sb-icon{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#3b82f6,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;color:#fff}
 .sb-logo-img{width:54px;height:54px;border-radius:8px;object-fit:contain;display:none;flex-shrink:0;background:transparent}
-.sb-brand-t{font-size:13px;font-weight:600;color:#f1f5f9}
-.sb-brand-s{font-size:10px;color:var(--sb-m);margin-top:1px}
+.sb-brand-t{font-size:13px;font-weight:600;color:#1e293b}
+.sb-brand-s{font-size:10px;color:#64748b;margin-top:1px}
 .nav-sec{padding:10px 0 4px}
 .nav-lbl{font-size:10px;font-weight:600;color:var(--sb-m);text-transform:uppercase;letter-spacing:.08em;padding:0 16px 5px}
 .nav-item{display:flex;align-items:center;gap:9px;padding:8px 12px;margin:1px 8px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--sb-t);transition:all .15s;user-select:none}
@@ -318,6 +318,7 @@ async function initApp(user){
   const{data:sd}=await sb.from('sucursales').select('*').order('nombre');
   _sucs=sd||[];
   await loadApiKey();
+  await loadBrandFromDB();
   const cfg=localStorage.getItem('hg_cfg');if(cfg)_cfg=JSON.parse(cfg);
   document.getElementById('auth').style.display='none';
   document.getElementById('app').style.display='block';
@@ -1677,7 +1678,12 @@ function loadCfgApp(){
     <div class="fg">
       <div class="f full"><label>Nombre del negocio</label><input id="ca-n" value="${cfg.n||'Gestión'}"></div>
       <div class="f full"><label>Subtítulo</label><input id="ca-s" value="${cfg.s||'Sistema de gestión'}"></div>
-      <div class="f full"><label>Logo URL</label><input id="ca-l" value="${cfg.logo||''}" placeholder="https://..."><span style="font-size:11px;color:var(--text-muted);margin-top:3px;display:block">Subí tu logo a imgur.com y pegá el link directo.</span></div>
+      <div class="f full"><label>Logo</label>
+        ${cfg.logo?`<div style="margin-bottom:8px;padding:10px;background:var(--surface2);border-radius:var(--r);text-align:center"><img src="${cfg.logo}" style="max-height:60px;max-width:180px;object-fit:contain"></div>`:''}
+        <input type="file" id="ca-logo-file" accept=".png,.jpg,.jpeg,.svg,.webp" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%">
+        <span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block">Recomendado: PNG con fondo transparente. Máx. 2MB.</span>
+        ${cfg.logo?`<button class="btn btn-sm btn-d" style="margin-top:6px" onclick="quitarLogo()">✕ Quitar logo</button>`:''}
+      </div>
     </div>
     <button class="btn btn-p" style="margin-top:14px;width:100%" onclick="saveCfgApp()">Guardar</button>
     <div id="ca-ok"></div>
@@ -1690,7 +1696,29 @@ function loadCfgApp(){
     <div id="ca-ak-ok"></div>
   </div>`;
 }
-function saveCfgApp(){const cfg={n:document.getElementById('ca-n').value,s:document.getElementById('ca-s').value,logo:document.getElementById('ca-l').value};localStorage.setItem('hg_cfg',JSON.stringify(cfg));_cfg=cfg;applyBrand();document.getElementById('ca-ok').innerHTML='<div class="al al-ok" style="margin-top:10px">✓ Guardado</div>'}
+async function saveCfgApp(){
+  const btn=event.target;btn.textContent='Guardando...';btn.disabled=true;
+  const file=document.getElementById('ca-logo-file')?.files[0];
+  let logoUrl=_cfg.logo||'';
+  if(file){
+    const url=await uploadAdjunto(file,'config','logo');
+    if(url)logoUrl=url;
+    else{alert('No se pudo subir el logo.');btn.textContent='Guardar';btn.disabled=false;return;}
+  }
+  const cfg={n:document.getElementById('ca-n').value,s:document.getElementById('ca-s').value,logo:logoUrl};
+  // Save to Supabase too
+  await sb.from('app_config').upsert({key:'app_brand',value:JSON.stringify(cfg),updated_at:new Date().toISOString()},{onConflict:'key'});
+  localStorage.setItem('hg_cfg',JSON.stringify(cfg));
+  _cfg=cfg;applyBrand();
+  btn.textContent='Guardar';btn.disabled=false;
+  document.getElementById('ca-ok').innerHTML='<div class="al al-ok" style="margin-top:10px">✓ Guardado</div>';
+  // Refresh config tab to show new logo
+  setTimeout(loadCfgApp, 500);
+}
+function quitarLogo(){
+  _cfg.logo='';localStorage.setItem('hg_cfg',JSON.stringify(_cfg));
+  applyBrand();loadCfgApp();
+}
 async function saveApiKey(){const k=document.getElementById('ca-ak').value.trim();if(!k){alert('Ingresá la API key.');return}const btn=event.target;btn.textContent='Guardando...';btn.disabled=true;await setApiKey(k);btn.textContent='Guardar API Key';btn.disabled=false;document.getElementById('ca-ak-ok').innerHTML='<div class="al al-ok" style="margin-top:10px">✓ API Key guardada</div>'}
 
 // ---- PDF EXPORT ----
