@@ -555,10 +555,60 @@ async function loadDashboard(){
       </div>
     </div>`;
 
-  const labs=(vc||[]).map(v=>v.fecha.substring(8,10)+'/'+v.fecha.substring(5,7));
-  const vals=(vc||[]).map(v=>parseFloat(v.ingresos_dia)||0);
-  if(labs.length&&document.getElementById('ch-v')){
-    new Chart(document.getElementById('ch-v'),{type:'bar',data:{labels:labs,datasets:[{label:'Ventas (€)',data:vals,backgroundColor:'rgba(59,130,246,.7)',borderRadius:6,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'},ticks:{callback:v=>'€'+v}}}}});
+  // Group by date, split by sucursal
+  const diasSem=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const sucColors={};
+  const sucNoCP=_sucs.filter(s=>!s.es_centro_produccion);
+  const palette=['rgba(99,179,237,0.8)','rgba(154,205,150,0.8)','rgba(251,191,110,0.8)'];
+  sucNoCP.forEach((s,i)=>{sucColors[s.id]=palette[i]||'rgba(180,180,180,0.8)'});
+
+  // Get unique dates sorted
+  const fechasSet=new Set((vc||[]).map(v=>v.fecha));
+  const fechas=[...fechasSet].sort();
+
+  // Build label with weekday
+  const labs=fechas.map(f=>{
+    const[y,m,d]=f.split('-').map(Number);
+    const dow=diasSem[new Date(y,m-1,d).getDay()];
+    return `${dow} ${d}/${m}`;
+  });
+
+  // Build datasets per sucursal
+  const datasets=sucNoCP.map((s,i)=>({
+    label:s.nombre,
+    data:fechas.map(f=>{
+      const row=(vc||[]).find(v=>v.fecha===f&&v.sucursal_id===s.id);
+      return parseFloat(row?.ingresos_dia)||0;
+    }),
+    backgroundColor:palette[i]||'rgba(180,180,180,0.8)',
+    borderRadius:4,
+    borderSkipped:false,
+  }));
+
+  if(fechas.length&&document.getElementById('ch-v')){
+    new Chart(document.getElementById('ch-v'),{
+      type:'bar',
+      data:{labels:labs,datasets},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{display:true,position:'bottom',labels:{boxWidth:12,padding:16,font:{size:12}}},
+          tooltip:{callbacks:{
+            title:items=>{
+              const f=fechas[items[0].dataIndex];
+              const[y,m,d]=f.split('-').map(Number);
+              const dows=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+              return dows[new Date(y,m-1,d).getDay()]+' '+d+'/'+m+'/'+y;
+            },
+            label:item=>' '+item.dataset.label+': €'+item.parsed.y.toLocaleString('de-DE',{minimumFractionDigits:2})
+          }}
+        },
+        scales:{
+          x:{grid:{display:false},ticks:{font:{size:11},maxRotation:45}},
+          y:{beginAtZero:true,grid:{color:'rgba(0,0,0,.04)'},ticks:{callback:v=>'€'+v}}
+        }
+      }
+    });
   } else if(document.getElementById('ch-v')){
     document.querySelector('.cw').innerHTML='<div class="empty">Sin ventas en este período</div>';
   }
@@ -1327,8 +1377,11 @@ async function loadRepCompras(){
   const tN=Object.values(byProv).reduce((a,v)=>a+v.neto,0),tM=Object.values(byProv).reduce((a,v)=>a+v.mwst,0),tT=Object.values(byProv).reduce((a,v)=>a+v.total,0);
   document.getElementById('rc-body').innerHTML=`
     <div class="kpi-grid" style="margin-bottom:16px">
-      <div class="kpi b"><div class="kpi-l">Total bruto</div><div class="kpi-v">${fmt(tT)}</div></div>
-      <div class="kpi g"><div class="kpi-l">Neto total</div><div class="kpi-v">${fmt(tN)}</div></div>
+      <div class="kpi b" style="grid-column:span 2">
+        <div class="kpi-l">Total bruto (con MwSt)</div>
+        <div class="kpi-v">${fmt(tT)}</div>
+        <div class="kpi-s" style="font-size:12px;margin-top:6px">Neto sin MwSt: <strong>${fmt(tN)}</strong></div>
+      </div>
       <div class="kpi a"><div class="kpi-l">MwSt 7%</div><div class="kpi-v">${fmt(m7)}</div><div class="kpi-s">Base: ${fmt(n7)}</div></div>
       <div class="kpi r"><div class="kpi-l">MwSt 19%</div><div class="kpi-v">${fmt(m19)}</div><div class="kpi-s">Base: ${fmt(n19)}</div></div>
     </div>
