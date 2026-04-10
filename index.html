@@ -33,7 +33,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .sb-brand{padding:16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:10px;cursor:pointer}
 .sb-brand:hover{background:var(--sb-h)}
 .sb-icon{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#3b82f6,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
-.sb-logo-img{width:36px;height:36px;border-radius:9px;object-fit:cover;display:none;flex-shrink:0}
+.sb-logo-img{width:54px;height:54px;border-radius:8px;object-fit:contain;display:none;flex-shrink:0;background:transparent}
 .sb-brand-t{font-size:13px;font-weight:600;color:#f1f5f9}
 .sb-brand-s{font-size:10px;color:var(--sb-m);margin-top:1px}
 .nav-sec{padding:10px 0 4px}
@@ -186,9 +186,12 @@ tbody tr:hover td{background:var(--surface2)}
 
 <div id="auth">
   <div class="auth-box">
-    <div class="auth-icon">🍦</div>
+    <div style="text-align:center;margin-bottom:16px">
+      <img id="login-logo" src="" alt="" style="display:none;max-height:90px;max-width:220px;object-fit:contain;margin:0 auto">
+      <div id="login-ico" style="font-size:44px">🍦</div>
+    </div>
     <h1>Bienvenido</h1>
-    <p>Sistema de gestión</p>
+    <p id="login-sub">Sistema de gestión</p>
     <div id="auth-err" class="al al-err" style="display:none"></div>
     <div class="f" style="margin-bottom:14px">
       <label>Usuario</label>
@@ -209,7 +212,7 @@ tbody tr:hover td{background:var(--surface2)}
       <div class="sb-brand" onclick="editBrand()">
         <img class="sb-logo-img" id="brand-img" src="" alt="">
         <div class="sb-icon" id="brand-ico">🍦</div>
-        <div><div class="sb-brand-t" id="brand-n">Gestión</div><div class="sb-brand-s" id="brand-s">Sistema de gestión</div></div>
+        <div id="brand-txt"><div class="sb-brand-t" id="brand-n">Gestión</div><div class="sb-brand-s" id="brand-s">Sistema de gestión</div></div>
       </div>
       <div class="nav-sec">
         <div class="nav-lbl">General</div>
@@ -328,9 +331,19 @@ async function initApp(user){
 
 // ---- BRAND ----
 function applyBrand(){
-  if(_cfg.n)document.getElementById('brand-n').textContent=_cfg.n;
-  if(_cfg.s)document.getElementById('brand-s').textContent=_cfg.s;
-  if(_cfg.logo){document.getElementById('brand-img').src=_cfg.logo;document.getElementById('brand-img').style.display='block';document.getElementById('brand-ico').style.display='none';}
+  if(_cfg.n){document.getElementById('brand-n').textContent=_cfg.n;}
+  if(_cfg.s){document.getElementById('brand-s').textContent=_cfg.s;const ls=document.getElementById('login-sub');if(ls)ls.textContent=_cfg.s;}
+  if(_cfg.logo){
+    document.getElementById('brand-img').src=_cfg.logo;
+    document.getElementById('brand-img').style.display='block';
+    document.getElementById('brand-ico').style.display='none';
+    // Hide text when logo present
+    const txt=document.getElementById('brand-txt');
+    if(txt)txt.style.display='none';
+    // Show logo on login screen too
+    const loginIco=document.getElementById('login-logo');
+    if(loginIco){loginIco.src=_cfg.logo;loginIco.style.display='block';document.getElementById('login-ico').style.display='none';}
+  }
 }
 function editBrand(){
   openMo('Personalizar identidad',`<div class="fg">
