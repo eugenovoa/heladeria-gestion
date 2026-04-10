@@ -169,8 +169,17 @@ tbody tr:hover td{background:var(--surface2)}
   .fg{grid-template-columns:1fr}
   .mo-box{padding:20px;border-radius:14px}
   .li{grid-template-columns:1fr 60px 80px 65px 30px}
+  .card{overflow-x:auto}
+  table{min-width:460px}
+  .kpi-s{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stmt{min-width:360px}
+  .stmt td:last-child{white-space:nowrap}
 }
-@media(max-width:480px){.kpi-grid{grid-template-columns:1fr}}
+@media(max-width:480px){
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:8px}
+  .kpi{padding:12px 14px}
+  .kpi-v{font-size:16px;letter-spacing:-.3px}
+}
 </style>
 </head>
 <body>
@@ -1444,10 +1453,10 @@ async function loadRepCompras(){
       <div class="kpi r"><div class="kpi-l">MwSt 19%</div><div class="kpi-v">${fmt(m19)}</div><div class="kpi-s">Base: ${fmt(n19)}</div></div>
     </div>
     <div class="card"><div class="card-t">Por proveedor</div>
-      <table><thead><tr><th>Proveedor</th><th>Facturas</th><th>Neto</th><th>MwSt</th><th>Total bruto</th><th>%</th></tr></thead><tbody>
+      <div style="overflow-x:auto"><table style="min-width:460px"><thead><tr><th>Proveedor</th><th>Facturas</th><th>Neto</th><th>MwSt</th><th>Total bruto</th><th>%</th></tr></thead><tbody>
       ${Object.entries(byProv).map(([n,v])=>`<tr><td>${n}</td><td>${v.cnt}</td><td>${fmt(v.neto)}</td><td>${fmt(v.mwst)}</td><td style="font-weight:600">${fmt(v.total)}</td><td><span class="bd bd-gray">${tT>0?(v.total/tT*100).toFixed(1):'0'}%</span></td></tr>`).join('')}
       <tr class="trow-t"><td>Total</td><td>${(facts||[]).length}</td><td>${fmt(tN)}</td><td>${fmt(tM)}</td><td>${fmt(tT)}</td><td>100%</td></tr>
-      </tbody></table>
+      </tbody></table></div>
     </div>`;
 }
 
@@ -1500,7 +1509,7 @@ async function loadErr(){
         <button class="btn btn-p" style="margin-top:10px;width:100%" onclick="saveImp('${tid}')">Guardar</button>
       </div>
     </div>
-    <div class="card" style="max-width:580px">
+    <div class="card" style="max-width:580px;overflow-x:auto">
       <div style="font-size:16px;font-weight:700;margin-bottom:4px">${tm?.nombre||'ERR'}</div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Período: ${fmtD(desde)} — ${fmtD(hasta)}</div>
       <table class="stmt">
@@ -1615,8 +1624,8 @@ async function loadComp(){
   document.getElementById('comp-body').innerHTML='<div class="ld">Calculando...</div>';
   const[a,b]=await Promise.all([calcMetrics(document.getElementById('ca').value),calcMetrics(document.getElementById('cb').value)]);
   const row=(lbl,va,vb)=>{const d=vb-va,p=va!==0?(d/Math.abs(va)*100).toFixed(1):'—',col=d>=0?'var(--green)':'var(--red)';return`<tr><td>${lbl}</td><td style="text-align:right">${fmt(va)}</td><td style="text-align:right">${fmt(vb)}</td><td style="text-align:right;color:${col};font-weight:600">${d>=0?'+':''}${fmt(d)}</td><td style="text-align:right;font-size:12px;color:${col}">${p!=='—'?p+'%':'—'}</td></tr>`};
-  document.getElementById('comp-body').innerHTML=`<div class="card" style="max-width:680px">
-    <table><thead><tr><th>Concepto</th><th style="text-align:right">${a.nombre}</th><th style="text-align:right">${b.nombre}</th><th style="text-align:right">Diferencia</th><th style="text-align:right">Var.%</th></tr></thead><tbody>
+  document.getElementById('comp-body').innerHTML=`<div class="card" style="max-width:680px;overflow-x:auto">
+    <table style="min-width:480px"><thead><tr><th>Concepto</th><th style="text-align:right">${a.nombre}</th><th style="text-align:right">${b.nombre}</th><th style="text-align:right">Diferencia</th><th style="text-align:right">Var.%</th></tr></thead><tbody>
     ${row('Ventas netas',a.v,b.v)}${row('CMV',a.cmv,b.cmv)}${row('Utilidad bruta',a.ub,b.ub)}${row('Gastos operativos',a.g,b.g)}${row('Resultado operativo',a.ebit,b.ebit)}${row('Gastos financieros',a.gf,b.gf)}${row('Resultado antes de impuestos',a.ebt,b.ebt)}
     </tbody></table>
   </div>`;
@@ -1630,10 +1639,10 @@ async function configPage(){
 }
 async function loadCfgSucs(){
   const{data}=await sb.from('sucursales').select('*').order('nombre');
-  document.getElementById('tab-sucs').innerHTML=`<div class="card"><div class="card-t">Sucursales</div>
-    <table><thead><tr><th>Nombre</th><th>Dirección</th><th>Tipo</th><th></th></tr></thead><tbody>
+  document.getElementById('tab-sucs').innerHTML=`<div class="card"><div class="card-t">Sucursales</div><div style="overflow-x:auto">
+    <table style="min-width:380px"><thead><tr><th>Nombre</th><th>Dirección</th><th>Tipo</th><th></th></tr></thead><tbody>
     ${(data||[]).map(s=>`<tr><td><strong>${s.nombre}</strong></td><td>${s.direccion||'—'}</td><td>${s.es_centro_produccion?'<span class="bd bd-info">Centro producción</span>':'<span class="bd bd-gray">Sucursal</span>'}</td><td><button class="btn btn-sm" onclick="editSuc('${s.id}','${s.nombre.replace(/'/g,"\\'")}','${(s.direccion||'').replace(/'/g,"\\'")}')">Editar</button></td></tr>`).join('')}
-    </tbody></table></div>`;
+    </tbody></table></div></div>`;
 }
 async function editSuc(id,nombre,dir){openMo('Editar sucursal',`<div class="fg"><div class="f full"><label>Nombre</label><input id="su-n" value="${nombre}"></div><div class="f full"><label>Dirección</label><input id="su-d" value="${dir}"></div></div>`,async()=>{await sb.from('sucursales').update({nombre:document.getElementById('su-n').value,direccion:document.getElementById('su-d').value}).eq('id',id);const{data}=await sb.from('sucursales').select('*').order('nombre');_sucs=data||[];closeMo();loadCfgSucs()})}
 async function loadCfgUsr(){
