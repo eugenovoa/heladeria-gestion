@@ -539,10 +539,7 @@ async function loadDashboard(){
       <div class="kpi a"><div class="kpi-l">Por vencer (7 días)</div><div class="kpi-v">${fmt(totP)}</div><div class="kpi-s">${(fp||[]).length+(rp||[]).length} vencimiento(s)</div></div>
       <div class="kpi r"><div class="kpi-l">Facturas vencidas</div><div class="kpi-v">${fmt(totV)}</div><div class="kpi-s">${(fv||[]).length} factura(s)</div></div>
     </div>
-    <div class="g2" style="margin-bottom:0">
-      <div class="card" style="margin-bottom:0"><div class="card-t">Ventas diarias — ${perLabel} · ${sucLabel}</div><div style="overflow-x:auto"><div id="ch-v-inner" style="position:relative;height:220px;min-width:100%"><canvas id="ch-v"></canvas></div></div></div>
-      ${!sucId?`<div class="card" style="margin-bottom:0"><div class="card-t">% por sucursal — ${perLabel}</div><div style="position:relative;height:260px"><canvas id="ch-pie"></canvas></div></div>`:''}
-    </div>
+    <div class="card" style="margin-bottom:16px"><div class="card-t">Ventas diarias — ${perLabel} · ${sucLabel}</div><div style="overflow-x:auto;max-width:100%"><div id="ch-v-inner" style="position:relative;height:240px;min-width:100%"><canvas id="ch-v"></canvas></div></div></div>
     <div class="g2" style="margin-top:16px">
       <div class="card"><div class="card-t">Próximos vencimientos</div>
         ${!(fp||[]).length&&!(rp||[]).length?'<div class="empty" style="padding:20px">Sin vencimientos próximos ✓</div>':`
@@ -551,12 +548,7 @@ async function loadDashboard(){
         ${(rp||[]).map(r=>`<tr><td><span class="bd bd-pur" style="font-size:10px">Rec.</span> ${r.gastos_recurrentes?.concepto||'—'}</td><td>${fmtD(r.fecha_vencimiento)}</td><td>${fmt(r.monto)}</td></tr>`).join('')}
         </tbody></table>`}
       </div>
-      <div class="card"><div class="card-t">Ventas por día</div>
-        ${!(vc||[]).length?'<div class="empty" style="padding:20px">Sin ventas en este período</div>':`
-        <table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Ingresos</th></tr></thead><tbody>
-        ${(vc||[]).slice(-8).map(v=>`<tr><td>${fmtD(v.fecha)}</td><td><span class="bd bd-gray" style="font-size:10px">${sucNom(v.sucursal_id)}</span></td><td style="font-weight:600;color:var(--green)">${fmt(v.ingresos_dia)}</td></tr>`).join('')}
-        </tbody></table>`}
-      </div>
+      ${!sucId?`<div class="card"><div class="card-t">% por sucursal — ${perLabel}</div><div style="position:relative;height:260px"><canvas id="ch-pie"></canvas></div></div>`:''}
     </div>`;
 
   // Group by date, split by sucursal
