@@ -1732,7 +1732,6 @@ async function saveCfgApp(){
     const{data:pub2}=sb.storage.from('public-assets').getPublicUrl(fname2);
     logoUrl2=pub2?.publicUrl||'';
   }
-  }
   const cfg={n:document.getElementById('ca-n').value,s:document.getElementById('ca-s').value,logo:logoUrl,logo2:logoUrl2};
   // Save to Supabase too
   await sb.from('app_config').upsert({key:'app_brand',value:JSON.stringify(cfg),updated_at:new Date().toISOString()},{onConflict:'key'});
