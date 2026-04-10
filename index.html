@@ -313,12 +313,10 @@ async function doLogout(){_init=false;if(_rt)clearInterval(_rt);await sb.auth.si
 
 async function initApp(user){
   if(_init)return;_init=true;_user=user;
-  const{data:rd}=await sb.from('user_roles').select('rol,sucursal_id').eq('user_id',user.id).maybeSingle();
-  _rol=rd?.rol||'admin';_sucId=rd?.sucursal_id||null;
-  const{data:sd}=await sb.from('sucursales').select('*').order('nombre');
-  _sucs=sd||[];
-  await loadApiKey();
-  await loadBrandFromDB();
+  try{const{data:rd}=await sb.from('user_roles').select('rol,sucursal_id').eq('user_id',user.id).maybeSingle();_rol=rd?.rol||'admin';_sucId=rd?.sucursal_id||null;}catch(e){_rol='admin';}
+  try{const{data:sd}=await sb.from('sucursales').select('*').order('nombre');_sucs=sd||[];}catch(e){_sucs=[];}
+  try{await loadApiKey();}catch(e){}
+  try{await loadBrandFromDB();}catch(e){}
   const cfg=localStorage.getItem('hg_cfg');if(cfg)_cfg=JSON.parse(cfg);
   document.getElementById('auth').style.display='none';
   document.getElementById('app').style.display='block';
@@ -1697,7 +1695,7 @@ function loadCfgApp(){
   </div>`;
 }
 async function saveCfgApp(){
-  const btn=event.target;btn.textContent='Guardando...';btn.disabled=true;
+  const btn=document.querySelector('#tab-app .btn-p');if(btn){btn.textContent='Guardando...';btn.disabled=true;}
   const file=document.getElementById('ca-logo-file')?.files[0];
   let logoUrl=_cfg.logo||'';
   if(file){
@@ -1710,7 +1708,7 @@ async function saveCfgApp(){
   await sb.from('app_config').upsert({key:'app_brand',value:JSON.stringify(cfg),updated_at:new Date().toISOString()},{onConflict:'key'});
   localStorage.setItem('hg_cfg',JSON.stringify(cfg));
   _cfg=cfg;applyBrand();
-  btn.textContent='Guardar';btn.disabled=false;
+  if(btn){btn.textContent='Guardar';btn.disabled=false;}
   document.getElementById('ca-ok').innerHTML='<div class="al al-ok" style="margin-top:10px">✓ Guardado</div>';
   // Refresh config tab to show new logo
   setTimeout(loadCfgApp, 500);
