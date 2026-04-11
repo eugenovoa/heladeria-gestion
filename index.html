@@ -417,23 +417,24 @@ async function uploadAdjunto(file,carpeta,nombre){
   const path=`${safeCarpeta}/${safeNombre}.${ext}`;
   const{error}=await sb.storage.from('adjuntos').upload(path,file,{upsert:true,contentType:file.type});
   if(error){console.error('Upload:',error.message);return null}
-  const{data:pub}=sb.storage.from('adjuntos').getPublicUrl(path);
-  return pub?.publicUrl||null;
+  // Bucket is private - use signed URL with 10 year expiry
+  const{data:signed}=await sb.storage.from('adjuntos').createSignedUrl(path,60*60*24*365*10);
+  return signed?.signedUrl||null;
 }
 function adjuntoField(id='adj-file'){return`<div class="f full" style="margin-top:4px"><label>Adjuntar archivo (opcional)</label><input type="file" id="${id}" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%"></div>`}
 async function verAdjunto(url){
   if(!url){alert('Sin adjunto.');return}
   try{
-    // Convert any signed URL to public URL
-    let openUrl=url;
-    const signMatch=url.match(/\/object\/sign\/([^?]+)/);
-    const pubMatch=url.match(/\/object\/public\/([^?]+)/);
-    if(signMatch){
-      const path=signMatch[1].split('?')[0];
-      const{data}=sb.storage.from('adjuntos').getPublicUrl(path.replace(/^adjuntos\//,''));
-      if(data?.publicUrl)openUrl=data.publicUrl;
+    // If it's a public URL (broken - bucket is private), regenerate as signed
+    if(url.includes('/object/public/')){
+      const match=url.match(/\/object\/public\/adjuntos\/(.+)/);
+      if(match){
+        const{data}=await sb.storage.from('adjuntos').createSignedUrl(match[1],60*60*24*7);
+        if(data?.signedUrl){window.open(data.signedUrl,'_blank');return;}
+      }
     }
-    window.open(openUrl,'_blank');
+    // Signed URL - open directly
+    window.open(url,'_blank');
   }catch(e){window.open(url,'_blank')}
 }
 
