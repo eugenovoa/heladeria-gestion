@@ -449,7 +449,6 @@ function recalcSummary(lisId){
     const inputs=row.querySelectorAll('input');
     const sel=row.querySelector('select');
     const neto=parseFloat(inputs[2]?.value)||0;
-    const qty=parseFloat(inputs[1]?.value)||1;
     const mwst=parseInt(sel?.value)||7;
     if(mwst===7)n7+=neto;else n19+=neto;
   });
@@ -460,13 +459,14 @@ function recalcSummary(lisId){
   document.getElementById(prefix+'-s-neto').textContent='€'+neto.toLocaleString('de-DE',{minimumFractionDigits:2});
   document.getElementById(prefix+'-s-mwst').textContent='€'+mwst.toLocaleString('de-DE',{minimumFractionDigits:2});
   document.getElementById(prefix+'-s-total').textContent='€'+total.toLocaleString('de-DE',{minimumFractionDigits:2});
-  // Also update total field if exists
-  const tf=document.getElementById(prefix.replace('-','m-').replace('ia','m').replace('gi','gm')+'t')||document.getElementById(prefix+'-t');
-  // Update the total input
-  ['gi-t','gm-t','ia-tot','eg-t'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el&&document.getElementById(prefix+'-summary')){}
-  });
+}
+
+// Attach live recalc to a lines container via event delegation
+function attachRecalc(lisId){
+  const el=document.getElementById(lisId);
+  if(!el)return;
+  el.addEventListener('input',()=>recalcSummary(lisId));
+  el.addEventListener('change',()=>recalcSummary(lisId));
 }
 function addLi(cid){
   const c=document.getElementById(cid);if(!c)return;
@@ -949,6 +949,7 @@ async function procFactIA(file){
     <div style="margin-top:14px">${adjuntoField('fi-fadj')}</div>`;
   swMoTab(document.querySelector('.mo-tab:last-child'),'tab-ver');
   document.getElementById('mo-save').textContent='Guardar factura';document.getElementById('mo-save').style.display='';
+  setTimeout(()=>{attachRecalc('ia-lis');recalcSummary('ia-lis');},50);
 }
 async function guardarFactIA(){
   if(!window._iaR){alert('Primero subí un PDF.');return}
@@ -1003,6 +1004,7 @@ async function newFactMan(){
     if(mAdj&&fact?.id){const{data:pInfo}=await sb.from('proveedores').select('nombre').eq('id',pv).single();const url=await uploadAdjunto(mAdj,`facturas/${fe.substring(0,4)}/${pInfo?.nombre||'varios'}`,`fact-${fact.id}`);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
     closeMo();facturas();
   });
+  setTimeout(()=>{attachRecalc('ml');recalcSummary('ml');},50);
 }
 function autoVenc(sel){const d=parseInt(sel.options[sel.selectedIndex]?.dataset.d)||30;const fe=document.getElementById('ffe').value;if(fe){const dt=new Date(fe+'T00:00:00');dt.setDate(dt.getDate()+d);document.getElementById('ffv').value=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`}}
 
@@ -1082,9 +1084,10 @@ async function editFact(id){
     closeMo();facturas();
   });
   setTimeout(()=>{
-    if(!document.getElementById('ef-lis').children.length){
+    if(!document.getElementById('ef-lis')?.children.length){
       addLi('ef-lis');
     }
+    attachRecalc('ef-lis');
     recalcSummary('ef-lis');
   },100);
 }
@@ -1276,7 +1279,7 @@ async function procGastoIA(file){
   document.getElementById('gi-c').value=r.proveedor||'';
   if(document.getElementById('gi-nd'))document.getElementById('gi-nd').value=r.numero_documento||'';
   const lisContainer=document.getElementById('gi-lis');
-  if(lisContainer){lisContainer.innerHTML=(r.lineas||[]).map(l=>`<div class="li"><input value="${l.descripcion||''}" oninput="recalcSummary('gi-lis')"><input type="number" value="${l.cantidad||1}" oninput="recalcSummary('gi-lis')"><input type="number" value="${(l.monto_neto||0).toFixed(2)}" step="0.01" oninput="recalcSummary('gi-lis')"><select onchange="recalcSummary('gi-lis')"><option value="7" ${l.mwst_pct===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('gi-lis')">✕</button></div>`).join('');recalcSummary('gi-lis');}
+  if(lisContainer){lisContainer.innerHTML=(r.lineas||[]).map(l=>`<div class="li"><input value="${l.descripcion||''}" oninput="recalcSummary('gi-lis')"><input type="number" value="${l.cantidad||1}" oninput="recalcSummary('gi-lis')"><input type="number" value="${(l.monto_neto||0).toFixed(2)}" step="0.01" oninput="recalcSummary('gi-lis')"><select onchange="recalcSummary('gi-lis')"><option value="7" ${l.mwst_pct===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('gi-lis')">✕</button></div>`).join('');attachRecalc('gi-lis');recalcSummary('gi-lis');}
 }
 function calcGM(){}
 
@@ -1320,6 +1323,7 @@ async function newGastoMan(){
     if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
     closeMo();gastos();
   });
+  setTimeout(()=>{attachRecalc('gm-lis');recalcSummary('gm-lis');},50);
 }
 function calcGMe(){}
 
@@ -1429,7 +1433,7 @@ async function editGasto(id){
     if(egFile){const url=await uploadAdjunto(egFile,`gastos/${document.getElementById('eg-d').value.substring(0,4)}`,`gasto-${id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
     closeMo();gastos();
   });
-  setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id;recalcSummary('eg-lis');},50);
+  setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id;attachRecalc('eg-lis');recalcSummary('eg-lis');},50);
 }
 async function delGasto(id){if(!confirm('¿Eliminar?'))return;await sb.from('gastos').delete().eq('id',id);gastos()}
 
