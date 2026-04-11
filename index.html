@@ -1053,7 +1053,7 @@ async function editFact(id){
   </div>
   <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas de detalle</div>
   ${liHeader}
-  <div id="ef-lis">${existingLis||'<div class="li"><input placeholder="Descripción" oninput="recalcSummary('ef-lis')"><input type="number" value="1" oninput="recalcSummary('ef-lis')"><input type="number" value="0" step="0.01" oninput="recalcSummary('ef-lis')"><select onchange="recalcSummary('ef-lis')"><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest(\'.li\').remove();recalcSummary('ef-lis')">✕</button></div>'}</div>
+        <div id="ef-lis">${existingLis||''}</div>
   <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('ef-lis')">+ Línea</button>
   <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="ef-summary">
     <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="ef-s-neto">€0,00</div></div>
@@ -1081,7 +1081,12 @@ async function editFact(id){
     if(lis.length)await sb.from('lineas_factura').insert(lis.map(l=>({factura_id:id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.neto*mult,mwst_porcentaje:l.mwst,mwst_monto:l.neto*l.mwst/100*mult})));
     closeMo();facturas();
   });
-  setTimeout(()=>recalcSummary('ef-lis'),100);
+  setTimeout(()=>{
+    if(!document.getElementById('ef-lis').children.length){
+      addLi('ef-lis');
+    }
+    recalcSummary('ef-lis');
+  },100);
 }
 async function setFactEst(id,est){await sb.from('facturas').update({estado:est}).eq('id',id);closeMo();facturas()}
 async function delFact(id){if(!confirm('¿Eliminar?'))return;await sb.from('facturas').delete().eq('id',id);closeMo();facturas()}
