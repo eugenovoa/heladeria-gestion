@@ -410,31 +410,24 @@ async function uploadAdjunto(file,carpeta,nombre){
   const path=`${safeCarpeta}/${safeNombre}.${ext}`;
   const{error}=await sb.storage.from('adjuntos').upload(path,file,{upsert:true,contentType:file.type});
   if(error){console.error('Upload:',error.message);return null}
-  // Try public URL first, fall back to signed URL
   const{data:pub}=sb.storage.from('adjuntos').getPublicUrl(path);
-  if(pub?.publicUrl&&!pub.publicUrl.includes('undefined'))return pub.publicUrl;
-  const{data:signed}=await sb.storage.from('adjuntos').createSignedUrl(path,60*60*24*365*10);
-  return signed?.signedUrl||null;
+  return pub?.publicUrl||null;
 }
 function adjuntoField(id='adj-file'){return`<div class="f full" style="margin-top:4px"><label>Adjuntar archivo (opcional)</label><input type="file" id="${id}" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%"></div>`}
 async function verAdjunto(url){
   if(!url){alert('Sin adjunto.');return}
-  // If it's a signed URL (has /sign/ in path), refresh it
-  if(url.includes('/sign/')){
-    try{
-      // Extract path from signed URL
-      const match=url.match(/\/object\/sign\/([^?]+)/);
-      if(match){
-        const path=match[1].split('?')[0]; // strip query params
-        const parts=path.split('/');
-        const bucket=parts[0];
-        const filePath=parts.slice(1).join('/');
-        const{data}=await sb.storage.from(bucket).createSignedUrl(filePath,60*60);
-        if(data?.signedUrl){window.open(data.signedUrl,'_blank');return;}
-      }
-    }catch(e){console.error('URL refresh failed:',e)}
-  }
-  window.open(url,'_blank');
+  try{
+    // Convert any signed URL to public URL
+    let openUrl=url;
+    const signMatch=url.match(/\/object\/sign\/([^?]+)/);
+    const pubMatch=url.match(/\/object\/public\/([^?]+)/);
+    if(signMatch){
+      const path=signMatch[1].split('?')[0];
+      const{data}=sb.storage.from('adjuntos').getPublicUrl(path.replace(/^adjuntos\//,''));
+      if(data?.publicUrl)openUrl=data.publicUrl;
+    }
+    window.open(openUrl,'_blank');
+  }catch(e){window.open(url,'_blank')}
 }
 
 function addLi(cid){const d=document.createElement('div');d.className='li';d.innerHTML=`<input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01" placeholder="Neto €"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button>`;document.getElementById(cid).appendChild(d)}
@@ -489,7 +482,7 @@ Reglas: fechas YYYY-MM-DD. mwst_pct es 7 o 19. Si es Gutschrift montos negativos
   }catch(e){console.error('iaFactura:',e);return null}
 }
 async function iaTicket(b64,mime){
-  const prompt=`Sos un extractor de facturas y tickets de compras alemanas. Devolvé SOLO JSON válido sin markdown:\n{"proveedor":"","fecha":"","lineas":[{"descripcion":"","cantidad":0,"monto_neto":0,"mwst_pct":7}],"neto_7":0,"mwst_7":0,"neto_19":0,"mwst_19":0,"total_bruto":0}\nReglas: fechas YYYY-MM-DD. mwst_pct solo puede ser 7 o 19. Alimentos=7%, limpieza/drogueria/higiene=19%. monto_neto es precio sin IVA por linea. En facturas EDEKA columna St indica grupo IVA (1=7%, 2=19%). total_bruto es el total pagado (Gesamtbetrag o Zahlbetrag).`;
+  const prompt=`Sos un extractor de tickets y facturas de compras alemanas. Devolvé SOLO JSON válido sin markdown ni explicaciones:\n{"proveedor":"","fecha":"","numero_documento":"","lineas":[{"descripcion":"","cantidad":0,"monto_neto":0,"mwst_pct":7}],"neto_7":0,"mwst_7":0,"neto_19":0,"mwst_19":0,"total_bruto":0}\nReglas importantes:\n- fecha en YYYY-MM-DD (suele estar al pie del ticket en DD.MM.YY)\n- numero_documento: número de caja/ticket largo que aparece al pie\n- mwst_pct solo 7 o 19. En tickets: letra B=7% (alimentos/Lebensmittel), letra C o A=19% (resto)\n- En EDEKA: columna St, valor 1=7%, valor 2=19%\n- monto_neto es precio SIN IVA por línea (precio_bruto / 1.07 o 1.19 según tasa)\n- Si el ticket muestra "X x precio_unit = total": cantidad=X, calcular neto del total\n- total_bruto es el total pagado (SUMME, GESAMT, Zahlbetrag)\n- neto_7 y neto_19 son las bases imponibles totales por tasa`;
   try{
     const isImg=!mime.includes('pdf');
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:IA_HEADERS,body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:[{type:isImg?'image':'document',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]}]})});
@@ -1133,9 +1126,9 @@ async function gastos(){
   const{data}=await sb.from('gastos').select('*,categorias_gasto(nombre),sucursales(nombre)').order('fecha',{ascending:false});
   document.getElementById('ct').innerHTML=`<div class="card"><div style="overflow-x:auto">
     ${!(data||[]).length?'<div class="empty">Sin gastos.</div>':`
-    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Sucursal</th><th>Neto</th><th>MwSt</th><th>Total</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>Fecha</th><th>N° Doc.</th><th>Concepto</th><th>Categoría</th><th>Sucursal</th><th>Neto</th><th>MwSt</th><th>Total</th><th></th></tr></thead><tbody>
     ${data.map(g=>`<tr>
-      <td>${fmtD(g.fecha)}</td><td>${g.concepto||'—'}</td>
+      <td>${fmtD(g.fecha)}</td><td style="font-size:11px;font-family:monospace;color:var(--text-muted)">${g.numero_documento||'—'}</td><td>${g.concepto||'—'}</td>
       <td><span class="bd bd-gray">${g.categorias_gasto?.nombre||'—'}</span></td>
       <td><span class="bd bd-gray" style="font-size:10px">${g.sucursales?.nombre||'General'}</span></td>
       <td>${fmt(g.monto_neto||g.monto)}</td>
@@ -1160,6 +1153,7 @@ async function newGastoIA(){
       <div class="fg">
         <div class="f"><label>Fecha *</label><input id="gi-d" type="date"></div>
         <div class="f"><label>Total (€) *</label><input id="gi-t" type="number" step="0.01"></div>
+        <div class="f"><label>N° Documento</label><input id="gi-nd" placeholder="Ej: 0010590100..."></div>
         <div class="f full"><label>Proveedor / Concepto *</label><input id="gi-c" placeholder="Ej: Supermercado Lidl"></div>
         <div class="f"><label>Categoría</label><select id="gi-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
         <div class="f"><label>Sucursal</label><select id="gi-s"><option value="">General</option>${sucOpts()}</select></div>
@@ -1180,7 +1174,7 @@ async function newGastoIA(){
     const giM7=giN7*0.07,giM19=giN19*0.19;
     const giNeto=giN7+giN19||monto;const giMwst=giM7+giM19;
     const giLineasJson=giLis.length?JSON.stringify(giLis.map(l=>({desc:l.desc,qty:l.qty,neto:l.neto,mwst:l.mwst}))):null;
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:monto||giNeto+giMwst,monto_neto:giNeto,mwst_porcentaje:giN19>=giN7?19:7,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,lineas_json:giLineasJson}).select('id').single();
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:monto||giNeto+giMwst,monto_neto:giNeto,mwst_porcentaje:giN19>=giN7?19:7,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,lineas_json:giLineasJson,numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gi-adj').files[0];
     if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
@@ -1198,6 +1192,7 @@ async function procGastoIA(file){
   document.getElementById('gi-d').value=r.fecha||today();
   document.getElementById('gi-t').value=(r.total_bruto||0).toFixed(2);
   document.getElementById('gi-c').value=r.proveedor||'';
+  if(document.getElementById('gi-nd'))document.getElementById('gi-nd').value=r.numero_documento||'';
   const lisContainer=document.getElementById('gi-lis');
   if(lisContainer)lisContainer.innerHTML=(r.lineas||[]).map(l=>`<div class="li"><input value="${l.descripcion||''}"><input type="number" value="${l.cantidad||1}"><input type="number" value="${(l.monto_neto||0).toFixed(2)}" step="0.01"><select><option value="7" ${l.mwst_pct===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div>`).join('');
 }
@@ -1209,6 +1204,7 @@ async function newGastoMan(){
   openMo('Nuevo gasto al contado',`<div class="fg">
     <div class="f"><label>Fecha *</label><input id="gm-d" type="date" value="${today()}"></div>
     <div class="f"><label>Total (€) *</label><input id="gm-t" type="number" step="0.01"></div>
+    <div class="f"><label>N° Documento</label><input id="gm-nd" placeholder="Opcional"></div>
     <div class="f full"><label>Concepto *</label><input id="gm-c"></div>
     <div class="f"><label>Neto (sin MwSt)</label><input id="gm-n" type="number" step="0.01"></div>
     <div class="f"><label>MwSt %</label><input id="gm-p" type="number" value="0"></div>
@@ -1231,7 +1227,7 @@ async function newGastoMan(){
     const gmNeto=gmN7+gmN19||parseFloat(document.getElementById('gm-n').value)||gmMonto;
     const gmMwst=gmM7+gmM19||parseFloat(document.getElementById('gm-m').value)||0;
     const gmLineasJson=gmLis.length?JSON.stringify(gmLis.map(l=>({desc:l.desc,qty:l.qty,neto:l.neto,mwst:l.mwst}))):null;
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:gmMonto||gmNeto+gmMwst,monto_neto:gmNeto,mwst_porcentaje:gmN19>=gmN7?19:7,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value,lineas_json:gmLineasJson}).select('id').single();
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:gmMonto||gmNeto+gmMwst,monto_neto:gmNeto,mwst_porcentaje:gmN19>=gmN7?19:7,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value,lineas_json:gmLineasJson,numero_documento:document.getElementById('gm-nd')?.value||null}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gm-adj').files[0];
     if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
@@ -1245,6 +1241,7 @@ async function verGasto(id){
   openMo('Gasto al contado',`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">
       <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Fecha</div><div style="font-weight:600">${fmtD(g.fecha)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">N° Documento</div><div style="font-family:monospace;font-size:13px">${g.numero_documento||'—'}</div></div>
       <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Proveedor / Concepto</div><div style="font-weight:600">${g.concepto||'—'}</div></div>
       <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Categoría</div><div>${g.categorias_gasto?.nombre||'—'}</div></div>
       <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Sucursal</div><div>${g.sucursales?.nombre||'General'}</div></div>
@@ -1289,6 +1286,7 @@ async function editGasto(id){
   openMo('Editar gasto',`<div class="fg">
     <div class="f"><label>Fecha *</label><input id="eg-d" type="date" value="${g.fecha}"></div>
     <div class="f"><label>Total (€) *</label><input id="eg-t" type="number" step="0.01" value="${g.monto}"></div>
+    <div class="f"><label>N° Documento</label><input id="eg-nd" value="${g.numero_documento||''}"></div>
     <div class="f full"><label>Concepto *</label><input id="eg-c" value="${g.concepto||''}"></div>
     <div class="f"><label>Neto (sin MwSt)</label><input id="eg-n" type="number" step="0.01" value="${g.monto_neto||g.monto}"></div>
     <div class="f"><label>MwSt %</label><input id="eg-p" type="number" value="${g.mwst_porcentaje||0}"></div>
@@ -1316,6 +1314,7 @@ async function editGasto(id){
   </div>`,async()=>{
     const{error}=await sb.from('gastos').update({
       fecha:document.getElementById('eg-d').value,
+      numero_documento:document.getElementById('eg-nd')?.value||null,
       concepto:document.getElementById('eg-c').value,
       categoria_id:document.getElementById('eg-cat').value||null,
       monto:parseFloat(document.getElementById('eg-t').value)||0,
