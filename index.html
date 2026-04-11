@@ -450,7 +450,9 @@ function recalcSummary(lisId){
     const sel=row.querySelector('select');
     const qty=parseFloat(inputs[1]?.value)||1;
     // Use data-exact for full precision if available
-    const netoUnit=getNetoFromInput(inputs[2],sel);
+    const _exactVal=parseFloat(inputs[2]?.dataset?.exact||inputs[2]?.value)||0;
+    const _bruto=document.getElementById(lisId.replace('-lis','-bruto'));
+    const netoUnit=(_bruto?.checked)?_exactVal/(1+(parseInt(sel?.value)||7)/100):_exactVal;
     const neto=netoUnit*qty;
     const mwst=parseInt(sel?.value)||7;
     if(mwst===7)n7+=neto;else n19+=neto;
@@ -1928,3 +1930,15 @@ sb.auth.getSession().then(({data:{session}})=>{if(session)initApp(session.user)}
 </script>
 </body>
 </html>
+function getLis(cid){
+  const rows=document.getElementById(cid)?.querySelectorAll('.li')||[];
+  return[...rows].map(r=>{
+    const i=r.querySelectorAll('input'),s=r.querySelector('select');
+    const v=parseFloat(i[2]?.dataset?.exact||i[2]?.value)||0;
+    const cb=document.getElementById(cid.replace('-lis','-bruto'));
+    const neto=cb?.checked?v/(1+(parseInt(s?.value)||7)/100):v;
+    return{desc:i[0]?.value||'',qty:parseFloat(i[1]?.value)||1,neto,mwst:parseInt(s?.value)||7};
+  }).filter(l=>l.neto>0||l.desc);
+}
+
+function toggleBrutoMode(lisId,enabled){recalcSummary(lisId);}
