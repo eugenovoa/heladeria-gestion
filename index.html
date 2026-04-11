@@ -438,14 +438,41 @@ async function verAdjunto(url){
   }catch(e){window.open(url,'_blank')}
 }
 
-function addLi(cid){const d=document.createElement('div');d.className='li';d.innerHTML=`<input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01" placeholder="Neto €"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button>`;document.getElementById(cid).appendChild(d)}
-function getLis(cid){return[...document.getElementById(cid).querySelectorAll('.li')].map(el=>{const ins=el.querySelectorAll('input'),sel=el.querySelector('select');return{desc:ins[0].value,qty:parseFloat(ins[1].value)||0,neto:parseFloat(ins[2].value)||0,mwst:parseInt(sel.value)||7}})}
 
-// ---- GESTION CATEGORIAS ----
-async function gstCats(tabla,cb){
-  const render=async()=>{const{data}=await sb.from(tabla).select('*').order('nombre');document.getElementById('cat-list').innerHTML=(data||[]).map(c=>`<div class="cat-row"><span>${c.nombre}</span><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="editCat('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}')">Editar</button><button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}')">✕</button></div></div>`).join('')||'<div style="font-size:13px;color:var(--text-faint);padding:8px">Sin categorías</div>'};
-  openMo('Gestionar categorías',`<div style="display:flex;gap:8px;margin-bottom:14px"><input id="nc" placeholder="Nueva categoría..." style="flex:1;font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit" onkeydown="if(event.key==='Enter')addCat('${tabla}')"><button class="btn btn-p" onclick="addCat('${tabla}')">+ Agregar</button></div><div class="cats" id="cat-list"><div class="ld">Cargando...</div></div>`,async()=>{closeMo();if(cb)cb()});
-  await render();window._rCats=render;
+function recalcSummary(lisId){
+  const prefix=lisId.replace('-lis','');
+  const lis=document.getElementById(lisId);
+  if(!lis)return;
+  const rows=lis.querySelectorAll('.li');
+  let n7=0,n19=0;
+  rows.forEach(row=>{
+    const inputs=row.querySelectorAll('input');
+    const sel=row.querySelector('select');
+    const neto=parseFloat(inputs[2]?.value)||0;
+    const qty=parseFloat(inputs[1]?.value)||1;
+    const mwst=parseInt(sel?.value)||7;
+    if(mwst===7)n7+=neto;else n19+=neto;
+  });
+  const m7=n7*.07,m19=n19*.19;
+  const neto=n7+n19,mwst=m7+m19,total=neto+mwst;
+  const s=document.getElementById(prefix+'-summary');
+  if(!s)return;
+  document.getElementById(prefix+'-s-neto').textContent='€'+neto.toLocaleString('de-DE',{minimumFractionDigits:2});
+  document.getElementById(prefix+'-s-mwst').textContent='€'+mwst.toLocaleString('de-DE',{minimumFractionDigits:2});
+  document.getElementById(prefix+'-s-total').textContent='€'+total.toLocaleString('de-DE',{minimumFractionDigits:2});
+  // Also update total field if exists
+  const tf=document.getElementById(prefix.replace('-','m-').replace('ia','m').replace('gi','gm')+'t')||document.getElementById(prefix+'-t');
+  // Update the total input
+  ['gi-t','gm-t','ia-tot','eg-t'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el&&document.getElementById(prefix+'-summary')){}
+  });
+}
+function addLi(cid){
+  const c=document.getElementById(cid);if(!c)return;
+  const d=document.createElement('div');d.className='li';
+  d.innerHTML=`<input placeholder="Descripción" oninput="recalcSummary('${cid}')"><input type="number" value="1" oninput="recalcSummary('${cid}')"><input type="number" value="0" step="0.01" oninput="recalcSummary('${cid}')"><select onchange="recalcSummary('${cid}')"><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('${cid}')">✕</button>`;
+  c.appendChild(d);
 }
 async function addCat(t){const v=document.getElementById('nc').value.trim();if(!v)return;await sb.from(t).insert({nombre:v});document.getElementById('nc').value='';await window._rCats()}
 async function editCat(t,id,n){const nn=prompt('Nuevo nombre:',n);if(!nn||nn===n)return;await sb.from(t).update({nombre:nn}).eq('id',id);await window._rCats()}
@@ -911,6 +938,11 @@ async function procFactIA(file){
     ${liHeader}
     <div id="ia-lis">${(r.lineas||[]).map(l=>`<div class="li"><input value="${l.descripcion||''}"><input type="number" value="${l.cantidad||0}"><input type="number" value="${(l.monto_neto||0).toFixed(2)}" step="0.01"><select><option value="7" ${l.mwst_pct===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div>`).join('')}</div>
     <button class="btn btn-sm" style="margin-top:8px" onclick="addLi('ia-lis')">+ Línea</button>
+  <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="ia-summary">
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="ia-s-neto">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="ia-s-mwst">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="ia-s-total">€0,00</div></div>
+  </div>
     <div style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--r);font-size:12px">
       Neto 7%: <strong>${fmt(r.neto_7||0)}</strong> MwSt 7%: <strong>${fmt(r.mwst_7||0)}</strong> · Neto 19%: <strong>${fmt(r.neto_19||0)}</strong> MwSt 19%: <strong>${fmt(r.mwst_19||0)}</strong> · Total: <strong>${fmt(r.total_bruto||0)}</strong>
     </div>
@@ -949,6 +981,11 @@ async function newFactMan(){
   ${liHeader}
   <div id="ml"><div class="li"><input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div></div>
   <button class="btn btn-sm" style="margin-top:8px" onclick="addLi('ml')">+ Línea</button>
+  <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="ml-summary">
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="ml-s-neto">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="ml-s-mwst">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="ml-s-total">€0,00</div></div>
+  </div>
   <div style="margin-top:14px">${adjuntoField('fi-madj')}</div>`,
   async()=>{
     const fe=document.getElementById('ffe').value,pv=document.getElementById('fp').value;
@@ -999,26 +1036,53 @@ async function verFact(id){
     </div>`,()=>{},true);
 }
 async function editFact(id){
-  const{data:f}=await sb.from('facturas').select('*').eq('id',id).single();
-  const{data:provs}=await sb.from('proveedores').select('id,nombre').eq('activo',true).order('nombre');
+  const[{data:f},{data:provs},{data:ls}]=await Promise.all([
+    sb.from('facturas').select('*').eq('id',id).single(),
+    sb.from('proveedores').select('id,nombre').eq('activo',true).order('nombre'),
+    sb.from('lineas_factura').select('*').eq('factura_id',id)
+  ]);
+  const liHeader='<div style="display:grid;grid-template-columns:1fr 70px 90px 75px 32px;gap:8px;padding:0 10px;margin-bottom:4px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Descripción</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Cant.</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Neto €</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">MwSt</div><div></div></div>';
+  const existingLis=(ls||[]).map(l=>`<div class="li"><input value="${l.descripcion||''}" oninput="recalcSummary('ef-lis')"><input type="number" value="${l.cantidad||1}" oninput="recalcSummary('ef-lis')"><input type="number" value="${Math.abs(l.monto_neto||0).toFixed(2)}" step="0.01" oninput="recalcSummary('ef-lis')"><select onchange="recalcSummary('ef-lis')"><option value="7" ${(l.mwst_porcentaje||7)===7?'selected':''}>7%</option><option value="19" ${l.mwst_porcentaje===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('ef-lis')">✕</button></div>`).join('');
   openMo('Editar factura',`<div class="fg">
     <div class="f"><label>Tipo</label><select id="et"><option value="factura" ${f.tipo==='factura'?'selected':''}>Factura</option><option value="gutschrift" ${f.tipo==='gutschrift'?'selected':''}>Gutschrift</option></select></div>
     <div class="f"><label>N° Documento</label><input id="en" value="${f.numero_factura}"></div>
     <div class="f"><label>Proveedor</label><select id="ep">${provs.map(p=>`<option value="${p.id}" ${p.id===f.proveedor_id?'selected':''}>${p.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Fecha emisión</label><input id="efe" type="date" value="${f.fecha_emision}"></div>
     <div class="f"><label>Fecha vencimiento</label><input id="efv" type="date" value="${f.fecha_vencimiento}"></div>
-    <div class="f"><label>Monto neto</label><input id="emn" type="number" step="0.01" value="${f.monto_neto}" oninput="calcEd()"></div>
-    <div class="f"><label>MwSt %</label><input id="emp" type="number" value="${f.mwst_porcentaje||7}" oninput="calcEd()"></div>
-    <div class="f"><label>MwSt monto</label><input id="emm" type="number" step="0.01" value="${f.mwst_monto}"></div>
-    <div class="f"><label>Total</label><input id="eto" type="number" step="0.01" value="${f.monto_total}" readonly style="background:var(--surface2)"></div>
     <div class="f"><label>Estado</label><select id="ees"><option value="pendiente" ${f.estado==='pendiente'?'selected':''}>Pendiente</option><option value="pagada" ${f.estado==='pagada'?'selected':''}>Pagada</option><option value="vencida" ${f.estado==='vencida'?'selected':''}>Vencida</option></select></div>
-  </div>`,async()=>{
-    const n=parseFloat(document.getElementById('emn').value)||0,m=parseFloat(document.getElementById('emm').value)||0;
-    const{error}=await sb.from('facturas').update({tipo:document.getElementById('et').value,numero_factura:document.getElementById('en').value,proveedor_id:document.getElementById('ep').value,fecha_emision:document.getElementById('efe').value,fecha_vencimiento:document.getElementById('efv').value,monto_neto:n,mwst_porcentaje:parseFloat(document.getElementById('emp').value)||7,mwst_monto:m,monto_total:n+m,estado:document.getElementById('ees').value}).eq('id',id);
-    if(!error){closeMo();facturas()}else alert(error.message);
+  </div>
+  <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas de detalle</div>
+  ${liHeader}
+  <div id="ef-lis">${existingLis||'<div class="li"><input placeholder="Descripción" oninput="recalcSummary('ef-lis')"><input type="number" value="1" oninput="recalcSummary('ef-lis')"><input type="number" value="0" step="0.01" oninput="recalcSummary('ef-lis')"><select onchange="recalcSummary('ef-lis')"><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest(\'.li\').remove();recalcSummary('ef-lis')">✕</button></div>'}</div>
+  <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('ef-lis')">+ Línea</button>
+  <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="ef-summary">
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="ef-s-neto">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="ef-s-mwst">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="ef-s-total">€0,00</div></div>
+  </div>`,
+  async()=>{
+    const tp=document.getElementById('et').value,mult=tp==='gutschrift'?-1:1;
+    const lis=getLis('ef-lis');
+    const n7=lis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
+    const n19=lis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
+    const m7=n7*.07,m19=n19*.19;
+    const neto=(n7+n19)*mult,mwst=(m7+m19)*mult,total=(n7+n19+m7+m19)*mult;
+    const{error}=await sb.from('facturas').update({
+      tipo:tp,numero_factura:document.getElementById('en').value,
+      proveedor_id:document.getElementById('ep').value,
+      fecha_emision:document.getElementById('efe').value,
+      fecha_vencimiento:document.getElementById('efv').value,
+      monto_neto:neto,mwst_porcentaje:n19>=n7?19:7,mwst_monto:mwst,monto_total:total,
+      estado:document.getElementById('ees').value
+    }).eq('id',id);
+    if(error){alert(error.message);return}
+    // Update lines
+    await sb.from('lineas_factura').delete().eq('factura_id',id);
+    if(lis.length)await sb.from('lineas_factura').insert(lis.map(l=>({factura_id:id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.neto*mult,mwst_porcentaje:l.mwst,mwst_monto:l.neto*l.mwst/100*mult})));
+    closeMo();facturas();
   });
+  setTimeout(()=>recalcSummary('ef-lis'),100);
 }
-function calcEd(){const n=parseFloat(document.getElementById('emn').value)||0,p=parseFloat(document.getElementById('emp').value)||7,m=n*p/100;document.getElementById('emm').value=m.toFixed(2);document.getElementById('eto').value=(n+m).toFixed(2)}
 async function setFactEst(id,est){await sb.from('facturas').update({estado:est}).eq('id',id);closeMo();facturas()}
 async function delFact(id){if(!confirm('¿Eliminar?'))return;await sb.from('facturas').delete().eq('id',id);closeMo();facturas()}
 
@@ -1170,6 +1234,11 @@ async function newGastoIA(){
       ${liHeader}
       <div id="gi-lis"></div>
       <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('gi-lis')">+ Línea</button>
+  <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="gi-summary">
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="gi-s-neto">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="gi-s-mwst">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="gi-s-total">€0,00</div></div>
+  </div>
       <div style="margin-top:12px"><label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Adjuntar archivo (opcional)</label><input type="file" id="gi-adj" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%"></div>
     </div>`,
   async()=>{
@@ -1202,7 +1271,7 @@ async function procGastoIA(file){
   document.getElementById('gi-c').value=r.proveedor||'';
   if(document.getElementById('gi-nd'))document.getElementById('gi-nd').value=r.numero_documento||'';
   const lisContainer=document.getElementById('gi-lis');
-  if(lisContainer)lisContainer.innerHTML=(r.lineas||[]).map(l=>`<div class="li"><input value="${l.descripcion||''}"><input type="number" value="${l.cantidad||1}"><input type="number" value="${(l.monto_neto||0).toFixed(2)}" step="0.01"><select><option value="7" ${l.mwst_pct===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div>`).join('');
+  if(lisContainer){lisContainer.innerHTML=(r.lineas||[]).map(l=>`<div class="li"><input value="${l.descripcion||''}" oninput="recalcSummary('gi-lis')"><input type="number" value="${l.cantidad||1}" oninput="recalcSummary('gi-lis')"><input type="number" value="${(l.monto_neto||0).toFixed(2)}" step="0.01" oninput="recalcSummary('gi-lis')"><select onchange="recalcSummary('gi-lis')"><option value="7" ${l.mwst_pct===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('gi-lis')">✕</button></div>`).join('');recalcSummary('gi-lis');}
 }
 function calcGM(){}
 
@@ -1223,8 +1292,13 @@ async function newGastoMan(){
   </div>
   <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas de detalle (opcional)</div>
   ${liHeader}
-  <div id="gm-lis"><div class="li"><input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div></div>
+  <div id="gm-lis"><div class="li"><input placeholder="Descripción" oninput="recalcSummary('gm-lis')"><input type="number" value="1" oninput="recalcSummary('gm-lis')"><input type="number" value="0" step="0.01" oninput="recalcSummary('gm-lis')"><select onchange="recalcSummary('gm-lis')"><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('gm-lis')">✕</button></div></div>
   <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('gm-lis')">+ Línea</button>
+  <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="gm-summary">
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="gm-s-neto">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="gm-s-mwst">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="gm-s-total">€0,00</div></div>
+  </div>
   <div style="margin-top:14px">${adjuntoField('gm-adj')}</div>`,async()=>{
     const fecha=document.getElementById('gm-d').value;await getOrCreateTmp(fecha);
     const gmMonto=parseFloat(document.getElementById('gm-t').value)||0;
@@ -1296,9 +1370,6 @@ async function editGasto(id){
     <div class="f"><label>Total (€) *</label><input id="eg-t" type="number" step="0.01" value="${g.monto}"></div>
     <div class="f"><label>N° Documento</label><input id="eg-nd" value="${g.numero_documento||''}"></div>
     <div class="f full"><label>Concepto *</label><input id="eg-c" value="${g.concepto||''}"></div>
-    <div class="f"><label>Neto (sin MwSt)</label><input id="eg-n" type="number" step="0.01" value="${g.monto_neto||g.monto}"></div>
-    <div class="f"><label>MwSt %</label><input id="eg-p" type="number" value="${g.mwst_porcentaje||0}"></div>
-    <div class="f"><label>MwSt monto</label><input id="eg-m" type="number" step="0.01" value="${g.mwst_monto||0}"></div>
     <div class="f"><label>Categoría</label><select id="eg-cat"><option value="">— Seleccionar —</option>${cats.map(c=>`<option value="${c.id}" ${c.id===g.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="eg-s"><option value="">General</option>${sucOpts()}</select></div>
     <div class="f full"><label>Notas</label><input id="eg-no" value="${g.notas||''}"></div>
@@ -1313,6 +1384,11 @@ async function editGasto(id){
   </div>
   <div id="eg-lis">${g.lineas_json?JSON.parse(g.lineas_json).map(l=>`<div class="li"><input value="${l.desc||''}"><input type="number" value="${l.qty||1}"><input type="number" value="${(l.neto||0).toFixed(2)}" step="0.01"><select><option value="7" ${l.mwst===7?'selected':''}>7%</option><option value="19" ${l.mwst===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div>`).join(''):'<div class="li"><input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest(\'.li\').remove()">✕</button></div>'}</div>
   <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('eg-lis')">+ Línea</button>
+  <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="eg-summary">
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="eg-s-neto">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="eg-s-mwst">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="eg-s-total">€0,00</div></div>
+  </div>
   <div class="fg" style="margin-top:14px">
     <div class="f full" style="margin-top:4px">
       <label>${g.adjunto_url?'Reemplazar adjunto':'Subir adjunto (opcional)'}</label>
@@ -1320,15 +1396,22 @@ async function editGasto(id){
       <input type="file" id="eg-adj" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%">
     </div>
   </div>`,async()=>{
+    // Recalculate neto/mwst from lines
+    const egLisCalc=document.getElementById('eg-lis')?getLis('eg-lis'):[];
+    const egN7=egLisCalc.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
+    const egN19=egLisCalc.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
+    const egM7=egN7*.07,egM19=egN19*.19;
+    const egNeto=egN7+egN19;const egMwst=egM7+egM19;
+    const egMonto=parseFloat(document.getElementById('eg-t').value)||0;
     const{error}=await sb.from('gastos').update({
       fecha:document.getElementById('eg-d').value,
       numero_documento:document.getElementById('eg-nd')?.value||null,
       concepto:document.getElementById('eg-c').value,
       categoria_id:document.getElementById('eg-cat').value||null,
-      monto:parseFloat(document.getElementById('eg-t').value)||0,
-      monto_neto:parseFloat(document.getElementById('eg-n').value)||0,
-      mwst_porcentaje:parseFloat(document.getElementById('eg-p').value)||0,
-      mwst_monto:parseFloat(document.getElementById('eg-m').value)||0,
+      monto:egMonto,
+      monto_neto:egNeto||egMonto,
+      mwst_porcentaje:egN19>=egN7?19:7,
+      mwst_monto:egMwst,
       sucursal_id:document.getElementById('eg-s').value||null,
       notas:document.getElementById('eg-no').value
     }).eq('id',id);
@@ -1341,7 +1424,7 @@ async function editGasto(id){
     if(egFile){const url=await uploadAdjunto(egFile,`gastos/${document.getElementById('eg-d').value.substring(0,4)}`,`gasto-${id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
     closeMo();gastos();
   });
-  setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id},50);
+  setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id;recalcSummary('eg-lis');},50);
 }
 async function delGasto(id){if(!confirm('¿Eliminar?'))return;await sb.from('gastos').delete().eq('id',id);gastos()}
 
