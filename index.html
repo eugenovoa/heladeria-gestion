@@ -384,7 +384,14 @@ const loading=()=>document.getElementById('ct').innerHTML='<div class="ld">Carga
 const setR=h=>document.getElementById('tbar-r').innerHTML=h;
 function openMo(title,body,saveFn,noSave=false){document.getElementById('mo-title').textContent=title;document.getElementById('mo-body').innerHTML=body;_moFn=saveFn;document.getElementById('mo-save').textContent='Guardar';document.getElementById('mo-save').style.display=noSave?'none':'';document.getElementById('mo').classList.add('open')}
 function closeMo(){document.getElementById('mo').classList.remove('open');_moFn=null}
-async function saveMo(){if(_moFn)await _moFn()}
+async async function saveMo(){
+  const btn=document.getElementById('mo-save');
+  if(!btn||btn.disabled)return;
+  btn.disabled=true;
+  const orig=btn.textContent;
+  btn.textContent='Guardando...';
+  try{if(_moFn)await _moFn();}catch(e){console.error(e);btn.disabled=false;btn.textContent=orig;}
+}
 function bEst(e){const m={pendiente:'warn',pagada:'ok',vencida:'err',pagado:'ok',vencido:'err'};return`<span class="bd bd-${m[e]||'gray'}">${e}</span>`}
 function sucNom(id){return _sucs.find(s=>s.id===id)?.nombre||'—'}
 function sucOpts(cp=false){return _sucs.filter(s=>cp||!s.es_centro_produccion).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}
