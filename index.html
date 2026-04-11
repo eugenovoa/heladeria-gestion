@@ -390,7 +390,8 @@ async function saveMo(){
   btn.disabled=true;
   const orig=btn.textContent;
   btn.textContent='Guardando...';
-  try{if(_moFn)await _moFn();}catch(e){console.error(e);btn.disabled=false;btn.textContent=orig;}
+  try{if(_moFn)await _moFn();}catch(e){console.error('saveMo error:',e);alert('Error al guardar: '+e.message);}
+  btn.disabled=false;btn.textContent=orig;
 }
 function bEst(e){const m={pendiente:'warn',pagada:'ok',vencida:'err',pagado:'ok',vencido:'err'};return`<span class="bd bd-${m[e]||'gray'}">${e}</span>`}
 function sucNom(id){return _sucs.find(s=>s.id===id)?.nombre||'—'}
@@ -1927,9 +1928,7 @@ sb.auth.onAuthStateChange((ev,session)=>{
   if(ev==='SIGNED_OUT'){_init=false;if(_rt)clearInterval(_rt);document.getElementById('app').style.display='none';document.getElementById('auth').style.display='flex';}
 });
 sb.auth.getSession().then(({data:{session}})=>{if(session)initApp(session.user)});
-</script>
-</body>
-</html>
+
 function getLis(cid){
   const rows=document.getElementById(cid)?.querySelectorAll('.li')||[];
   return[...rows].map(r=>{
@@ -1952,3 +1951,7 @@ function toggleBrutoMode(lisId,enabled){
   }
   recalcSummary(lisId);
 }
+
+</script>
+</body>
+</html>
