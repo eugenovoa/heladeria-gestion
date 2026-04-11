@@ -425,7 +425,7 @@ async function verAdjunto(url){
       // Extract path from signed URL
       const match=url.match(/\/object\/sign\/([^?]+)/);
       if(match){
-        const path=match[1]; // e.g. "adjuntos/gastos/2026/gasto-xxx.pdf"
+        const path=match[1].split('?')[0]; // strip query params
         const parts=path.split('/');
         const bucket=parts[0];
         const filePath=parts.slice(1).join('/');
@@ -983,7 +983,7 @@ async function verFact(id){
     </tbody></table>`:''}
     <div style="margin-top:16px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        ${f.adjunto_url?`<button class="btn btn-sm" onclick="window.open('${f.adjunto_url}','_blank')">📎 Ver adjunto</button>`:''}
+        ${f.adjunto_url?`<button class="btn btn-sm" onclick="verAdjunto('${f.adjunto_url}')">📎 Ver adjunto</button>`:''}
         <button class="btn btn-sm btn-ok" onclick="setFactEst('${f.id}','pagada')">✓ Marcar pagada</button>
         <button class="btn btn-sm btn-g" onclick="setFactEst('${f.id}','vencida')">Marcar vencida</button>
         <button class="btn btn-sm btn-d" onclick="delFact('${f.id}')">Eliminar</button>
@@ -1141,7 +1141,7 @@ async function gastos(){
       <td>${fmt(g.monto_neto||g.monto)}</td>
       <td>${(g.mwst_monto||0)>0?fmt(g.mwst_monto):'—'}</td>
       <td style="font-weight:600;color:var(--red)">${fmt(g.monto)}</td>
-      <td><div style="display:flex;gap:5px"><button class="btn btn-sm" onclick="verGasto('${g.id}')">Ver</button><button class="btn btn-sm" onclick="editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button></div></td>
+      <td><div style="display:flex;gap:5px">${g.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${g.adjunto_url}')">📎</button>`:''}<button class="btn btn-sm" onclick="verGasto('${g.id}')">Ver</button><button class="btn btn-sm" onclick="editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button></div></td>
     </tr>`).join('')}
     </tbody></table>`}
   </div></div>`;
@@ -1259,7 +1259,7 @@ async function verGasto(id){
     </tbody></table>`:''}
     <div style="border-top:1px solid var(--border);padding-top:14px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        ${g.adjunto_url?`<button class="btn btn-sm" onclick="window.open('${g.adjunto_url}','_blank')">📎 Ver adjunto</button>`:''}
+        ${g.adjunto_url?`<button class="btn btn-sm" onclick="verAdjunto('${g.adjunto_url}')">📎 Ver adjunto</button>`:''}
         <button class="btn btn-sm" onclick="closeMo();editGasto('${g.id}')">Editar</button>
         <button class="btn btn-sm btn-d" onclick="closeMo();delGasto('${g.id}')">Eliminar</button>
       </div>
@@ -1296,9 +1296,21 @@ async function editGasto(id){
     <div class="f"><label>Categoría</label><select id="eg-cat"><option value="">— Seleccionar —</option>${cats.map(c=>`<option value="${c.id}" ${c.id===g.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="eg-s"><option value="">General</option>${sucOpts()}</select></div>
     <div class="f full"><label>Notas</label><input id="eg-no" value="${g.notas||''}"></div>
+  </div>
+  <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas de detalle</div>
+  <div style="display:grid;grid-template-columns:1fr 70px 90px 75px 32px;gap:8px;padding:0 10px;margin-bottom:4px">
+    <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Descripción</div>
+    <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Cant.</div>
+    <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Neto €</div>
+    <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">MwSt</div>
+    <div></div>
+  </div>
+  <div id="eg-lis">${g.lineas_json?JSON.parse(g.lineas_json).map(l=>`<div class="li"><input value="${l.desc||''}"><input type="number" value="${l.qty||1}"><input type="number" value="${(l.neto||0).toFixed(2)}" step="0.01"><select><option value="7" ${l.mwst===7?'selected':''}>7%</option><option value="19" ${l.mwst===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div>`).join(''):'<div class="li"><input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest(\'.li\').remove()">✕</button></div>'}</div>
+  <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('eg-lis')">+ Línea</button>
+  <div class="fg" style="margin-top:14px">
     <div class="f full" style="margin-top:4px">
       <label>${g.adjunto_url?'Reemplazar adjunto':'Subir adjunto (opcional)'}</label>
-      ${g.adjunto_url?`<div style="margin-bottom:6px"><button class="btn btn-sm" onclick="window.open('${g.adjunto_url}','_blank')">📎 Ver adjunto actual</button></div>`:''}
+      ${g.adjunto_url?`<div style="margin-bottom:6px"><button class="btn btn-sm" onclick="verAdjunto('${g.adjunto_url}')">📎 Ver adjunto actual</button></div>`:''}
       <input type="file" id="eg-adj" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%">
     </div>
   </div>`,async()=>{
@@ -1314,6 +1326,10 @@ async function editGasto(id){
       notas:document.getElementById('eg-no').value
     }).eq('id',id);
     if(error){alert(error.message);return}
+    // Save lines
+    const egLis=document.getElementById('eg-lis')?getLis('eg-lis'):[];
+    const egLineasJson=egLis.length?JSON.stringify(egLis.map(l=>({desc:l.desc,qty:l.qty,neto:l.neto,mwst:l.mwst}))):null;
+    if(egLineasJson!==null)await sb.from('gastos').update({lineas_json:egLineasJson}).eq('id',id);
     const egFile=document.getElementById('eg-adj')?.files[0];
     if(egFile){const url=await uploadAdjunto(egFile,`gastos/${document.getElementById('eg-d').value.substring(0,4)}`,`gasto-${id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
     closeMo();gastos();
