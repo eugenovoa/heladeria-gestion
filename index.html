@@ -479,7 +479,7 @@ function attachRecalc(lisId){
 function addLi(cid){
   const c=document.getElementById(cid);if(!c)return;
   const d=document.createElement('div');d.className='li';
-  d.innerHTML=`<input placeholder="Descripción" oninput="recalcSummary('${cid}')"><input type="number" value="1" oninput="recalcSummary('${cid}')"><input type="number" value="0" step="0.01" oninput="recalcSummary('${cid}')"><select onchange="recalcSummary('${cid}')"><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('${cid}')">✕</button>`;
+  d.innerHTML=`<input placeholder="Descripción" oninput="recalcSummary('${cid}')"><input type="number" value="1" oninput="recalcSummary('${cid}')"><input type="number" value="0" step="0.000001" oninput="this.dataset.exact=this.value;recalcSummary('${cid}')"><select onchange="recalcSummary('${cid}')"><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('${cid}')">✕</button>`;
   c.appendChild(d);
 }
 async function addCat(t){const v=document.getElementById('nc').value.trim();if(!v)return;await sb.from(t).insert({nombre:v});document.getElementById('nc').value='';await window._rCats()}
@@ -1311,7 +1311,7 @@ async function newGastoMan(){
     </label>
   </div>
   ${liHeader}
-  <div id="gm-lis"><div class="li"><input placeholder="Descripción" oninput="recalcSummary('gm-lis')"><input type="number" value="1" oninput="recalcSummary('gm-lis')"><input type="number" value="0" step="0.01" oninput="recalcSummary('gm-lis')"><select onchange="recalcSummary('gm-lis')"><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('gm-lis')">✕</button></div></div>
+  <div id="gm-lis"><div class="li"><input placeholder="Descripción" oninput="recalcSummary('gm-lis')"><input type="number" value="1" oninput="recalcSummary('gm-lis')"><input type="number" value="0" step="0.000001" oninput="this.dataset.exact=this.value;recalcSummary('gm-lis')"><select onchange="recalcSummary('gm-lis')"><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('gm-lis')">✕</button></div></div>
   <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('gm-lis')">+ Línea</button>
   <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="gm-summary">
     <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="gm-s-neto">€0,00</div></div>
@@ -1334,7 +1334,7 @@ async function newGastoMan(){
     if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
     closeMo();gastos();
   });
-  setTimeout(()=>{attachRecalc('gm-lis');recalcSummary('gm-lis');},50);
+  setTimeout(()=>{attachRecalc('gm-lis');recalcSummary('gm-lis');},200);
 }
 function calcGMe(){}
 
@@ -1941,4 +1941,14 @@ function getLis(cid){
   }).filter(l=>l.neto>0||l.desc);
 }
 
-function toggleBrutoMode(lisId,enabled){recalcSummary(lisId);}
+function toggleBrutoMode(lisId,enabled){
+  // Update column header
+  const container=document.getElementById(lisId);
+  if(container){
+    const header=container.previousElementSibling;
+    // Find the Neto header in the li header row
+    const liHeaders=container.parentElement.querySelectorAll('.li-h');
+    liHeaders.forEach(h=>{if(h.dataset.col==='neto')h.textContent=enabled?'Bruto €':'Neto €'});
+  }
+  recalcSummary(lisId);
+}
