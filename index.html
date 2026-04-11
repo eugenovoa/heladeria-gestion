@@ -384,7 +384,7 @@ const loading=()=>document.getElementById('ct').innerHTML='<div class="ld">Carga
 const setR=h=>document.getElementById('tbar-r').innerHTML=h;
 function openMo(title,body,saveFn,noSave=false){document.getElementById('mo-title').textContent=title;document.getElementById('mo-body').innerHTML=body;_moFn=saveFn;document.getElementById('mo-save').textContent='Guardar';document.getElementById('mo-save').style.display=noSave?'none':'';document.getElementById('mo').classList.add('open')}
 function closeMo(){document.getElementById('mo').classList.remove('open');_moFn=null}
-async async function saveMo(){
+async function saveMo(){
   const btn=document.getElementById('mo-save');
   if(!btn||btn.disabled)return;
   btn.disabled=true;
