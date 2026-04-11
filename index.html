@@ -461,6 +461,9 @@ function recalcSummary(lisId){
   document.getElementById(prefix+'-s-neto').textContent='€'+neto.toLocaleString('de-DE',{minimumFractionDigits:2});
   document.getElementById(prefix+'-s-mwst').textContent='€'+mwst.toLocaleString('de-DE',{minimumFractionDigits:2});
   document.getElementById(prefix+'-s-total').textContent='€'+total.toLocaleString('de-DE',{minimumFractionDigits:2});
+  // Update total input if present
+  const tInput=document.getElementById(prefix+'-t');
+  if(tInput&&!tInput.readOnly)tInput.value=total.toFixed(2);
 }
 
 // Attach live recalc to a lines container via event delegation
@@ -519,7 +522,7 @@ Reglas: fechas YYYY-MM-DD. mwst_pct es 7 o 19. Si es Gutschrift montos negativos
   }catch(e){console.error('iaFactura:',e);return null}
 }
 async function iaTicket(b64,mime){
-  const prompt=`Sos un extractor de tickets y facturas de compras alemanas. Devolvé SOLO JSON válido sin markdown ni explicaciones:\n{"proveedor":"","fecha":"","numero_documento":"","lineas":[{"descripcion":"","cantidad":0,"monto_neto":0,"mwst_pct":7}],"neto_7":0,"mwst_7":0,"neto_19":0,"mwst_19":0,"total_bruto":0}\nReglas importantes:\n- fecha en YYYY-MM-DD (suele estar al pie del ticket en DD.MM.YY)\n- numero_documento: número de caja/ticket largo que aparece al pie\n- mwst_pct solo 7 o 19. En tickets: letra B=7% (alimentos/Lebensmittel), letra C o A=19% (resto)\n- En EDEKA: columna St, valor 1=7%, valor 2=19%\n- monto_neto es precio SIN IVA por línea (precio_bruto / 1.07 o 1.19 según tasa)\n- Si el ticket muestra "X x precio_unit = total": cantidad=X, calcular neto del total\n- total_bruto es el total pagado (SUMME, GESAMT, Zahlbetrag)\n- neto_7 y neto_19 son las bases imponibles totales por tasa`;
+  const prompt=`Sos un extractor de tickets de compras alemanas. Devolvé SOLO JSON válido sin markdown ni explicaciones:\n{"proveedor":"","fecha":"","numero_documento":"","lineas":[{"descripcion":"","cantidad":0,"monto_neto":0,"mwst_pct":7}],"neto_7":0,"mwst_7":0,"neto_19":0,"mwst_19":0,"total_bruto":0,"validacion_ok":true,"validacion_msg":""}\nReglas CRÍTICAS:\n- fecha en YYYY-MM-DD (pie del ticket en DD.MM.YY)\n- numero_documento: número largo al pie del ticket\n- mwst_pct: letra B=7%, letra C o A=19%\n- monto_neto de cada línea = TOTAL NETO de esa línea (precio_bruto_total_linea / 1.07 o 1.19). NO el precio unitario.\n- Ejemplo: "10 x 1,69 = 16,90 B" → cantidad=10, monto_neto=16,90/1,07=15,79\n- Ejemplo: "3 ST x 28,89 = 86,67 C" → cantidad=3, monto_neto=86,67/1,19=72,83\n- neto_7 y neto_19 = suma de montos_neto por tasa\n- total_bruto = SUMME o total pagado\nVALIDACIÓN (muy importante):\n- Calculá: suma_lineas_bruto = sum(monto_neto * (1 + mwst_pct/100)) para cada línea\n- Si abs(suma_lineas_bruto - total_bruto) < 0.10: validacion_ok=true, validacion_msg="OK"\n- Si difiere: validacion_ok=false, validacion_msg="Total líneas €X,XX difiere del ticket €Y,YY - revisá los montos"\n- Ajustá los montos_neto hasta que cuadren con el total del ticket`;
   try{
     const isImg=!mime.includes('pdf');
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:IA_HEADERS,body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:[{type:isImg?'image':'document',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]}]})});
@@ -1234,7 +1237,7 @@ async function newGastoIA(){
     <div id="g-iaf" style="display:none;margin-top:14px">
       <div class="fg">
         <div class="f"><label>Fecha *</label><input id="gi-d" type="date"></div>
-        <div class="f"><label>Total (€) *</label><input id="gi-t" type="number" step="0.01"></div>
+
         <div class="f"><label>N° Documento</label><input id="gi-nd" placeholder="Ej: 0010590100..."></div>
         <div class="f full"><label>Proveedor / Concepto *</label><input id="gi-c" placeholder="Ej: Supermercado Lidl"></div>
         <div class="f"><label>Categoría</label><select id="gi-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
@@ -1254,14 +1257,13 @@ async function newGastoIA(){
   async()=>{
     const fecha=document.getElementById('gi-d').value;if(!fecha){alert('Completá la fecha.');return}
     await getOrCreateTmp(fecha);
-    const monto=parseFloat(document.getElementById('gi-t').value)||0;
     const giLis=document.getElementById('gi-lis')?getLis('gi-lis'):[];
     const giN7=giLis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
     const giN19=giLis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
     const giM7=giN7*0.07,giM19=giN19*0.19;
     const giNeto=giN7+giN19||monto;const giMwst=giM7+giM19;
     const giLineasJson=giLis.length?JSON.stringify(giLis.map(l=>({desc:l.desc,qty:l.qty,neto:l.neto,mwst:l.mwst}))):null;
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:monto||giNeto+giMwst,monto_neto:giNeto,mwst_porcentaje:giN19>=giN7?19:7,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,lineas_json:giLineasJson,numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:giNeto+giMwst,monto_neto:giNeto,mwst_porcentaje:giN19>=giN7?19:7,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,lineas_json:giLineasJson,numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gi-adj').files[0];
     if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
@@ -1274,10 +1276,10 @@ async function procGastoIA(file){
   const b64=await fileToB64(file);const r=await iaTicket(b64,file.type||'image/jpeg');
   if(!r){document.getElementById('g-ias').innerHTML='<div class="al al-warn">No se pudo leer. Completá manualmente.</div>';document.getElementById('g-iaf').style.display='block';document.getElementById('gi-d').value=today();document.getElementById('mo-save').style.display='';return;}
   window._iaTicketR=r;
-  document.getElementById('g-ias').innerHTML='<div class="al al-ok">✓ Leído — verificá y guardá.</div>';
+  const valMsg=r.validacion_ok===false?`<div class="al al-warn" style="margin-top:6px">⚠ ${r.validacion_msg}</div>`:'';
+  document.getElementById('g-ias').innerHTML=`<div class="al al-ok">✓ Leído — verificá y guardá.</div>${valMsg}`;
   document.getElementById('g-iaf').style.display='block';document.getElementById('mo-save').style.display='';
   document.getElementById('gi-d').value=r.fecha||today();
-  document.getElementById('gi-t').value=(r.total_bruto||0).toFixed(2);
   document.getElementById('gi-c').value=r.proveedor||'';
   if(document.getElementById('gi-nd'))document.getElementById('gi-nd').value=r.numero_documento||'';
   const lisContainer=document.getElementById('gi-lis');
@@ -1293,9 +1295,7 @@ async function newGastoMan(){
     <div class="f"><label>Total (€) *</label><input id="gm-t" type="number" step="0.01"></div>
     <div class="f"><label>N° Documento</label><input id="gm-nd" placeholder="Opcional"></div>
     <div class="f full"><label>Concepto *</label><input id="gm-c"></div>
-    <div class="f"><label>Neto (sin MwSt)</label><input id="gm-n" type="number" step="0.01"></div>
-    <div class="f"><label>MwSt %</label><input id="gm-p" type="number" value="0"></div>
-    <div class="f"><label>MwSt monto</label><input id="gm-m" type="number" step="0.01" value="0"></div>
+
     <div class="f"><label>Categoría</label><select id="gm-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="gm-s"><option value="">General</option>${sucOpts()}</select></div>
     <div class="f full"><label>Notas</label><input id="gm-no"></div>
@@ -1311,13 +1311,13 @@ async function newGastoMan(){
   </div>
   <div style="margin-top:14px">${adjuntoField('gm-adj')}</div>`,async()=>{
     const fecha=document.getElementById('gm-d').value;await getOrCreateTmp(fecha);
-    const gmMonto=parseFloat(document.getElementById('gm-t').value)||0;
     const gmLis=document.getElementById('gm-lis')?getLis('gm-lis'):[];
     const gmN7=gmLis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
     const gmN19=gmLis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
     const gmM7=gmN7*0.07,gmM19=gmN19*0.19;
-    const gmNeto=gmN7+gmN19||parseFloat(document.getElementById('gm-n').value)||gmMonto;
-    const gmMwst=gmM7+gmM19||parseFloat(document.getElementById('gm-m').value)||0;
+    const gmNeto=gmN7+gmN19;
+    const gmMwst=gmM7+gmM19;
+    const gmMonto=gmNeto+gmMwst;
     const gmLineasJson=gmLis.length?JSON.stringify(gmLis.map(l=>({desc:l.desc,qty:l.qty,neto:l.neto,mwst:l.mwst}))):null;
     const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:gmMonto||gmNeto+gmMwst,monto_neto:gmNeto,mwst_porcentaje:gmN19>=gmN7?19:7,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value,lineas_json:gmLineasJson,numero_documento:document.getElementById('gm-nd')?.value||null}).select('id').single();
     if(error){alert(error.message);return}
