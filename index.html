@@ -417,7 +417,25 @@ async function uploadAdjunto(file,carpeta,nombre){
   return signed?.signedUrl||null;
 }
 function adjuntoField(id='adj-file'){return`<div class="f full" style="margin-top:4px"><label>Adjuntar archivo (opcional)</label><input type="file" id="${id}" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%"></div>`}
-function verAdjunto(url){if(!url){alert('Sin adjunto.');return}window.open(url,'_blank')}
+async function verAdjunto(url){
+  if(!url){alert('Sin adjunto.');return}
+  // If it's a signed URL (has /sign/ in path), refresh it
+  if(url.includes('/sign/')){
+    try{
+      // Extract path from signed URL
+      const match=url.match(/\/object\/sign\/([^?]+)/);
+      if(match){
+        const path=match[1]; // e.g. "adjuntos/gastos/2026/gasto-xxx.pdf"
+        const parts=path.split('/');
+        const bucket=parts[0];
+        const filePath=parts.slice(1).join('/');
+        const{data}=await sb.storage.from(bucket).createSignedUrl(filePath,60*60);
+        if(data?.signedUrl){window.open(data.signedUrl,'_blank');return;}
+      }
+    }catch(e){console.error('URL refresh failed:',e)}
+  }
+  window.open(url,'_blank');
+}
 
 function addLi(cid){const d=document.createElement('div');d.className='li';d.innerHTML=`<input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01" placeholder="Neto €"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button>`;document.getElementById(cid).appendChild(d)}
 function getLis(cid){return[...document.getElementById(cid).querySelectorAll('.li')].map(el=>{const ins=el.querySelectorAll('input'),sel=el.querySelector('select');return{desc:ins[0].value,qty:parseFloat(ins[1].value)||0,neto:parseFloat(ins[2].value)||0,mwst:parseInt(sel.value)||7}})}
@@ -1161,7 +1179,8 @@ async function newGastoIA(){
     const giN19=giLis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
     const giM7=giN7*0.07,giM19=giN19*0.19;
     const giNeto=giN7+giN19||monto;const giMwst=giM7+giM19;
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:monto||giNeto+giMwst,monto_neto:giNeto,mwst_porcentaje:giN19>=giN7?19:7,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null}).select('id').single();
+    const giLineasJson=giLis.length?JSON.stringify(giLis.map(l=>({desc:l.desc,qty:l.qty,neto:l.neto,mwst:l.mwst}))):null;
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:monto||giNeto+giMwst,monto_neto:giNeto,mwst_porcentaje:giN19>=giN7?19:7,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,lineas_json:giLineasJson}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gi-adj').files[0];
     if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
@@ -1211,7 +1230,8 @@ async function newGastoMan(){
     const gmM7=gmN7*0.07,gmM19=gmN19*0.19;
     const gmNeto=gmN7+gmN19||parseFloat(document.getElementById('gm-n').value)||gmMonto;
     const gmMwst=gmM7+gmM19||parseFloat(document.getElementById('gm-m').value)||0;
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:gmMonto||gmNeto+gmMwst,monto_neto:gmNeto,mwst_porcentaje:gmN19>=gmN7?19:7,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value}).select('id').single();
+    const gmLineasJson=gmLis.length?JSON.stringify(gmLis.map(l=>({desc:l.desc,qty:l.qty,neto:l.neto,mwst:l.mwst}))):null;
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:gmMonto||gmNeto+gmMwst,monto_neto:gmNeto,mwst_porcentaje:gmN19>=gmN7?19:7,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value,lineas_json:gmLineasJson}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gm-adj').files[0];
     if(file&&row?.id){const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
@@ -1232,7 +1252,11 @@ async function verGasto(id){
         <div>${fmt(g.monto_neto||g.monto)} / ${fmt(g.mwst_monto||0)} / <strong style="font-size:16px">${fmt(g.monto)}</strong></div>
       </div>
     </div>
-    ${g.notas?`<div style="padding:10px 12px;background:var(--surface2);border-radius:var(--r);font-size:13px;color:var(--text-muted);margin-bottom:14px">${g.notas}</div>`:''}
+    ${g.notas?`<div style="padding:10px 12px;background:var(--surface2);border-radius:var(--r);font-size:13px;color:var(--text-muted);margin-bottom:14px"><strong>Notas:</strong> ${g.notas}</div>`:''}
+    ${g.lineas_json?`<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Líneas de detalle</div>
+    <table style="font-size:12px"><thead><tr><th>Descripción</th><th>Cant.</th><th>Neto</th><th>MwSt</th></tr></thead><tbody>
+    ${JSON.parse(g.lineas_json).map(l=>`<tr><td>${l.desc||'—'}</td><td>${l.qty||'—'}</td><td>${fmt(l.neto)}</td><td>${l.mwst}%</td></tr>`).join('')}
+    </tbody></table>`:''}
     <div style="border-top:1px solid var(--border);padding-top:14px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         ${g.adjunto_url?`<button class="btn btn-sm" onclick="window.open('${g.adjunto_url}','_blank')">📎 Ver adjunto</button>`:''}
