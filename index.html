@@ -448,7 +448,9 @@ function recalcSummary(lisId){
   rows.forEach(row=>{
     const inputs=row.querySelectorAll('input');
     const sel=row.querySelector('select');
-    const neto=parseFloat(inputs[2]?.value)||0;
+    const qty=parseFloat(inputs[1]?.value)||1;
+    const netoUnit=parseFloat(inputs[2]?.value)||0;
+    const neto=netoUnit*qty;
     const mwst=parseInt(sel?.value)||7;
     if(mwst===7)n7+=neto;else n19+=neto;
   });
