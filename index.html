@@ -524,9 +524,7 @@ async function setApiKey(k){
 }
 
 async function iaFactura(b64,mime){
-  const prompt=`Sos un extractor de facturas alemanas. Devolvé SOLO JSON sin markdown ni explicaciones:
-{"numero_factura":"","fecha":"","proveedor":"","es_gutschrift":false,"fecha_vencimiento":"","lineas":[{"descripcion":"","cantidad":0,"monto_neto":0,"mwst_pct":7}],"neto_7":0,"mwst_7":0,"neto_19":0,"mwst_19":0,"total_bruto":0}
-Reglas: fechas YYYY-MM-DD. mwst_pct es 7 o 19. Si es Gutschrift montos negativos.`;
+  const prompt=`Sos un extractor de facturas alemanas de proveedores. Devolvé SOLO JSON válido sin markdown:\n{"proveedor":"","numero_factura":"","fecha":"","fecha_vencimiento":"","es_gutschrift":false,"neto_total":0,"mwst_total":0,"total_bruto":0,"mwst_pct":7,"lineas":[{"descripcion":"","importe_bruto":0}]}\nREGLAS:\n- fecha y fecha_vencimiento en YYYY-MM-DD\n- numero_factura: número de factura/documento\n- es_gutschrift: true si es nota de crédito/Gutschrift\n- neto_total: base imponible total (Nettobetrag/Netto)\n- mwst_total: total IVA (MwSt/Steuer)\n- total_bruto: total a pagar (Bruttobetrag/Gesamtbetrag/Zahlbetrag)\n- mwst_pct: tasa predominante (7 o 19)\n- lineas: cada artículo con descripción e importe bruto tal como aparece (no calcules neto)`;
   try{
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:IA_HEADERS,body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]}]})});
     if(!r.ok){console.error('IA HTTP',r.status,await r.text());return null}
@@ -535,7 +533,7 @@ Reglas: fechas YYYY-MM-DD. mwst_pct es 7 o 19. Si es Gutschrift montos negativos
   }catch(e){console.error('iaFactura:',e);return null}
 }
 async function iaTicket(b64,mime){
-  const prompt=`Sos un extractor de tickets de compras alemanas. Devolvé SOLO JSON válido sin markdown:\n{"proveedor":"","fecha":"","numero_documento":"","lineas":[{"descripcion":"","cantidad":0,"monto_neto":0,"mwst_pct":7}],"neto_7":0,"mwst_7":0,"neto_19":0,"mwst_19":0,"total_bruto":0,"validacion_ok":true,"validacion_msg":""}\nREGLAS:\n- mwst_pct: letra B=7%, letra C o A=19%\n- monto_neto = precio UNITARIO SIN IVA = precio_unitario_bruto / 1.07 o 1.19\n- USA 6 DECIMALES en monto_neto para evitar errores de redondeo\n- EJEMPLOS:\n  "10 x 1,69 B Ferrero" → cantidad=10, monto_neto=1.579439 (=1,69/1,07)\n  "3 ST x 28,89 C Feuerlöscher" → cantidad=3, monto_neto=24.277311 (=28,89/1,19)\n  "AD BLUE 9,95 C" → cantidad=1, monto_neto=8.361345 (=9,95/1,19)\n- Si el ticket muestra total de línea (no unitario), dividí por cantidad primero\n- neto_7/neto_19 = totales netos por tasa del resumen al pie\n- total_bruto = SUMME\nVALIDACIÓN: sum(cantidad*monto_neto*(1+mwst_pct/100)) debe ≈ total_bruto (tolerancia €0.05)\n- validacion_ok=true/false, validacion_msg="OK" o descripción de la diferencia`;
+  const prompt=`Sos un extractor de tickets de compras alemanas. Devolvé SOLO JSON válido sin markdown:\n{"proveedor":"","fecha":"","numero_documento":"","neto_total":0,"mwst_total":0,"total_bruto":0,"mwst_pct":7,"lineas":[{"descripcion":"","importe_bruto":0}]}\nREGLAS:\n- fecha en YYYY-MM-DD (pie del ticket en DD.MM.YY)\n- numero_documento: número largo al pie del ticket\n- neto_total, mwst_total, total_bruto: del resumen al pie (NETTO, MWST, BRUTTO/SUMME)\n- mwst_pct: tasa predominante (7 o 19). Si hay mixtas usar la mayoritaria\n- lineas: cada producto con su descripción y precio bruto tal como aparece en el ticket (no calcules neto)\n- total_bruto debe coincidir con SUMME del ticket`;
   try{
     const isImg=!mime.includes('pdf');
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:IA_HEADERS,body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:[{type:isImg?'image':'document',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]}]})});
@@ -951,18 +949,18 @@ async function procFactIA(file){
       <div class="f"><label>Proveedor *</label><select id="ia-pv"><option value="">— Seleccionar —</option>${provs.map(p=>`<option value="${p.id}" data-d="${p.condicion_pago_dias||30}" ${match?.id===p.id?'selected':''}>${p.nombre}</option>`).join('')}</select></div>
       <div class="f"><label>Fecha emisión</label><input id="ia-fe" type="date" value="${r.fecha||today()}"></div>
       <div class="f"><label>Fecha vencimiento</label><input id="ia-fv" type="date" value="${r.fecha_vencimiento||''}"></div>
+      <div class="f"><label>Neto (sin MwSt)</label><input id="ia-neto" type="number" step="0.01" value="${(r.neto_total||0).toFixed(2)}" oninput="updateFactSummary()"></div>
+      <div class="f"><label>MwSt %</label><select id="ia-mp" onchange="updateFactSummary()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7" ${(r.mwst_pct||7)===7?'selected':''}>7%</option><option value="19" ${r.mwst_pct===19?'selected':''}>19%</option></select></div>
+      <div class="f"><label>MwSt monto</label><input id="ia-mwst" type="number" step="0.01" value="${(r.mwst_total||0).toFixed(2)}" oninput="updateFactSummary()"></div>
+      <div class="f"><label>Total bruto</label><input id="ia-tot" type="number" step="0.01" value="${(r.total_bruto||0).toFixed(2)}" oninput="updateFactSummary()"></div>
     </div>
-    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Líneas de detalle</div>
-    ${liHeader}
-    <div id="ia-lis">${(r.lineas||[]).map(l=>`<div class="li"><input value="${l.descripcion||''}"><input type="number" value="${l.cantidad||0}"><input type="number" value="${(l.monto_neto||0).toFixed(2)}" step="0.01"><select><option value="7" ${l.mwst_pct===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div>`).join('')}</div>
-    <button class="btn btn-sm" style="margin-top:8px" onclick="addLi('ia-lis')">+ Línea</button>
-  <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="ia-summary">
-    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="ia-s-neto">€0,00</div></div>
-    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="ia-s-mwst">€0,00</div></div>
-    <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="ia-s-total">€0,00</div></div>
-  </div>
-    <div style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:var(--r);font-size:12px">
-      Neto 7%: <strong>${fmt(r.neto_7||0)}</strong> MwSt 7%: <strong>${fmt(r.mwst_7||0)}</strong> · Neto 19%: <strong>${fmt(r.neto_19||0)}</strong> MwSt 19%: <strong>${fmt(r.mwst_19||0)}</strong> · Total: <strong>${fmt(r.total_bruto||0)}</strong>
+    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Líneas (informativo)</div>
+    <div id="ia-lis">${(r.lineas||[]).map(l=>`<div class="li-simple" style="display:flex;gap:8px;margin-bottom:6px;align-items:center"><input value="${l.descripcion||''}" placeholder="Descripción" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit"><input type="number" value="${(l.importe_bruto||0).toFixed(2)}" step="0.01" style="width:90px;font-size:13px;padding:8px 10px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit" placeholder="Bruto €"><button class="btn btn-sm btn-d" onclick="this.closest('.li-simple').remove()">✕</button></div>`).join('')}</div>
+    <button class="btn btn-sm" style="margin-top:8px" onclick="addLiSimple('ia-lis')">+ Línea</button>
+    <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="ia-summary">
+      <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="ia-s-neto">€0,00</div></div>
+      <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="ia-s-mwst">€0,00</div></div>
+      <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="ia-s-total">€0,00</div></div>
     </div>
     <div style="margin-top:14px">${adjuntoField('fi-fadj')}</div>`;
   swMoTab(document.querySelector('.mo-tab:last-child'),'tab-ver');
@@ -974,13 +972,14 @@ async function guardarFactIA(){
   const pv=document.getElementById('ia-pv').value;if(!pv){alert('Seleccioná proveedor.');return}
   const fe=document.getElementById('ia-fe').value,tp=document.getElementById('ia-tp').value,mult=tp==='gutschrift'?-1:1;
   await getOrCreateTmp(fe);
-  const lis=getLis('ia-lis');
-  const n7=lis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
-  const n19=lis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
-  const m7=n7*.07,m19=n19*.19;
-  const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('ia-nm').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ia-fv').value||fe,monto_neto:(n7+n19)*mult,mwst_porcentaje:n19>n7?19:7,mwst_monto:(m7+m19)*mult,monto_total:(n7+n19+m7+m19)*mult,tipo:tp,estado:'pendiente'}).select('id').single();
+  const iaNeto=parseFloat(document.getElementById('ia-neto')?.value)||0;
+  const iaMwst=parseFloat(document.getElementById('ia-mwst')?.value)||0;
+  const iaTot=parseFloat(document.getElementById('ia-tot')?.value)||iaNeto+iaMwst;
+  const iaMp=parseInt(document.getElementById('ia-mp')?.value)||7;
+  const iaLineas=[...document.getElementById('ia-lis').querySelectorAll('.li-simple')].map(d=>{const i=d.querySelectorAll('input');return{desc:i[0]?.value||'',importe_bruto:parseFloat(i[1]?.value)||0}});
+  const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('ia-nm').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ia-fv').value||fe,monto_neto:iaNeto*mult,mwst_porcentaje:iaMp,mwst_monto:iaMwst*mult,monto_total:iaTot*mult,tipo:tp,estado:'pendiente'}).select('id').single();
   if(error){alert(error.message);return}
-  if(lis.length&&fact?.id)await sb.from('lineas_factura').insert(lis.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.neto*mult,mwst_porcentaje:l.mwst,mwst_monto:l.neto*l.mwst/100*mult})));
+  if(iaLineas.length&&fact?.id)await sb.from('lineas_factura').insert(iaLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,monto_neto:l.importe_bruto/(1+iaMp/100)*mult,mwst_porcentaje:iaMp,mwst_monto:l.importe_bruto-l.importe_bruto/(1+iaMp/100)})));
   const adjFile=document.getElementById('fi-fadj')?.files[0];
   if(adjFile&&fact?.id){const yr=fe.substring(0,4),mo=fe.substring(5,7);const pInfo=(window._iaProvs||[]).find(p=>p.id===pv);const url=await uploadAdjunto(adjFile,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,`fact-${fact.id}`);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
   closeMo();facturas();
@@ -988,18 +987,20 @@ async function guardarFactIA(){
 
 async function newFactMan(){
   const{data:provs}=await sb.from('proveedores').select('id,nombre,condicion_pago_dias').eq('activo',true).order('nombre');
-  const liHeader='<div style="display:grid;grid-template-columns:1fr 70px 90px 75px 32px;gap:8px;padding:0 10px;margin-bottom:4px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Descripción</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Cant.</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Neto €</div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">MwSt</div><div></div></div>';
   openMo('Nueva factura — manual',`<div class="fg" style="margin-bottom:14px">
     <div class="f"><label>Tipo</label><select id="fnew-tipo"><option value="factura">Factura</option><option value="gutschrift">Gutschrift</option></select></div>
     <div class="f"><label>N° Documento *</label><input id="fn"></div>
     <div class="f"><label>Proveedor *</label><select id="fp" onchange="autoVenc(this)">${(provs||[]).map(p=>`<option value="${p.id}" data-d="${p.condicion_pago_dias||30}">${p.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Fecha emisión *</label><input id="ffe" type="date" value="${today()}" oninput="autoVenc(document.getElementById('fp'))"></div>
     <div class="f"><label>Fecha vencimiento *</label><input id="ffv" type="date"></div>
+    <div class="f"><label>Neto (sin MwSt) *</label><input id="fmn" type="number" step="0.01" value="0" oninput="updateFactSummaryM()"></div>
+    <div class="f"><label>MwSt %</label><select id="fmp" onchange="updateFactSummaryM()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7">7%</option><option value="19">19%</option></select></div>
+    <div class="f"><label>MwSt monto</label><input id="fmm" type="number" step="0.01" value="0" oninput="updateFactSummaryM()"></div>
+    <div class="f"><label>Total bruto</label><input id="fmt" type="number" step="0.01" value="0" oninput="updateFactSummaryM()"></div>
   </div>
-  <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Líneas</div>
-  ${liHeader}
-  <div id="ml"><div class="li"><input placeholder="Descripción"><input type="number" value="1"><input type="number" value="0" step="0.01"><select><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove()">✕</button></div></div>
-  <button class="btn btn-sm" style="margin-top:8px" onclick="addLi('ml')">+ Línea</button>
+  <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Líneas (informativo)</div>
+  <div id="ml"></div>
+  <button class="btn btn-sm" style="margin-top:8px" onclick="addLiSimple('ml')">+ Línea</button>
   <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="ml-summary">
     <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="ml-s-neto">€0,00</div></div>
     <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="ml-s-mwst">€0,00</div></div>
@@ -1011,18 +1012,19 @@ async function newFactMan(){
     if(!pv){alert('Seleccioná proveedor.');return}
     await getOrCreateTmp(fe);
     const tp=document.getElementById('fnew-tipo').value,mult=tp==='gutschrift'?-1:1;
-    const lis=getLis('ml');
-    const n7=lis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
-    const n19=lis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
-    const m7=n7*.07,m19=n19*.19;
-    const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('fn').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ffv').value||fe,monto_neto:(n7+n19)*mult,mwst_porcentaje:n19>n7?19:7,mwst_monto:(m7+m19)*mult,monto_total:(n7+n19+m7+m19)*mult,tipo:tp,estado:'pendiente'}).select('id').single();
+    const mnNeto=parseFloat(document.getElementById('fmn').value)||0;
+    const mnMwst=parseFloat(document.getElementById('fmm').value)||0;
+    const mnTot=parseFloat(document.getElementById('fmt').value)||mnNeto+mnMwst;
+    const mnMp=parseInt(document.getElementById('fmp').value)||7;
+    const mnLineas=[...document.getElementById('ml').querySelectorAll('.li-simple')].map(d=>{const i=d.querySelectorAll('input');return{desc:i[0]?.value||'',importe_bruto:parseFloat(i[1]?.value)||0}});
+    const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('fn').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ffv').value||fe,monto_neto:mnNeto*mult,mwst_porcentaje:mnMp,mwst_monto:mnMwst*mult,monto_total:mnTot*mult,tipo:tp,estado:'pendiente'}).select('id').single();
     if(error){alert(error.message);return}
-    if(lis.length&&fact?.id)await sb.from('lineas_factura').insert(lis.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.neto*mult,mwst_porcentaje:l.mwst,mwst_monto:l.neto*l.mwst/100*mult})));
+    if(mnLineas.length&&fact?.id)await sb.from('lineas_factura').insert(mnLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,monto_neto:l.importe_bruto/(1+mnMp/100)*mult,mwst_porcentaje:mnMp,mwst_monto:(l.importe_bruto-l.importe_bruto/(1+mnMp/100))*mult})));
     const mAdj=document.getElementById('fi-madj')?.files[0];
-    if(mAdj&&fact?.id){const{data:pInfo}=await sb.from('proveedores').select('nombre').eq('id',pv).single();const yr=fe.substring(0,4),mo=fe.substring(5,7);const url=await uploadAdjunto(mAdj,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,`fact-${fact.id}`);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
+    if(mAdj&&fact?.id){const yr=fe.substring(0,4);const mo=fe.substring(5,7);const{data:pInfo}=await sb.from('proveedores').select('nombre').eq('id',pv).single();const url=await uploadAdjunto(mAdj,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,`fact-${fact.id}`,fe);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
     closeMo();facturas();
   });
-  setTimeout(()=>{attachRecalc('ml');recalcSummary('ml');},50);
+  setTimeout(()=>updateFactSummaryM(),50);
 }
 function autoVenc(sel){const d=parseInt(sel.options[sel.selectedIndex]?.dataset.d)||30;const fe=document.getElementById('ffe').value;if(fe){const dt=new Date(fe+'T00:00:00');dt.setDate(dt.getDate()+d);document.getElementById('ffv').value=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`}}
 
@@ -1083,8 +1085,8 @@ async function editFact(id){
   async()=>{
     const tp=document.getElementById('et').value,mult=tp==='gutschrift'?-1:1;
     const lis=getLis('ef-lis');
-    const n7=lis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
-    const n19=lis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
+    const n7=lis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto*l.qty,0);
+    const n19=lis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto*l.qty,0);
     const m7=n7*.07,m19=n19*.19;
     const neto=(n7+n19)*mult,mwst=(m7+m19)*mult,total=(n7+n19+m7+m19)*mult;
     const{error}=await sb.from('facturas').update({
@@ -1110,7 +1112,16 @@ async function editFact(id){
   },100);
 }
 async function setFactEst(id,est){await sb.from('facturas').update({estado:est}).eq('id',id);closeMo();facturas()}
-async function delFact(id){if(!confirm('¿Eliminar?'))return;await sb.from('facturas').delete().eq('id',id);closeMo();facturas()}
+async function delFact(id){
+  if(!confirm('¿Eliminar?'))return;
+  const{data:f}=await sb.from('facturas').select('adjunto_url').eq('id',id).single();
+  await sb.from('facturas').delete().eq('id',id);
+  if(f?.adjunto_url){
+    const m=f.adjunto_url.match(/\/object\/(?:sign|public)\/adjuntos\/([^?]+)/);
+    if(m)await sb.storage.from('adjuntos').remove([m[1]]);
+  }
+  closeMo();facturas();
+}
 
 async function subirAdjFact(factId,provNombre,fecha){
   const file=document.getElementById('fact-adj-up')?.files[0];
@@ -1253,30 +1264,33 @@ async function newGastoIA(){
 
         <div class="f"><label>N° Documento</label><input id="gi-nd" placeholder="Ej: 0010590100..."></div>
         <div class="f full"><label>Proveedor / Concepto *</label><input id="gi-c" placeholder="Ej: Supermercado Lidl"></div>
+        <div class="f"><label>Neto (sin MwSt)</label><input id="gi-neto" type="number" step="0.01" value="0" oninput="updateGastoSummary()"></div>
+        <div class="f"><label>MwSt %</label><select id="gi-mp" onchange="updateGastoSummary()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7">7%</option><option value="19">19%</option><option value="0">0%</option></select></div>
+        <div class="f"><label>MwSt monto</label><input id="gi-mwst" type="number" step="0.01" value="0" oninput="updateGastoSummary()"></div>
+        <div class="f"><label>Total bruto</label><input id="gi-t" type="number" step="0.01" value="0" oninput="updateGastoSummary()"></div>
         <div class="f"><label>Categoría</label><select id="gi-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
         <div class="f"><label>Sucursal</label><select id="gi-s"><option value="">General</option>${sucOpts()}</select></div>
       </div>
-      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas de detalle</div>
-      ${liHeader}
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
       <div id="gi-lis"></div>
-      <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('gi-lis')">+ Línea</button>
-  <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="gi-summary">
-    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="gi-s-neto">€0,00</div></div>
-    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="gi-s-mwst">€0,00</div></div>
-    <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="gi-s-total">€0,00</div></div>
-  </div>
+      <button class="btn btn-sm" style="margin-top:6px" onclick="addLiSimple('gi-lis')">+ Línea</button>
+      <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="gi-summary">
+        <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="gi-s-neto">€0,00</div></div>
+        <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="gi-s-mwst">€0,00</div></div>
+        <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="gi-s-total">€0,00</div></div>
+      </div>
       <div style="margin-top:12px"><label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Adjuntar archivo (opcional)</label><input type="file" id="gi-adj" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%"></div>
     </div>`,
   async()=>{
     const fecha=document.getElementById('gi-d').value;if(!fecha){alert('Completá la fecha.');return}
     await getOrCreateTmp(fecha);
-    const giLis=document.getElementById('gi-lis')?getLis('gi-lis'):[];
-    const giN7=giLis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
-    const giN19=giLis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
-    const giM7=giN7*0.07,giM19=giN19*0.19;
-    const giNeto=giN7+giN19||monto;const giMwst=giM7+giM19;
-    const giLineasJson=giLis.length?JSON.stringify(giLis.map(l=>({desc:l.desc,qty:l.qty,neto:l.neto,mwst:l.mwst}))):null;
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:giNeto+giMwst,monto_neto:giNeto,mwst_porcentaje:giN19>=giN7?19:7,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,lineas_json:giLineasJson,numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
+    const giNeto=parseFloat(document.getElementById('gi-neto').value)||0;
+    const giMwst=parseFloat(document.getElementById('gi-mwst').value)||0;
+    const giMonto=parseFloat(document.getElementById('gi-t').value)||giNeto+giMwst;
+    const giMp=parseInt(document.getElementById('gi-mp').value)||7;
+    // Save simple lines as json
+    const giLineasJson=JSON.stringify([...document.getElementById('gi-lis').querySelectorAll('.li-simple')].map(d=>{const i=d.querySelectorAll('input');return{desc:i[0]?.value||'',importe_bruto:parseFloat(i[1]?.value)||0}}));
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:giMonto,monto_neto:giNeto,mwst_porcentaje:giMp,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,lineas_json:giLineasJson,numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gi-adj').files[0];
     if(file&&row?.id){const yr=fecha.substring(0,4),mo=fecha.substring(5,7);const url=await uploadAdjunto(file,`gastos/${yr}/${mo}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
@@ -1294,9 +1308,14 @@ async function procGastoIA(file){
   document.getElementById('g-iaf').style.display='block';document.getElementById('mo-save').style.display='';
   document.getElementById('gi-d').value=r.fecha||today();
   document.getElementById('gi-c').value=r.proveedor||'';
+  document.getElementById('gi-neto').value=(r.neto_total||0).toFixed(2);
+  document.getElementById('gi-mwst').value=(r.mwst_total||0).toFixed(2);
+  document.getElementById('gi-t').value=(r.total_bruto||0).toFixed(2);
+  document.getElementById('gi-mp').value=r.mwst_pct||7;
   if(document.getElementById('gi-nd'))document.getElementById('gi-nd').value=r.numero_documento||'';
   const lisContainer=document.getElementById('gi-lis');
-  if(lisContainer){lisContainer.innerHTML=(r.lineas||[]).map(l=>`<div class="li"><input value="${l.descripcion||''}" oninput="recalcSummary('gi-lis')"><input type="number" value="${l.cantidad||1}" oninput="recalcSummary('gi-lis')"><input type="number" value="${(l.monto_neto||0).toFixed(6)}" step="0.000001" data-exact="${l.monto_neto||0}" oninput="this.dataset.exact=this.value;recalcSummary('gi-lis')"><select onchange="recalcSummary('gi-lis')"><option value="7" ${l.mwst_pct===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('gi-lis')">✕</button></div>`).join('');attachRecalc('gi-lis');setTimeout(()=>recalcSummary('gi-lis'),100);}
+  if(lisContainer){lisContainer.innerHTML=(r.lineas||[]).map(l=>`<div class="li-simple"><input value="${l.descripcion||''}" placeholder="Descripción" style="flex:1"><input type="number" value="${(l.importe_bruto||0).toFixed(2)}" step="0.01" style="width:90px" placeholder="Bruto €"><button class="btn btn-sm btn-d" onclick="this.closest('.li-simple').remove()">✕</button></div>`).join('');}
+  updateGastoSummary();
 }
 function calcGM(){}
 
@@ -1309,20 +1328,19 @@ async function newGastoMan(){
     <div class="f"><label>N° Documento</label><input id="gm-nd" placeholder="Opcional"></div>
     <div class="f full"><label>Concepto *</label><input id="gm-c"></div>
 
+    <div class="f"><label>Neto (sin MwSt)</label><input id="gm-n" type="number" step="0.01" value="0" oninput="updateGastoSummaryGm()"></div>
+    <div class="f"><label>MwSt %</label><select id="gm-p" onchange="updateGastoSummaryGm()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7">7%</option><option value="19">19%</option><option value="0">0%</option></select></div>
+    <div class="f"><label>MwSt monto</label><input id="gm-m" type="number" step="0.01" value="0" oninput="updateGastoSummaryGm()"></div>
+    <div class="f"><label>Total bruto</label><input id="gm-t" type="number" step="0.01" value="0" oninput="updateGastoSummaryGm()"></div>
     <div class="f"><label>Categoría</label><select id="gm-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="gm-s"><option value="">General</option>${sucOpts()}</select></div>
     <div class="f full"><label>Notas</label><input id="gm-no"></div>
   </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 6px">
-    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Líneas de detalle (opcional)</div>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text-muted)">
-      <input type="checkbox" id="gm-bruto" onchange="toggleBrutoMode('gm-lis',this.checked)" style="width:auto">
-      Precios con IVA incluido
-    </label>
-  </div>
+
   ${liHeader}
-  <div id="gm-lis"><div class="li"><input placeholder="Descripción" oninput="recalcSummary('gm-lis')"><input type="number" value="1" oninput="recalcSummary('gm-lis')"><input type="number" value="0" step="0.000001" oninput="this.dataset.exact=this.value;recalcSummary('gm-lis')"><select onchange="recalcSummary('gm-lis')"><option value="7">7%</option><option value="19">19%</option></select><button class="btn btn-sm btn-d" onclick="this.closest('.li').remove();recalcSummary('gm-lis')">✕</button></div></div>
-  <button class="btn btn-sm" style="margin-top:6px" onclick="addLi('gm-lis')">+ Línea</button>
+  <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
+  <div id="gm-lis"></div>
+  <button class="btn btn-sm" style="margin-top:6px" onclick="addLiSimple('gm-lis')">+ Línea</button>
   <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="gm-summary">
     <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="gm-s-neto">€0,00</div></div>
     <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="gm-s-mwst">€0,00</div></div>
@@ -1330,15 +1348,12 @@ async function newGastoMan(){
   </div>
   <div style="margin-top:14px">${adjuntoField('gm-adj')}</div>`,async()=>{
     const fecha=document.getElementById('gm-d').value;await getOrCreateTmp(fecha);
-    const gmLis=document.getElementById('gm-lis')?getLis('gm-lis'):[];
-    const gmN7=gmLis.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
-    const gmN19=gmLis.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
-    const gmM7=gmN7*0.07,gmM19=gmN19*0.19;
-    const gmNeto=gmN7+gmN19;
-    const gmMwst=gmM7+gmM19;
-    const gmMonto=gmNeto+gmMwst;
-    const gmLineasJson=gmLis.length?JSON.stringify(gmLis.map(l=>({desc:l.desc,qty:l.qty,neto:l.neto,mwst:l.mwst}))):null;
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:gmMonto||gmNeto+gmMwst,monto_neto:gmNeto,mwst_porcentaje:gmN19>=gmN7?19:7,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value,lineas_json:gmLineasJson,numero_documento:document.getElementById('gm-nd')?.value||null}).select('id').single();
+    const gmNeto=parseFloat(document.getElementById('gm-n').value)||0;
+    const gmMwst=parseFloat(document.getElementById('gm-m').value)||0;
+    const gmMonto=parseFloat(document.getElementById('gm-t').value)||gmNeto+gmMwst;
+    const gmMp=parseInt(document.getElementById('gm-p').value)||7;
+    const gmLineasJson=JSON.stringify([...document.getElementById('gm-lis').querySelectorAll('.li-simple')].map(d=>{const i=d.querySelectorAll('input');return{desc:i[0]?.value||'',importe_bruto:parseFloat(i[1]?.value)||0}}));
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,categoria_id:document.getElementById('gm-cat').value||null,monto:gmMonto,monto_neto:gmNeto,mwst_porcentaje:gmMp,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value,lineas_json:gmLineasJson,numero_documento:document.getElementById('gm-nd')?.value||null}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gm-adj').files[0];
     if(file&&row?.id){const yr=fecha.substring(0,4),mo=fecha.substring(5,7);const url=await uploadAdjunto(file,`gastos/${yr}/${mo}`,`gasto-${row.id}`);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
@@ -1428,8 +1443,8 @@ async function editGasto(id){
   </div>`,async()=>{
     // Recalculate neto/mwst from lines
     const egLisCalc=document.getElementById('eg-lis')?getLis('eg-lis'):[];
-    const egN7=egLisCalc.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto,0);
-    const egN19=egLisCalc.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto,0);
+    const egN7=egLisCalc.filter(l=>l.mwst===7).reduce((a,l)=>a+l.neto*l.qty,0);
+    const egN19=egLisCalc.filter(l=>l.mwst===19).reduce((a,l)=>a+l.neto*l.qty,0);
     const egM7=egN7*.07,egM19=egN19*.19;
     const egNeto=egN7+egN19;const egMwst=egM7+egM19;
     const egMonto=parseFloat(document.getElementById('eg-t').value)||0;
@@ -1456,7 +1471,16 @@ async function editGasto(id){
   });
   setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id;attachRecalc('eg-lis');recalcSummary('eg-lis');},50);
 }
-async function delGasto(id){if(!confirm('¿Eliminar?'))return;await sb.from('gastos').delete().eq('id',id);gastos()}
+async function delGasto(id){
+  if(!confirm('¿Eliminar?'))return;
+  const{data:g}=await sb.from('gastos').select('adjunto_url').eq('id',id).single();
+  await sb.from('gastos').delete().eq('id',id);
+  if(g?.adjunto_url){
+    const m=g.adjunto_url.match(/\/object\/(?:sign|public)\/adjuntos\/([^?]+)/);
+    if(m)await sb.storage.from('adjuntos').remove([m[1]]);
+  }
+  gastos();
+}
 
 // ---- GASTOS RECURRENTES ----
 async function recurrentes(){
@@ -2277,6 +2301,53 @@ function getLis(cid){
     const neto=cb?.checked?v/(1+(parseInt(s?.value)||7)/100):v;
     return{desc:i[0]?.value||'',qty:parseFloat(i[1]?.value)||1,neto,mwst:parseInt(s?.value)||7};
   }).filter(l=>l.neto>0||l.desc);
+}
+
+function addLiSimple(cid){
+  const c=document.getElementById(cid);if(!c)return;
+  const d=document.createElement('div');
+  d.className='li-simple';
+  d.style.cssText='display:flex;gap:8px;margin-bottom:6px;align-items:center';
+  d.innerHTML='<input placeholder="Descripción" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit"><input type="number" value="0" step="0.01" style="width:90px;font-size:13px;padding:8px 10px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit" placeholder="Bruto €"><button class="btn btn-sm btn-d" onclick="this.parentElement.remove()">✕</button>';
+  c.appendChild(d);
+}
+
+function updateFactSummaryM(){
+  const neto=parseFloat(document.getElementById('fmn')?.value)||0;
+  const mwst=parseFloat(document.getElementById('fmm')?.value)||0;
+  const total=neto+mwst;
+  const s=document.getElementById('ml-summary');if(!s)return;
+  document.getElementById('ml-s-neto').textContent='€'+neto.toLocaleString('de-DE',{minimumFractionDigits:2});
+  document.getElementById('ml-s-mwst').textContent='€'+mwst.toLocaleString('de-DE',{minimumFractionDigits:2});
+  document.getElementById('ml-s-total').textContent='€'+total.toLocaleString('de-DE',{minimumFractionDigits:2});
+}
+function updateFactSummary(){
+  const neto=parseFloat(document.getElementById('ia-neto')?.value)||0;
+  const mwst=parseFloat(document.getElementById('ia-mwst')?.value)||0;
+  const total=neto+mwst;
+  const s=document.getElementById('ia-summary');if(!s)return;
+  document.getElementById('ia-s-neto').textContent='€'+neto.toLocaleString('de-DE',{minimumFractionDigits:2});
+  document.getElementById('ia-s-mwst').textContent='€'+mwst.toLocaleString('de-DE',{minimumFractionDigits:2});
+  document.getElementById('ia-s-total').textContent='€'+total.toLocaleString('de-DE',{minimumFractionDigits:2});
+}
+function updateGastoSummaryGm(){
+  const neto=parseFloat(document.getElementById('gm-n')?.value)||0;
+  const mwst=parseFloat(document.getElementById('gm-m')?.value)||0;
+  const total=neto+mwst;
+  const s=document.getElementById('gm-summary');if(!s)return;
+  document.getElementById('gm-s-neto').textContent='€'+neto.toLocaleString('de-DE',{minimumFractionDigits:2});
+  document.getElementById('gm-s-mwst').textContent='€'+mwst.toLocaleString('de-DE',{minimumFractionDigits:2});
+  document.getElementById('gm-s-total').textContent='€'+total.toLocaleString('de-DE',{minimumFractionDigits:2});
+}
+function updateGastoSummary(){
+  const neto=parseFloat(document.getElementById('gi-neto')?.value||document.getElementById('gm-n')?.value)||0;
+  const mwst=parseFloat(document.getElementById('gi-mwst')?.value||document.getElementById('gm-m')?.value)||0;
+  const total=neto+mwst;
+  const pfx=document.getElementById('gi-neto')?'gi':'gm';
+  const s=document.getElementById(pfx+'-summary');if(!s)return;
+  document.getElementById(pfx+'-s-neto').textContent='€'+neto.toLocaleString('de-DE',{minimumFractionDigits:2});
+  document.getElementById(pfx+'-s-mwst').textContent='€'+mwst.toLocaleString('de-DE',{minimumFractionDigits:2});
+  document.getElementById(pfx+'-s-total').textContent='€'+total.toLocaleString('de-DE',{minimumFractionDigits:2});
 }
 
 function toggleBrutoMode(lisId,enabled){
