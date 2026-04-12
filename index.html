@@ -1623,12 +1623,12 @@ async function caja() {
   const { data } = await sb.from('cierres_caja').select('*').order('fecha',{ascending:false});
   document.getElementById('ct').innerHTML=`<div class="card">
     ${!(data||[]).length?'<div class="empty">Sin cierres registrados.</div>':
-    `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Ef. inicial</th><th>Ingresos</th><th>Egresos</th><th>Ef. final</th><th>Diferencia</th><th>Obs.</th><th></th></tr></thead><tbody>
+    `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Ef. inicial</th><th>Egresos</th><th>Ef. final</th><th>Diferencia</th><th>Ingresos</th><th>Obs.</th><th></th></tr></thead><tbody>
     ${data.map(c=>`<tr>
-      <td>${fmtD(c.fecha)}</td><td>${fmt(c.efectivo_inicial)}</td>
-      <td style="color:var(--green);font-weight:700">${fmt(c.ingresos_dia)}</td>
+      <td>${fmtD(c.fecha)}</td><td style="font-size:12px">${_sucs.find(s=>s.id===c.sucursal_id)?.nombre||'General'}</td><td>${fmt(c.efectivo_inicial)}</td>
       <td>${fmt(c.egresos_efectivo)}</td><td>${fmt(c.efectivo_final_contado)}</td>
       <td style="color:${(c.diferencia_caja||0)>=0?'var(--green)':'var(--red)'};font-weight:600">${fmt(c.diferencia_caja||0)}</td>
+      <td style="color:var(--green);font-weight:700">${fmt(c.ingresos_dia)}</td>
       <td style="font-size:12px;color:var(--text-muted)">${c.observaciones||'—'}</td>
       <td style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editCierre('${c.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="eliminarCierre('${c.id}')">✕</button></td>
     </tr>`).join('')}
