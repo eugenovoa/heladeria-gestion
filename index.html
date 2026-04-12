@@ -2056,7 +2056,8 @@ async function descargarMes(){
 
   // Get all facturas and gastos with adjuntos for this month
   const desde=`${yr}-${mo}-01`;
-  const hasta=`${yr}-${mo}-31`;
+  const ultimoDia=new Date(parseInt(yr),parseInt(mo),0).getDate();
+  const hasta=`${yr}-${mo}-${String(ultimoDia).padStart(2,'0')}`;
   const[{data:facts},{data:gastos}]=await Promise.all([
     sb.from('facturas').select('id,numero_factura,fecha_emision,adjunto_url,proveedores(nombre)').gte('fecha_emision',desde).lte('fecha_emision',hasta).not('adjunto_url','is',null),
     sb.from('gastos').select('id,concepto,fecha,adjunto_url').gte('fecha',desde).lte('fecha',hasta).not('adjunto_url','is',null)
@@ -2088,11 +2089,12 @@ async function descargarMes(){
   // Download each file
   const download=async(url,filename,zipFolder)=>{
     try{
-      // Refresh signed URL if needed
       let fetchUrl=url;
-      if(url.includes('/object/public/')){
-        const match=url.match(/\/object\/public\/adjuntos\/(.+)/);
-        if(match){const{data}=await sb.storage.from('adjuntos').createSignedUrl(match[1],300);if(data?.signedUrl)fetchUrl=data.signedUrl;}
+      // Always get a fresh signed URL for download
+      let pathMatch=url.match(/\/object\/(?:sign|public)\/adjuntos\/([^?]+)/);
+      if(pathMatch){
+        const{data}=await sb.storage.from('adjuntos').createSignedUrl(pathMatch[1],300);
+        if(data?.signedUrl)fetchUrl=data.signedUrl;
       }
       const resp=await fetch(fetchUrl);
       if(!resp.ok)throw new Error('HTTP '+resp.status);
@@ -2104,12 +2106,12 @@ async function descargarMes(){
 
   const tasks=[];
   (facts||[]).forEach(f=>{
-    const ext=f.adjunto_url?.split('.').pop()?.split('?')[0]||'pdf';
+    const ext=(f.adjunto_url?.split('?')[0]?.split('.').pop()||'pdf').toLowerCase();
     const name=`${f.proveedores?.nombre||'fact'}_${f.numero_factura||f.id}.${ext}`;
     tasks.push(download(f.adjunto_url,name,factFolder));
   });
   (gastos||[]).forEach(g=>{
-    const ext=g.adjunto_url?.split('.').pop()?.split('?')[0]||'jpg';
+    const ext=(g.adjunto_url?.split('?')[0]?.split('.').pop()||'jpg').toLowerCase();
     const name=`${(g.concepto||'gasto').substring(0,30)}_${g.fecha}.${ext}`;
     tasks.push(download(g.adjunto_url,name,gastoFolder));
   });
