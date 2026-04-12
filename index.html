@@ -1842,13 +1842,12 @@ async function repComprasCargar() {
   const totMwst=Object.values(byProv).reduce((a,v)=>a+v.mwst,0);
   const totTotal=Object.values(byProv).reduce((a,v)=>a+v.total,0);
   document.getElementById('rep-compras-body').innerHTML=`
-    <div class="kpi-grid" style="margin-bottom:16px">
-      <div class="kpi-card blue"><div class="kpi-label">Total bruto</div><div class="kpi-value">${fmt(totTotal)}</div></div>
-      <div class="kpi-card green"><div class="kpi-label">Total neto</div><div class="kpi-value">${fmt(totNeto)}</div></div>
-      <div class="kpi-card amber"><div class="kpi-label">MwSt soportada</div><div class="kpi-value">${fmt(totMwst)}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Facturas</div><div class="kpi-value">${(facts||[]).length}</div></div>
-    </div>
-    <div class="card"><div class="card-title">Por proveedor</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+      <div class="card" style="padding:14px 16px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total bruto</div><div style="font-size:20px;font-weight:700;color:var(--blue)">${fmt(totTotal)}</div></div>
+      <div class="card" style="padding:14px 16px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total neto</div><div style="font-size:20px;font-weight:700;color:var(--green)">${fmt(totNeto)}</div></div>
+      <div class="card" style="padding:14px 16px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">MwSt soportada</div><div style="font-size:20px;font-weight:700;color:var(--amber)">${fmt(totMwst)}</div></div>
+      <div class="card" style="padding:14px 16px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Facturas</div><div style="font-size:20px;font-weight:700">${(facts||[]).length}</div></div>
+    </div>div class="card"><div class="card-title">Por proveedor</div>
       <table><thead><tr><th>Proveedor</th><th>Facturas</th><th>Neto</th><th>MwSt</th><th>Total bruto</th><th>%</th></tr></thead><tbody>
       ${Object.entries(byProv).map(([n,v])=>`<tr><td>${n}</td><td>${v.count}</td><td>${fmt(v.neto)}</td><td>${fmt(v.mwst)}</td><td style="font-weight:600">${fmt(v.total)}</td><td><span class="bd bd-gray">${totTotal>0?(v.total/totTotal*100).toFixed(1):'0'}%</span></td></tr>`).join('')}
       <tr class="trow-t"><td>Total</td><td>${(facts||[]).length}</td><td>${fmt(totNeto)}</td><td>${fmt(totMwst)}</td><td>${fmt(totTotal)}</td><td>100%</td></tr>
