@@ -2098,10 +2098,15 @@ async function descargarMes(){
         const filePath=pathMatch[1].split('?')[0];
         const{data,error}=await sb.storage.from('adjuntos').createSignedUrl(filePath,300);
         if(data?.signedUrl)fetchUrl=data.signedUrl;
-        else console.error('Signed URL error:',error?.message,filePath);
+        else{
+          console.error('Signed URL error:',error?.message,'path:',filePath);
+          // Try with full path including bucket name
+          const{data:d2}=await sb.storage.from('adjuntos').createSignedUrl(filePath.replace(/^adjuntos\//,''),300);
+          if(d2?.signedUrl)fetchUrl=d2.signedUrl;
+        }
       }
       const resp=await fetch(fetchUrl);
-      if(!resp.ok)throw new Error('HTTP '+resp.status);
+      if(!resp.ok)throw new Error('HTTP '+resp.status+' url:'+fetchUrl.substring(0,80));
       const blob=await resp.blob();
       zipFolder.file(filename,blob);
       ok++;
