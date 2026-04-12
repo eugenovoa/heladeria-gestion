@@ -1531,6 +1531,92 @@ async function subirAdjGasto(gastoId,fecha){
 
 
 
+async function nuevoCierre(){
+  openMo('Registrar cierre de caja',`<div class="fg">
+    <div class="f"><label>Fecha *</label><input id="nc-f" type="date" value="${today()}"></div>
+    <div class="f"><label>Sucursal *</label><select id="nc-s"><option value="">General</option>${sucOpts()}</select></div>
+    <div class="f"><label>Efectivo inicial</label><input id="nc-ei" type="number" step="0.01" value="0"></div>
+    <div class="f"><label>Ingresos del día</label><input id="nc-ing" type="number" step="0.01" value="0"></div>
+    <div class="f"><label>Egresos efectivo</label><input id="nc-eg" type="number" step="0.01" value="0"></div>
+    <div class="f"><label>Efectivo final contado</label><input id="nc-ef" type="number" step="0.01" value="0" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Diferencia</label><input id="nc-dif" type="number" step="0.01" value="0" readonly style="background:var(--surface2)"></div>
+    <div class="f full"><label>Observaciones</label><input id="nc-obs"></div>
+  </div>`,
+  async()=>{
+    const f=document.getElementById('nc-f').value;if(!f){alert('Completá la fecha.');return}
+    await getOrCreateTmp(f);
+    const ei=parseFloat(document.getElementById('nc-ei').value)||0;
+    const ing=parseFloat(document.getElementById('nc-ing').value)||0;
+    const eg=parseFloat(document.getElementById('nc-eg').value)||0;
+    const ef=parseFloat(document.getElementById('nc-ef').value)||0;
+    const dif=ef-(ei+ing-eg);
+    const{error}=await sb.from('cierres_caja').insert({fecha:f,sucursal_id:document.getElementById('nc-s').value||null,efectivo_inicial:ei,ingresos_dia:ing,egresos_efectivo:eg,efectivo_final_contado:ef,diferencia_caja:dif,observaciones:document.getElementById('nc-obs').value||null});
+    if(error){alert(error.message);return}
+    closeMo();caja();
+  });
+}
+
+function calcDifCierre(){
+  const ei=parseFloat(document.getElementById('nc-ei')?.value)||0;
+  const ing=parseFloat(document.getElementById('nc-ing')?.value)||0;
+  const eg=parseFloat(document.getElementById('nc-eg')?.value)||0;
+  const ef=parseFloat(document.getElementById('nc-ef')?.value)||0;
+  const dif=document.getElementById('nc-dif');
+  if(dif)dif.value=(ef-(ei+ing-eg)).toFixed(2);
+}
+
+async function editCierre(id){
+  const{data:c}=await sb.from('cierres_caja').select('*').eq('id',id).single();
+  openMo('Editar cierre',`<div class="fg">
+    <div class="f"><label>Fecha</label><input id="ec-f" type="date" value="${c.fecha}"></div>
+    <div class="f"><label>Sucursal</label><select id="ec-s"><option value="">General</option>${sucOpts()}</select></div>
+    <div class="f"><label>Efectivo inicial</label><input id="ec-ei" type="number" step="0.01" value="${c.efectivo_inicial||0}"></div>
+    <div class="f"><label>Ingresos del día</label><input id="ec-ing" type="number" step="0.01" value="${c.ingresos_dia||0}"></div>
+    <div class="f"><label>Egresos efectivo</label><input id="ec-eg" type="number" step="0.01" value="${c.egresos_efectivo||0}"></div>
+    <div class="f"><label>Efectivo final contado</label><input id="ec-ef" type="number" step="0.01" value="${c.efectivo_final_contado||0}"></div>
+    <div class="f"><label>Diferencia</label><input id="ec-dif" type="number" step="0.01" value="${c.diferencia_caja||0}" readonly style="background:var(--surface2)"></div>
+    <div class="f full"><label>Observaciones</label><input id="ec-obs" value="${c.observaciones||''}"></div>
+  </div>`,
+  async()=>{
+    const{error}=await sb.from('cierres_caja').update({fecha:document.getElementById('ec-f').value,sucursal_id:document.getElementById('ec-s').value||null,efectivo_inicial:parseFloat(document.getElementById('ec-ei').value)||0,ingresos_dia:parseFloat(document.getElementById('ec-ing').value)||0,egresos_efectivo:parseFloat(document.getElementById('ec-eg').value)||0,efectivo_final_contado:parseFloat(document.getElementById('ec-ef').value)||0,diferencia_caja:parseFloat(document.getElementById('ec-dif').value)||0,observaciones:document.getElementById('ec-obs').value||null}).eq('id',id);
+    if(error){alert(error.message);return}
+    closeMo();caja();
+  });
+  setTimeout(()=>{const s=document.getElementById('ec-s');if(s&&c.sucursal_id)s.value=c.sucursal_id;},50);
+}
+
+async function eliminarCierre(id){
+  if(!confirm('¿Eliminar cierre?'))return;
+  await sb.from('cierres_caja').delete().eq('id',id);
+  caja();
+}
+
+async function nuevoStock(){
+  const{data:prods}=await sb.from('productos').select('id,nombre,unidad_medida').eq('activo',true).order('nombre');
+  const temps=await getTmps();
+  openMo('Registrar stock',`<div class="fg">
+    <div class="f"><label>Tipo *</label><select id="ns-tp"><option value="inicial">Stock inicial</option><option value="final">Stock final</option></select></div>
+    <div class="f"><label>Temporada *</label><select id="ns-tmp">${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <div class="f"><label>Producto *</label><select id="ns-pr"><option value="">— Seleccionar —</option>${(prods||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.unidad_medida||'u'})</option>`).join('')}</select></div>
+    <div class="f"><label>Cantidad *</label><input id="ns-qty" type="number" step="0.001" value="0"></div>
+    <div class="f"><label>Precio unitario</label><input id="ns-pu" type="number" step="0.01" value="0"></div>
+  </div>`,
+  async()=>{
+    const pr=document.getElementById('ns-pr').value;if(!pr){alert('Seleccioná un producto.');return}
+    const qty=parseFloat(document.getElementById('ns-qty').value)||0;
+    const pu=parseFloat(document.getElementById('ns-pu').value)||0;
+    const{error}=await sb.from('stock').insert({tipo:document.getElementById('ns-tp').value,temporada_id:document.getElementById('ns-tmp').value,producto_id:pr,cantidad:qty,precio_unitario:pu,valor_total:qty*pu});
+    if(error){alert(error.message);return}
+    closeMo();stock();
+  });
+}
+
+async function eliminarStock(id){
+  if(!confirm('¿Eliminar registro?'))return;
+  await sb.from('stock').delete().eq('id',id);
+  stock();
+}
+
 async function caja() {
   loading();
   setR(`<button class="btn btn-p" onclick="nuevoCierre()">+ Registrar cierre</button>`);
