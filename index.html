@@ -2101,7 +2101,7 @@ async function descargarMes(){
       const blob=await resp.blob();
       zipFolder.file(filename,blob);
       ok++;
-    }catch(e){console.error('Error downloading',filename,e);err++;}
+    }catch(e){console.error('Error downloading',filename,e);err++;status.innerHTML+=`<div style="font-size:12px;color:var(--red);margin-top:4px">✗ Error: ${filename} — ${e.message}</div>`;}
   };
 
   const tasks=[];
