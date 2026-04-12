@@ -1888,7 +1888,7 @@ async function loadErr(){
   const saldoP=Math.max(0,(impFin||impEst)-gAnts);const neto=ebt-(impFin||impEst);
   const c=n=>n>=0?'var(--green)':'var(--red)';
   document.getElementById('err-body').innerHTML=`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;max-width:600px">
       <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;white-space:nowrap">Impuesto</span>
       <div style="display:flex;align-items:center;gap:6px">
         <label style="font-size:12px;color:var(--text-muted)">Alícuota %</label>
@@ -1900,7 +1900,7 @@ async function loadErr(){
       </div>
       <button class="btn btn-p btn-sm" onclick="saveImp('${tid}')">Guardar</button>
     </div>
-    <div class="card" style="max-width:580px">
+    <div class="card">
       <div style="font-size:16px;font-weight:700;margin-bottom:4px">${tm?.nombre||'ERR'}</div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Período: ${fmtD(desde)} — ${fmtD(hasta)}</div>
       <table class="stmt">
