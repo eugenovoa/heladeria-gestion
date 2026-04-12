@@ -2091,10 +2091,14 @@ async function descargarMes(){
     try{
       let fetchUrl=url;
       // Always get a fresh signed URL for download
+      // Extract path from any Supabase storage URL format
       let pathMatch=url.match(/\/object\/(?:sign|public)\/adjuntos\/([^?]+)/);
+      if(!pathMatch)pathMatch=url.match(/adjuntos\/(.+?)(?:\?|$)/);
       if(pathMatch){
-        const{data}=await sb.storage.from('adjuntos').createSignedUrl(pathMatch[1],300);
+        const filePath=pathMatch[1].split('?')[0];
+        const{data,error}=await sb.storage.from('adjuntos').createSignedUrl(filePath,300);
         if(data?.signedUrl)fetchUrl=data.signedUrl;
+        else console.error('Signed URL error:',error?.message,filePath);
       }
       const resp=await fetch(fetchUrl);
       if(!resp.ok)throw new Error('HTTP '+resp.status);
