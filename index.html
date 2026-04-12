@@ -1691,7 +1691,7 @@ async function repFlujo() {
   document.getElementById('ct').innerHTML=`
     <div style="margin-bottom:16px">
       <div class="f" style="display:inline-block"><label>Temporada</label><select id="f-temp-flujo" onchange="repFlujoCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
-        ${tempsOpciones(temps)}
+        ${tempsOpciones(temps,temps.find(t=>t.activa)?.id)}
       </select></div>
     </div>
     <div id="flujo-body"></div>`;
@@ -1748,7 +1748,7 @@ async function repFlujoCargar() {
   const tempId=document.getElementById('f-temp-flujo')?.value;
   document.getElementById('flujo-body').innerHTML='<div class="loading">Calculando...</div>';
   const allTemps = await getTmps();
-  const {desde, hasta} = getTempFechas(allTemps, tempId);
+  const {desde, hasta} = tmFechas(allTemps, tempId);
   let qVentas = sb.from('cierres_caja').select('ingresos_dia');
   let qPagos = sb.from('pagos').select('monto,gasto_bancario');
   let qGastos = sb.from('gastos').select('monto,categorias_gasto(tipo)');
@@ -1831,7 +1831,7 @@ async function repComprasCargar() {
   const tempId=document.getElementById('f-temp-filter')?.value;
   document.getElementById('rep-compras-body').innerHTML='<div class="loading">Cargando...</div>';
   const allTemps = await getTmps();
-  const {desde, hasta} = getTempFechas(allTemps, tempId);
+  const {desde, hasta} = tmFechas(allTemps, tempId);
   let q = sb.from('facturas').select('*, proveedores(nombre)').order('fecha_emision');
   if (desde) q = q.gte('fecha_emision', desde);
   if (hasta) q = q.lte('fecha_emision', hasta);
