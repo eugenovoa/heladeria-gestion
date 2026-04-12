@@ -406,6 +406,12 @@ function sucOpts(cp=false){return _sucs.filter(s=>cp||!s.es_centro_produccion).m
 async function getTmps(){const{data}=await sb.from('temporadas').select('*').order('fecha_inicio',{ascending:false});return data||[]}
 function tmOpts(ts,sel){const s=sel||(ts[0]?.id||'');return ts.map(t=>`<option value="${t.id}" ${t.id===s?'selected':''}>${t.nombre}</option>`).join('')}
 function tmFechas(ts,id){const t=ts.find(x=>x.id===id);return t?{desde:t.fecha_inicio,hasta:t.fecha_cierre||today()}:{desde:null,hasta:today()}}
+function getTempFechas(temps, tempId){
+  const t=temps.find(t=>t.id===tempId)||temps[0];
+  if(!t) return {desde:'2026-01-01', hasta:'2026-12-31'};
+  return {desde:t.fecha_inicio, hasta:t.fecha_fin};
+}
+
 async function getOrCreateTmp(fecha){
   if(!fecha)return null;
   const yr=new Date(fecha+'T00:00:00').getFullYear();
@@ -1527,18 +1533,18 @@ async function subirAdjGasto(gastoId,fecha){
 
 async function caja() {
   loading();
-  setActions(`<button class="btn btn-primary" onclick="nuevoCierre()">+ Registrar cierre</button>`);
+  setR(`<button class="btn btn-p" onclick="nuevoCierre()">+ Registrar cierre</button>`);
   const { data } = await sb.from('cierres_caja').select('*').order('fecha',{ascending:false});
   document.getElementById('ct').innerHTML=`<div class="card">
     ${!(data||[]).length?'<div class="empty">Sin cierres registrados.</div>':
     `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Ef. inicial</th><th>Ingresos</th><th>Egresos</th><th>Ef. final</th><th>Diferencia</th><th>Obs.</th><th></th></tr></thead><tbody>
     ${data.map(c=>`<tr>
-      <td>${fmtDate(c.fecha)}</td><td>${fmt(c.efectivo_inicial)}</td>
+      <td>${fmtD(c.fecha)}</td><td>${fmt(c.efectivo_inicial)}</td>
       <td style="color:var(--green);font-weight:700">${fmt(c.ingresos_dia)}</td>
       <td>${fmt(c.egresos_efectivo)}</td><td>${fmt(c.efectivo_final_contado)}</td>
       <td style="color:${(c.diferencia_caja||0)>=0?'var(--green)':'var(--red)'};font-weight:600">${fmt(c.diferencia_caja||0)}</td>
       <td style="font-size:12px;color:var(--text-muted)">${c.observaciones||'—'}</td>
-      <td style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editCierre('${c.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="eliminarCierre('${c.id}')">✕</button></td>
+      <td style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editCierre('${c.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="eliminarCierre('${c.id}')">✕</button></td>
     </tr>`).join('')}
     </tbody></table></div>`}
   </div>`;
@@ -1546,7 +1552,7 @@ async function caja() {
 
 async function stock() {
   loading();
-  setActions(`<button class="btn btn-primary" onclick="nuevoStock()">+ Registrar stock</button>`);
+  setR(`<button class="btn btn-p" onclick="nuevoStock()">+ Registrar stock</button>`);
   const [{ data },{ data:factsData }] = await Promise.all([
     sb.from('stock').select('*, productos(nombre,unidad_medida,categorias_producto(nombre)), temporadas(nombre)').order('tipo').order('created_at'),
     sb.from('facturas').select('monto_neto')
@@ -1559,8 +1565,8 @@ async function stock() {
   const cmv=totIni+totalCompras-totFin;
   const renderTable=(rows,label)=>rows.length===0?`<div class="empty">Sin registros de stock ${label}.</div>`:
     `<div style="overflow-x:auto"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Cantidad</th><th>Precio unit.</th><th>Valor total</th><th></th></tr></thead><tbody>
-    ${rows.map(s=>`<tr><td>${s.productos?.nombre||'—'}</td><td><span class="badge badge-gray">${s.productos?.categorias_producto?.nombre||'—'}</span></td><td>${s.productos?.unidad_medida||'—'}</td><td>${s.cantidad}</td><td>${fmt(s.precio_unitario)}</td><td style="font-weight:600">${fmt(s.valor_total)}</td><td><button class="btn btn-sm btn-danger" onclick="eliminarStock('${s.id}')">✕</button></td></tr>`).join('')}
-    <tr class="total-row"><td colspan="5">Total</td><td>${fmt(rows.reduce((a,s)=>a+parseFloat(s.valor_total||0),0))}</td><td></td></tr>
+    ${rows.map(s=>`<tr><td>${s.productos?.nombre||'—'}</td><td><span class="bd bd-gray">${s.productos?.categorias_producto?.nombre||'—'}</span></td><td>${s.productos?.unidad_medida||'—'}</td><td>${s.cantidad}</td><td>${fmt(s.precio_unitario)}</td><td style="font-weight:600">${fmt(s.valor_total)}</td><td><button class="btn btn-sm btn-d" onclick="eliminarStock('${s.id}')">✕</button></td></tr>`).join('')}
+    <tr class="trow-t"><td colspan="5">Total</td><td>${fmt(rows.reduce((a,s)=>a+parseFloat(s.valor_total||0),0))}</td><td></td></tr>
     </tbody></table></div>`;
   document.getElementById('ct').innerHTML=`
     <div class="card" style="padding:18px 20px;margin-bottom:16px;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-color:#bae6fd">
@@ -1655,7 +1661,7 @@ async function recurrentes(){
 async function repFlujoCargar() {
   const tempId=document.getElementById('f-temp-flujo')?.value;
   document.getElementById('flujo-body').innerHTML='<div class="loading">Calculando...</div>';
-  const allTemps = await getTemporadas();
+  const allTemps = await getTmps();
   const {desde, hasta} = getTempFechas(allTemps, tempId);
   let qVentas = sb.from('cierres_caja').select('ingresos_dia');
   let qPagos = sb.from('pagos').select('monto,gasto_bancario');
@@ -1691,10 +1697,54 @@ async function repFlujoCargar() {
   </div>`;
 }
 
+async function loadComp(){
+  const idA=document.getElementById('ca')?.value;
+  const idB=document.getElementById('cb')?.value;
+  if(!idA||!idB){alert('Seleccioná dos temporadas.');return}
+  document.getElementById('comp-body').innerHTML='<div class="ld">Calculando...</div>';
+  
+  const temps=await getTmps();
+  const tA=temps.find(t=>t.id===idA),tB=temps.find(t=>t.id===idB);
+  
+  const calcTemp=async(t)=>{
+    const[{data:cierres},{data:facts},{data:gastos}]=await Promise.all([
+      sb.from('cierres_caja').select('total_ventas,sucursal_id').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_fin),
+      sb.from('facturas').select('monto_neto,monto_total').gte('fecha_emision',t.fecha_inicio).lte('fecha_emision',t.fecha_fin).eq('tipo','factura'),
+      sb.from('gastos').select('monto').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_fin)
+    ]);
+    const ventas=(cierres||[]).reduce((a,c)=>a+parseFloat(c.total_ventas||0),0);
+    const compras=(facts||[]).reduce((a,f)=>a+parseFloat(f.monto_neto||0),0);
+    const gastosTotal=(gastos||[]).reduce((a,g)=>a+parseFloat(g.monto||0),0);
+    return {ventas,compras,gastos:gastosTotal,resultado:ventas-compras-gastosTotal};
+  };
+  
+  const[dA,dB]=await Promise.all([calcTemp(tA),calcTemp(tB)]);
+  
+  const row=(label,a,b)=>{
+    const diff=b-a,pct=a!==0?((diff/Math.abs(a))*100).toFixed(1):null;
+    const color=diff>=0?'var(--green)':'var(--red)';
+    return `<tr><td>${label}</td><td style="text-align:right">${fmt(a)}</td><td style="text-align:right">${fmt(b)}</td>
+      <td style="text-align:right;color:${color};font-weight:600">${diff>=0?'+':''}${fmt(diff)}${pct!==null?` <span style="font-size:11px">(${pct}%)</span>`:''}</td></tr>`;
+  };
+  
+  document.getElementById('comp-body').innerHTML=`
+    <div class="card">
+      <table>
+        <thead><tr><th></th><th style="text-align:right">${tA.nombre}</th><th style="text-align:right">${tB.nombre}</th><th style="text-align:right">Variación</th></tr></thead>
+        <tbody>
+          ${row('Ventas',dA.ventas,dB.ventas)}
+          ${row('Compras (neto)',dA.compras,dB.compras)}
+          ${row('Gastos al contado',dA.gastos,dB.gastos)}
+          ${row('Resultado estimado',dA.resultado,dB.resultado)}
+        </tbody>
+      </table>
+    </div>`;
+}
+
 async function repComprasCargar() {
   const tempId=document.getElementById('f-temp-filter')?.value;
   document.getElementById('rep-compras-body').innerHTML='<div class="loading">Cargando...</div>';
-  const allTemps = await getTemporadas();
+  const allTemps = await getTmps();
   const {desde, hasta} = getTempFechas(allTemps, tempId);
   let q = sb.from('facturas').select('*, proveedores(nombre)').order('fecha_emision');
   if (desde) q = q.gte('fecha_emision', desde);
@@ -1714,8 +1764,8 @@ async function repComprasCargar() {
     </div>
     <div class="card"><div class="card-title">Por proveedor</div>
       <table><thead><tr><th>Proveedor</th><th>Facturas</th><th>Neto</th><th>MwSt</th><th>Total bruto</th><th>%</th></tr></thead><tbody>
-      ${Object.entries(byProv).map(([n,v])=>`<tr><td>${n}</td><td>${v.count}</td><td>${fmt(v.neto)}</td><td>${fmt(v.mwst)}</td><td style="font-weight:600">${fmt(v.total)}</td><td><span class="badge badge-gray">${totTotal>0?(v.total/totTotal*100).toFixed(1):'0'}%</span></td></tr>`).join('')}
-      <tr class="total-row"><td>Total</td><td>${(facts||[]).length}</td><td>${fmt(totNeto)}</td><td>${fmt(totMwst)}</td><td>${fmt(totTotal)}</td><td>100%</td></tr>
+      ${Object.entries(byProv).map(([n,v])=>`<tr><td>${n}</td><td>${v.count}</td><td>${fmt(v.neto)}</td><td>${fmt(v.mwst)}</td><td style="font-weight:600">${fmt(v.total)}</td><td><span class="bd bd-gray">${totTotal>0?(v.total/totTotal*100).toFixed(1):'0'}%</span></td></tr>`).join('')}
+      <tr class="trow-t"><td>Total</td><td>${(facts||[]).length}</td><td>${fmt(totNeto)}</td><td>${fmt(totMwst)}</td><td>${fmt(totTotal)}</td><td>100%</td></tr>
       </tbody></table>
     </div>`;
 }
