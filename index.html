@@ -1856,6 +1856,19 @@ async function repComprasCargar() {
     </div>`;
 }
 
+async function saveImp(tid){
+  const aliq=parseFloat(document.getElementById('ei-a')?.value)||0;
+  const montoD=document.getElementById('ei-d')?.value;
+  const monto=montoD&&montoD.trim()!==''?parseFloat(montoD):null;
+  const btn=event.target;btn.textContent='Guardando...';btn.disabled=true;
+  const{error}=await sb.from('impuesto_temporada').upsert({
+    temporada_id:tid,alicuota_estimada:aliq,monto_definitivo:monto
+  },{onConflict:'temporada_id'});
+  btn.textContent='Guardar';btn.disabled=false;
+  if(error){alert(error.message);return}
+  loadErr();
+}
+
 async function loadErr(){
   const tid=document.getElementById('err-tmp')?.value;if(!tid)return;
   document.getElementById('err-body').innerHTML='<div class="ld">Calculando...</div>';
