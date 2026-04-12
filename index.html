@@ -252,6 +252,10 @@ tbody tr:hover td{background:var(--surface2)}
         <div class="nav-item" data-p="rep-comp"><span class="nav-ico">▶</span>Comparativo</div>
       </div>
       <div class="nav-sec">
+        <div class="nav-lbl">Contable</div>
+        <div class="nav-item" data-p="contable"><span class="nav-ico">🗂️</span>Descarga de facturas</div>
+      </div>
+      <div class="nav-sec">
         <div class="nav-lbl">Admin</div>
       <div class="nav-sep">SISTEMA</div>
       <div class="nav-item" data-p="config"><span class="nav-ico">⚙</span>Configuración</div>
@@ -1525,7 +1529,7 @@ async function caja() {
   loading();
   setActions(`<button class="btn btn-primary" onclick="nuevoCierre()">+ Registrar cierre</button>`);
   const { data } = await sb.from('cierres_caja').select('*').order('fecha',{ascending:false});
-  document.getElementById('content').innerHTML=`<div class="card">
+  document.getElementById('ct').innerHTML=`<div class="card">
     ${!(data||[]).length?'<div class="empty">Sin cierres registrados.</div>':
     `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Ef. inicial</th><th>Ingresos</th><th>Egresos</th><th>Ef. final</th><th>Diferencia</th><th>Obs.</th><th></th></tr></thead><tbody>
     ${data.map(c=>`<tr>
@@ -1558,7 +1562,7 @@ async function stock() {
     ${rows.map(s=>`<tr><td>${s.productos?.nombre||'—'}</td><td><span class="badge badge-gray">${s.productos?.categorias_producto?.nombre||'—'}</span></td><td>${s.productos?.unidad_medida||'—'}</td><td>${s.cantidad}</td><td>${fmt(s.precio_unitario)}</td><td style="font-weight:600">${fmt(s.valor_total)}</td><td><button class="btn btn-sm btn-danger" onclick="eliminarStock('${s.id}')">✕</button></td></tr>`).join('')}
     <tr class="total-row"><td colspan="5">Total</td><td>${fmt(rows.reduce((a,s)=>a+parseFloat(s.valor_total||0),0))}</td><td></td></tr>
     </tbody></table></div>`;
-  document.getElementById('content').innerHTML=`
+  document.getElementById('ct').innerHTML=`
     <div class="card" style="padding:18px 20px;margin-bottom:16px;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-color:#bae6fd">
       <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">Cálculo de CMV</div>
       <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;font-size:13px">
@@ -1578,23 +1582,23 @@ async function stock() {
 
 async function repCompras() {
   loading();
-  const temps=await getTemporadas();
+  const temps=await getTmps();
   const activeTemp=temps.find(t=>t.activa)||temps[0];
   let filtroHTML=`<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
-    <div class="field"><label>Temporada</label><select id="f-temp-filter" onchange="repComprasCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
+    <div class="f"><label>Temporada</label><select id="f-temp-filter" onchange="repComprasCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
       ${tempsOpciones(temps)}
     </select></div>
   </div><div id="rep-compras-body"></div>`;
-  document.getElementById('content').innerHTML=filtroHTML;
+  document.getElementById('ct').innerHTML=filtroHTML;
   repComprasCargar();
 }
 
 async function repFlujo() {
   loading();
-  const temps=await getTemporadas();
-  document.getElementById('content').innerHTML=`
+  const temps=await getTmps();
+  document.getElementById('ct').innerHTML=`
     <div style="margin-bottom:16px">
-      <div class="field" style="display:inline-block"><label>Temporada</label><select id="f-temp-flujo" onchange="repFlujoCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
+      <div class="f" style="display:inline-block"><label>Temporada</label><select id="f-temp-flujo" onchange="repFlujoCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
         ${tempsOpciones(temps)}
       </select></div>
     </div>
@@ -1645,6 +1649,147 @@ async function recurrentes(){
         <button class="btn btn-sm btn-d" onclick="delRec('${r.id}')">\u2715</button>
       </div>
     </div>`).join('')}`;
+}
+
+
+async function repFlujoCargar() {
+  const tempId=document.getElementById('f-temp-flujo')?.value;
+  document.getElementById('flujo-body').innerHTML='<div class="loading">Calculando...</div>';
+  const allTemps = await getTemporadas();
+  const {desde, hasta} = getTempFechas(allTemps, tempId);
+  let qVentas = sb.from('cierres_caja').select('ingresos_dia');
+  let qPagos = sb.from('pagos').select('monto,gasto_bancario');
+  let qGastos = sb.from('gastos').select('monto,categorias_gasto(tipo)');
+  if (desde) { qVentas=qVentas.gte('fecha',desde); qPagos=qPagos.gte('fecha_pago',desde); qGastos=qGastos.gte('fecha',desde); }
+  if (hasta) { qVentas=qVentas.lte('fecha',hasta); qPagos=qPagos.lte('fecha_pago',hasta); qGastos=qGastos.lte('fecha',hasta); }
+  const [{data:ventasD},{data:pagosD},{data:gastosD}]=await Promise.all([qVentas, qPagos, qGastos]);
+  const totVentas=(ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
+  const totPagos=(pagosD||[]).reduce((a,p)=>a+parseFloat(p.monto),0);
+  const totGastosOp=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='operativo').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totGastosFinanc=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='financiero').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totAnticipos=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='anticipo_impuesto').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totImpPagados=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='impuesto').reduce((a,g)=>a+parseFloat(g.monto),0);
+  const totSalidas=totPagos+totGastosOp+totGastosFinanc+totAnticipos+totImpPagados;
+  const flujoNeto=totVentas-totSalidas;
+  const c=n=>n>=0?'var(--green)':'var(--red)';
+  document.getElementById('flujo-body').innerHTML=`<div class="card" style="max-width:580px">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">Flujo de caja</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Método directo · datos reales</div>
+    <table class="stmt">
+      <tr class="sh"><td colspan="2">Entradas de efectivo</td></tr>
+      <tr class="ind"><td>Cobros por ventas</td><td>${fmt(totVentas)}</td></tr>
+      <tr class="st"><td>Total entradas</td><td style="color:var(--green);font-weight:700">${fmt(totVentas)}</td></tr>
+      <tr class="sh"><td colspan="2">Salidas de efectivo</td></tr>
+      <tr class="ind"><td>Pagos a proveedores</td><td style="color:var(--red)">(${fmt(totPagos)})</td></tr>
+      <tr class="ind"><td>Gastos operativos</td><td style="color:var(--red)">(${fmt(totGastosOp)})</td></tr>
+      <tr class="ind"><td>Gastos financieros</td><td style="color:var(--red)">(${fmt(totGastosFinanc)})</td></tr>
+      <tr class="ind"><td>Anticipos impuesto (Vorauszahlung)</td><td style="color:var(--red)">(${fmt(totAnticipos)})</td></tr>
+      <tr class="ind"><td>Pagos impuesto temporadas anteriores</td><td style="color:var(--red)">${totImpPagados>0?'('+fmt(totImpPagados)+')':'—'}</td></tr>
+      <tr class="st"><td>Total salidas</td><td style="color:var(--red);font-weight:700">(${fmt(totSalidas)})</td></tr>
+      <tr class="tt"><td>Flujo neto del período</td><td style="color:${c(flujoNeto)}">${flujoNeto<0?'(':''}${fmt(flujoNeto)}${flujoNeto<0?')':''}</td></tr>
+    </table>
+  </div>`;
+}
+
+async function repComprasCargar() {
+  const tempId=document.getElementById('f-temp-filter')?.value;
+  document.getElementById('rep-compras-body').innerHTML='<div class="loading">Cargando...</div>';
+  const allTemps = await getTemporadas();
+  const {desde, hasta} = getTempFechas(allTemps, tempId);
+  let q = sb.from('facturas').select('*, proveedores(nombre)').order('fecha_emision');
+  if (desde) q = q.gte('fecha_emision', desde);
+  if (hasta) q = q.lte('fecha_emision', hasta);
+  const {data:facts}=await q;
+  const byProv={};
+  (facts||[]).forEach(f=>{const n=f.proveedores?.nombre||'—';if(!byProv[n])byProv[n]={count:0,neto:0,mwst:0,total:0};byProv[n].count++;byProv[n].neto+=parseFloat(f.monto_neto);byProv[n].mwst+=parseFloat(f.mwst_monto);byProv[n].total+=parseFloat(f.monto_total);});
+  const totNeto=Object.values(byProv).reduce((a,v)=>a+v.neto,0);
+  const totMwst=Object.values(byProv).reduce((a,v)=>a+v.mwst,0);
+  const totTotal=Object.values(byProv).reduce((a,v)=>a+v.total,0);
+  document.getElementById('rep-compras-body').innerHTML=`
+    <div class="kpi-grid" style="margin-bottom:16px">
+      <div class="kpi-card blue"><div class="kpi-label">Total bruto</div><div class="kpi-value">${fmt(totTotal)}</div></div>
+      <div class="kpi-card green"><div class="kpi-label">Total neto</div><div class="kpi-value">${fmt(totNeto)}</div></div>
+      <div class="kpi-card amber"><div class="kpi-label">MwSt soportada</div><div class="kpi-value">${fmt(totMwst)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Facturas</div><div class="kpi-value">${(facts||[]).length}</div></div>
+    </div>
+    <div class="card"><div class="card-title">Por proveedor</div>
+      <table><thead><tr><th>Proveedor</th><th>Facturas</th><th>Neto</th><th>MwSt</th><th>Total bruto</th><th>%</th></tr></thead><tbody>
+      ${Object.entries(byProv).map(([n,v])=>`<tr><td>${n}</td><td>${v.count}</td><td>${fmt(v.neto)}</td><td>${fmt(v.mwst)}</td><td style="font-weight:600">${fmt(v.total)}</td><td><span class="badge badge-gray">${totTotal>0?(v.total/totTotal*100).toFixed(1):'0'}%</span></td></tr>`).join('')}
+      <tr class="total-row"><td>Total</td><td>${(facts||[]).length}</td><td>${fmt(totNeto)}</td><td>${fmt(totMwst)}</td><td>${fmt(totTotal)}</td><td>100%</td></tr>
+      </tbody></table>
+    </div>`;
+}
+
+async function loadErr(){
+  const tid=document.getElementById('err-tmp')?.value;if(!tid)return;
+  document.getElementById('err-body').innerHTML='<div class="ld">Calculando...</div>';
+  const temps=await getTmps();const tm=temps.find(x=>x.id===tid);
+  const desde=tm?.fecha_inicio,hasta=tm?.fecha_cierre||today();
+  const sucsV=_sucs.filter(s=>!s.es_centro_produccion);
+  const vS={};
+  for(const s of sucsV){const{data:v}=await sb.from('cierres_caja').select('ingresos_dia').eq('sucursal_id',s.id).gte('fecha',desde).lte('fecha',hasta);vS[s.id]={nombre:s.nombre,total:(v||[]).reduce((a,x)=>a+parseFloat(x.ingresos_dia),0)}}
+  const totV=Object.values(vS).reduce((a,v)=>a+v.total,0);
+  const{data:cd}=await sb.from('facturas').select('monto_neto').eq('tipo','factura').gte('fecha_emision',desde).lte('fecha_emision',hasta);
+  const compras=(cd||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
+  const{data:gmpD}=await sb.from('gastos').select('monto_neto,monto,categorias_gasto(nombre)').gte('fecha',desde).lte('fecha',hasta).not('categoria_id','is',null);
+  const comprasMP=(gmpD||[]).filter(g=>/materia|prima/i.test(g.categorias_gasto?.nombre||'')).reduce((a,g)=>a+parseFloat(g.monto_neto||g.monto),0);
+  const{data:sd}=await sb.from('stock').select('tipo,valor_total').eq('temporada_id',tid);
+  const sI=(sd||[]).filter(s=>s.tipo==='inicial').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const sF=(sd||[]).filter(s=>s.tipo==='final').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const cmv=sI+compras+comprasMP-sF,ub=totV-cmv;
+  const{data:gd}=await sb.from('gastos').select('monto,sucursal_id,categorias_gasto(nombre,tipo)').gte('fecha',desde).lte('fecha',hasta);
+  const gSuc={};sucsV.forEach(s=>{gSuc[s.id]={nombre:s.nombre,total:0}});
+  let gGen=0,gFin=0,gAnts=0;
+  (gd||[]).forEach(g=>{const tp=g.categorias_gasto?.tipo,nm=g.categorias_gasto?.nombre||'',m=parseFloat(g.monto);
+    if(tp==='financiero'){gFin+=m;return}if(tp==='anticipo_impuesto'){gAnts+=m;return}if(tp==='impuesto')return;
+    if(/materia|prima/i.test(nm))return;
+    if(g.sucursal_id&&gSuc[g.sucursal_id])gSuc[g.sucursal_id].total+=m;else gGen+=m});
+  const totG=Object.values(gSuc).reduce((a,v)=>a+v.total,0)+gGen;
+  const ebit=ub-totG,ebt=ebit-gFin;
+  const{data:impD}=await sb.from('impuesto_temporada').select('*').eq('temporada_id',tid).maybeSingle();
+  const aliq=parseFloat(impD?.alicuota_estimada)||0,montoD=impD?.monto_definitivo!=null?parseFloat(impD.monto_definitivo):null;
+  const impEst=ebt*aliq/100,impFin=montoD;
+  const saldoP=Math.max(0,(impFin||impEst)-gAnts);const neto=ebt-(impFin||impEst);
+  const c=n=>n>=0?'var(--green)':'var(--red)';
+  document.getElementById('err-body').innerHTML=`
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="card" style="margin:0;min-width:280px;flex:1">
+        <div class="card-t">Configuraci\\u00f3n impositiva</div>
+        <div class="fg">
+          <div class="f"><label>Al\\u00edcuota estimada (%)</label><input type="number" id="ei-a" value="${aliq}" step="0.5" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit"></div>
+          <div class="f"><label>Monto definitivo (\\u20ac)</label><input type="number" id="ei-d" value="${montoD||''}" step="0.01" placeholder="Vac\\u00edo = usar estimado" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit"></div>
+        </div>
+        <button class="btn btn-p" style="margin-top:10px;width:100%" onclick="saveImp('${tid}')">Guardar</button>
+      </div>
+    </div>
+    <div class="card" style="max-width:580px">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">${tm?.nombre||'ERR'}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Per\\u00edodo: ${fmtD(desde)} \\u2014 ${fmtD(hasta)}</div>
+      <table class="stmt">
+        <tr class="hd"><td colspan="2">Ingresos por sucursal</td></tr>
+        ${sucsV.map(s=>`<tr class="suc"><td>${s.nombre}</td><td style="color:var(--green)">${fmt(vS[s.id]?.total||0)}</td></tr>`).join('')}
+        <tr class="st"><td>Total ventas</td><td style="color:${c(totV)};font-weight:700">${fmt(totV)}</td></tr>
+        <tr class="hd"><td colspan="2">CMV \\u2014 consolidado</td></tr>
+        <tr class="ind"><td>Stock inicial</td><td>${fmt(sI)}</td></tr>
+        <tr class="ind"><td>+ Compras netas facturas (sin MwSt)</td><td>${fmt(compras)}</td></tr>
+        ${comprasMP>0?`<tr class="ind"><td>+ Compras MP gastos al contado</td><td>${fmt(comprasMP)}</td></tr>`:''}
+        <tr class="ind"><td>- Stock final</td><td>(${fmt(sF)})</td></tr>
+        <tr class="st"><td>CMV</td><td style="color:var(--red)">(${fmt(cmv)})</td></tr>
+        <tr class="st" style="border-top:2px solid var(--border-md)"><td>Utilidad bruta</td><td style="color:${c(ub)};font-weight:700">${fmt(ub)}</td></tr>
+        <tr class="hd"><td colspan="2">Gastos operativos</td></tr>
+        ${sucsV.filter(s=>(gSuc[s.id]?.total||0)>0).map(s=>`<tr class="suc"><td>${s.nombre}</td><td>(${fmt(gSuc[s.id].total)})</td></tr>`).join('')}
+        ${gGen>0?`<tr class="ind"><td>Gastos generales</td><td>(${fmt(gGen)})</td></tr>`:''}
+        <tr class="st"><td>Resultado operativo</td><td style="color:${c(ebit)}">${fmt(ebit)}</td></tr>
+        ${gFin>0?`<tr class="ind"><td>Gastos financieros</td><td>(${fmt(gFin)})</td></tr>`:''}
+        <tr class="st" style="border-top:2px solid var(--border-md)"><td><strong>Resultado antes de impuestos</strong></td><td style="color:${c(ebt)};font-weight:700">${fmt(ebt)}</td></tr>
+        <tr class="hd"><td colspan="2">Impuestos</td></tr>
+        ${impFin!=null?`<tr class="ind"><td>Impuesto definitivo <span class="bd bd-ok" style="font-size:10px">Confirmado</span></td><td style="color:var(--red)">(${fmt(impFin)})</td></tr>`:`<tr class="ind est"><td>Impuesto estimado (${aliq}%) <span class="bd bd-warn" style="font-size:10px">Estimado</span></td><td style="color:var(--amber)">(${fmt(impEst)})</td></tr>`}
+        ${gAnts>0?`<tr class="ind2"><td>Anticipos pagados</td><td style="color:var(--green)">${fmt(gAnts)}</td></tr>`:''}
+        ${saldoP>0?`<tr class="ind2"><td>Saldo a pagar</td><td style="color:var(--amber)">(${fmt(saldoP)})</td></tr>`:''}
+        <tr class="tt"><td>Resultado neto</td><td style="color:${c(neto)}">${fmt(neto)}</td></tr>
+      </table>
+      ${sF===0?'<div class="al al-warn" style="margin-top:12px">\\u26a0 Stock final no registrado \\u2014 CMV provisorio.</div>':''}
+    </div>`;
 }
 
 // ---- MÓDULO CONTABLE ----
