@@ -1175,7 +1175,7 @@ async function pagos(){
   </div></div>`;
 }
 async function newPago(){
-  const{data:facts}=await sb.from('facturas').select('id,numero_factura,monto_total,proveedores(nombre)').eq('estado','pendiente').eq('tipo','factura').order('fecha_vencimiento');
+  const{data:facts}=await sb.from('facturas').select('id,numero_factura,monto_total,proveedores(nombre)').in('estado',['pendiente','vencida']).eq('tipo','factura').order('fecha_vencimiento');
   openMo('Registrar pago',`<div class="fg">
     <div class="f full"><label>Factura *</label><select id="pa-f"><option value="">— Seleccionar —</option>${(facts||[]).map(f=>`<option value="${f.id}">${f.numero_factura} — ${f.proveedores?.nombre} (${fmt(f.monto_total)})</option>`).join('')}</select></div>
     <div class="f"><label>Fecha *</label><input id="pa-d" type="date" value="${today()}"></div>
