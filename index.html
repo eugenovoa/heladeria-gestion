@@ -950,10 +950,10 @@ async function procFactIA(file){
       <div class="f"><label>Proveedor *</label><select id="ia-pv"><option value="">— Seleccionar —</option>${provs.map(p=>`<option value="${p.id}" data-d="${p.condicion_pago_dias||30}" ${match?.id===p.id?'selected':''}>${p.nombre}</option>`).join('')}</select></div>
       <div class="f"><label>Fecha emisión</label><input id="ia-fe" type="date" value="${r.fecha||today()}"></div>
       <div class="f"><label>Fecha vencimiento</label><input id="ia-fv" type="date" value="${r.fecha_vencimiento||''}"></div>
-      <div class="f"><label>Neto (sin MwSt)</label><input id="ia-neto" type="number" step="0.01" value="${(r.neto_total||0).toFixed(2)}" oninput="updateFactSummary()"></div>
-      <div class="f"><label>MwSt %</label><select id="ia-mp" onchange="updateFactSummary()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7" ${(r.mwst_pct||7)===7?'selected':''}>7%</option><option value="19" ${r.mwst_pct===19?'selected':''}>19%</option></select></div>
-      <div class="f"><label>MwSt monto</label><input id="ia-mwst" type="number" step="0.01" value="${(r.mwst_total||0).toFixed(2)}" oninput="updateFactSummary()"></div>
-      <div class="f"><label>Total bruto</label><input id="ia-tot" type="number" step="0.01" value="${(r.total_bruto||0).toFixed(2)}" oninput="updateFactSummary()"></div>
+      <div class="f"><label>Neto (sin MwSt)</label><input id="ia-neto" type="number" step="0.01" value="${(r.neto_total||0).toFixed(2)}" oninput="updS('ia')"></div>
+      <div class="f"><label>MwSt %</label><select id="ia-mp" onchange="updS('ia')" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7" ${(r.mwst_pct||7)===7?'selected':''}>7%</option><option value="19" ${r.mwst_pct===19?'selected':''}>19%</option></select></div>
+      <div class="f"><label>MwSt monto</label><input id="ia-mwst" type="number" step="0.01" value="${(r.mwst_total||0).toFixed(2)}" oninput="updS('ia')"></div>
+      <div class="f"><label>Total bruto</label><input id="ia-tot" type="number" step="0.01" value="${(r.total_bruto||0).toFixed(2)}" oninput="updS('ia')"></div>
     </div>
     <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Líneas (informativo)</div>
     <div id="ia-lis">${(r.lineas||[]).map(l=>`<div class="li-simple" style="display:flex;gap:8px;margin-bottom:6px;align-items:center"><input value="${l.descripcion||''}" placeholder="Descripción" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit"><input type="number" value="${(l.importe_bruto||0).toFixed(2)}" step="0.01" style="width:90px;font-size:13px;padding:8px 10px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit" placeholder="Bruto €"><button class="btn btn-sm btn-d" onclick="this.closest('.li-simple').remove()">✕</button></div>`).join('')}</div>
@@ -964,7 +964,7 @@ async function procFactIA(file){
       <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="ia-s-total">€0,00</div></div>
     </div>
     <div style="margin-top:14px">${adjuntoField('fi-fadj')}</div>`;
-  swMoTab(document.querySelector('.mo-tab:last-child'),'tab-ver');
+  swMoTab(document.querySelector('.mo-tab:last-child'),'tab-ver');setTimeout(()=>updS('ia'),100);
   document.getElementById('mo-save').textContent='Guardar factura';document.getElementById('mo-save').style.display='';
   setTimeout(()=>{attachRecalc('ia-lis');recalcSummary('ia-lis');},50);
 }
@@ -994,9 +994,9 @@ async function newFactMan(){
     <div class="f"><label>Proveedor *</label><select id="fp" onchange="autoVenc(this)">${(provs||[]).map(p=>`<option value="${p.id}" data-d="${p.condicion_pago_dias||30}">${p.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Fecha emisión *</label><input id="ffe" type="date" value="${today()}" oninput="autoVenc(document.getElementById('fp'))"></div>
     <div class="f"><label>Fecha vencimiento *</label><input id="ffv" type="date"></div>
-    <div class="f"><label>Neto (sin MwSt) *</label><input id="fmn" type="number" step="0.01" value="0" oninput="updS('fm')"></div>
+    <div class="f"><label>Neto (sin MwSt) *</label><input id="fm-neto" type="number" step="0.01" value="0" oninput="updS('fm')"></div>
     <div class="f"><label>MwSt %</label><select id="fmp" onchange="updS('fm')" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7">7%</option><option value="19">19%</option><option value="0">0%</option></select></div>
-    <div class="f"><label>MwSt Monto</label><input id="fmm" type="number" step="0.01" value="0" oninput="updS('fm')"></div>
+    <div class="f"><label>MwSt Monto</label><input id="fm-mwst" type="number" step="0.01" value="0" oninput="updS('fm')"></div>
     <div class="f"><label>Total Bruto</label><input id="fmt" type="number" step="0.01" value="0" oninput="updS('fm')"></div>
   </div>
   <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
@@ -1020,9 +1020,9 @@ async function newFactMan(){
     if(!pv){alert('Seleccioná proveedor.');return}
     await getOrCreateTmp(fe);
     const tp=document.getElementById('fnew-tipo').value,mult=tp==='gutschrift'?-1:1;
-    const fmNeto=parseFloat(document.getElementById('fmn').value)||0;
-    const fmMwst=parseFloat(document.getElementById('fmm').value)||0;
-    const fmTot=parseFloat(document.getElementById('fmt').value)||fmNeto+fmMwst;
+    const fmNeto=parseFloat(document.getElementById('fm-neto').value)||0;
+    const fmMwst=parseFloat(document.getElementById('fm-mwst').value)||0;
+    const fmTot=parseFloat(document.getElementById('fm-t').value)||fmNeto+fmMwst;
     const fmMp=parseInt(document.getElementById('fmp').value)||7;
     const fmLineas=getInfoLis('fm-lis');
     const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('fn').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ffv').value||fe,monto_neto:fmNeto*mult,mwst_porcentaje:fmMp,mwst_monto:fmMwst*mult,monto_total:fmTot*mult,tipo:tp,estado:'pendiente'}).select('id').single();
