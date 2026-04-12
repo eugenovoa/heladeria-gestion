@@ -382,7 +382,7 @@ function nav(p){
 
 // ---- HELPERS ----
 
-const tempsOpciones=(temps)=>temps.map(t=>`<option value="${t.id}">${t.nombre}</option>`).join('');
+const tempsOpciones=(temps,selId=null)=>temps.map(t=>`<option value="${t.id}" ${(selId?t.id===selId:t.activa)?'selected':''}>${t.nombre}</option>`).join('');
 
 const fmt=n=>'€\u202f'+(parseFloat(n)||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtD=d=>{if(!d)return'—';const[y,m,dd]=d.split('-');return`${dd}/${m}/${String(y).slice(2)}`};
@@ -1678,7 +1678,7 @@ async function repCompras() {
   const activeTemp=temps.find(t=>t.activa)||temps[0];
   let filtroHTML=`<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
     <div class="f"><label>Temporada</label><select id="f-temp-filter" onchange="repComprasCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
-      ${tempsOpciones(temps)}
+      ${tempsOpciones(temps,activeTemp?.id)}
     </select></div>
   </div><div id="rep-compras-body"></div>`;
   document.getElementById('ct').innerHTML=filtroHTML;
@@ -1847,7 +1847,8 @@ async function repComprasCargar() {
       <div class="card" style="padding:14px 16px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total neto</div><div style="font-size:20px;font-weight:700;color:var(--green)">${fmt(totNeto)}</div></div>
       <div class="card" style="padding:14px 16px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">MwSt soportada</div><div style="font-size:20px;font-weight:700;color:var(--amber)">${fmt(totMwst)}</div></div>
       <div class="card" style="padding:14px 16px"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Facturas</div><div style="font-size:20px;font-weight:700">${(facts||[]).length}</div></div>
-    </div>div class="card"><div class="card-title">Por proveedor</div>
+    </div>
+    <div class="card"><div class="card-title">Por proveedor</div>
       <table><thead><tr><th>Proveedor</th><th>Facturas</th><th>Neto</th><th>MwSt</th><th>Total bruto</th><th>%</th></tr></thead><tbody>
       ${Object.entries(byProv).map(([n,v])=>`<tr><td>${n}</td><td>${v.count}</td><td>${fmt(v.neto)}</td><td>${fmt(v.mwst)}</td><td style="font-weight:600">${fmt(v.total)}</td><td><span class="bd bd-gray">${totTotal>0?(v.total/totTotal*100).toFixed(1):'0'}%</span></td></tr>`).join('')}
       <tr class="trow-t"><td>Total</td><td>${(facts||[]).length}</td><td>${fmt(totNeto)}</td><td>${fmt(totMwst)}</td><td>${fmt(totTotal)}</td><td>100%</td></tr>
