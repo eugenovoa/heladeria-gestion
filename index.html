@@ -253,7 +253,6 @@ tbody tr:hover td{background:var(--surface2)}
       </div>
       <div class="nav-sec">
         <div class="nav-lbl">Admin</div>
-        <div class="nav-item" data-p="contable"><span class="nav-ico">📂</span>Módulo contable</div>
       <div class="nav-sep">SISTEMA</div>
       <div class="nav-item" data-p="config"><span class="nav-ico">⚙</span>Configuración</div>
       </div>
@@ -1499,6 +1498,134 @@ async function subirAdjGasto(gastoId,fecha){
   const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${gastoId}`,fecha);
   if(url){await sb.from('gastos').update({adjunto_url:url}).eq('id',gastoId);btn.textContent='✓ Subido';}
   else{btn.textContent='Error';alert('No se pudo subir.');}btn.disabled=false;
+}
+
+
+
+async function caja() {
+  loading();
+  setActions(`<button class="btn btn-primary" onclick="nuevoCierre()">+ Registrar cierre</button>`);
+  const { data } = await sb.from('cierres_caja').select('*').order('fecha',{ascending:false});
+  document.getElementById('content').innerHTML=`<div class="card">
+    ${!(data||[]).length?'<div class="empty">Sin cierres registrados.</div>':
+    `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Ef. inicial</th><th>Ingresos</th><th>Egresos</th><th>Ef. final</th><th>Diferencia</th><th>Obs.</th><th></th></tr></thead><tbody>
+    ${data.map(c=>`<tr>
+      <td>${fmtDate(c.fecha)}</td><td>${fmt(c.efectivo_inicial)}</td>
+      <td style="color:var(--green);font-weight:700">${fmt(c.ingresos_dia)}</td>
+      <td>${fmt(c.egresos_efectivo)}</td><td>${fmt(c.efectivo_final_contado)}</td>
+      <td style="color:${(c.diferencia_caja||0)>=0?'var(--green)':'var(--red)'};font-weight:600">${fmt(c.diferencia_caja||0)}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${c.observaciones||'—'}</td>
+      <td style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editCierre('${c.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="eliminarCierre('${c.id}')">✕</button></td>
+    </tr>`).join('')}
+    </tbody></table></div>`}
+  </div>`;
+}
+
+async function stock() {
+  loading();
+  setActions(`<button class="btn btn-primary" onclick="nuevoStock()">+ Registrar stock</button>`);
+  const [{ data },{ data:factsData }] = await Promise.all([
+    sb.from('stock').select('*, productos(nombre,unidad_medida,categorias_producto(nombre)), temporadas(nombre)').order('tipo').order('created_at'),
+    sb.from('facturas').select('monto_neto')
+  ]);
+  const inicial=(data||[]).filter(s=>s.tipo==='inicial');
+  const final=(data||[]).filter(s=>s.tipo==='final');
+  const totalCompras=(factsData||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
+  const totIni=inicial.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const totFin=final.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const cmv=totIni+totalCompras-totFin;
+  const renderTable=(rows,label)=>rows.length===0?`<div class="empty">Sin registros de stock ${label}.</div>`:
+    `<div style="overflow-x:auto"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Cantidad</th><th>Precio unit.</th><th>Valor total</th><th></th></tr></thead><tbody>
+    ${rows.map(s=>`<tr><td>${s.productos?.nombre||'—'}</td><td><span class="badge badge-gray">${s.productos?.categorias_producto?.nombre||'—'}</span></td><td>${s.productos?.unidad_medida||'—'}</td><td>${s.cantidad}</td><td>${fmt(s.precio_unitario)}</td><td style="font-weight:600">${fmt(s.valor_total)}</td><td><button class="btn btn-sm btn-danger" onclick="eliminarStock('${s.id}')">✕</button></td></tr>`).join('')}
+    <tr class="total-row"><td colspan="5">Total</td><td>${fmt(rows.reduce((a,s)=>a+parseFloat(s.valor_total||0),0))}</td><td></td></tr>
+    </tbody></table></div>`;
+  document.getElementById('content').innerHTML=`
+    <div class="card" style="padding:18px 20px;margin-bottom:16px;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-color:#bae6fd">
+      <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">Cálculo de CMV</div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;font-size:13px">
+        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Stock inicial</div><div style="font-weight:700;font-size:16px">${fmt(totIni)}</div></div>
+        <div style="font-size:20px;color:var(--text-faint)">+</div>
+        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Compras netas</div><div style="font-weight:700;font-size:16px">${fmt(totalCompras)}</div></div>
+        <div style="font-size:20px;color:var(--text-faint)">−</div>
+        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Stock final</div><div style="font-weight:700;font-size:16px">${fmt(totFin)}</div></div>
+        <div style="font-size:20px;color:var(--text-faint)">=</div>
+        <div style="background:white;border-radius:10px;padding:10px 16px;border:1px solid #bae6fd"><div style="color:#0369a1;margin-bottom:3px;font-size:11px;font-weight:700">CMV</div><div style="font-weight:800;font-size:22px;color:#0c4a6e">${fmt(cmv)}</div></div>
+      </div>
+      ${totFin===0?'<div style="margin-top:10px;font-size:12px;color:var(--amber);font-weight:600">⚠ Stock final aún no registrado — CMV provisorio.</div>':''}
+    </div>
+    <div class="card"><div class="card-title">Stock inicial</div>${renderTable(inicial,'inicial')}</div>
+    <div class="card"><div class="card-title">Stock final</div>${renderTable(final,'final')}</div>`;
+}
+
+async function repCompras() {
+  loading();
+  const temps=await getTemporadas();
+  const activeTemp=temps.find(t=>t.activa)||temps[0];
+  let filtroHTML=`<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+    <div class="field"><label>Temporada</label><select id="f-temp-filter" onchange="repComprasCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
+      ${tempsOpciones(temps)}
+    </select></div>
+  </div><div id="rep-compras-body"></div>`;
+  document.getElementById('content').innerHTML=filtroHTML;
+  repComprasCargar();
+}
+
+async function repFlujo() {
+  loading();
+  const temps=await getTemporadas();
+  document.getElementById('content').innerHTML=`
+    <div style="margin-bottom:16px">
+      <div class="field" style="display:inline-block"><label>Temporada</label><select id="f-temp-flujo" onchange="repFlujoCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit">
+        ${tempsOpciones(temps)}
+      </select></div>
+    </div>
+    <div id="flujo-body"></div>`;
+  repFlujoCargar();
+}
+
+
+async function repErr(){
+  loading();const temps=await getTmps();
+  if(!temps.length){document.getElementById('ct').innerHTML='<div class="empty">Sin temporadas.</div>';return}
+  document.getElementById('ct').innerHTML=`<div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end;flex-wrap:wrap"><div class="f"><label>Temporada</label><select id="err-tmp" onchange="loadErr()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${tmOpts(temps)}</select></div><button class="btn" onclick="exportPDF('Estado de resultados')">\u2b07 Exportar PDF</button></div><div id="err-body"></div>`;
+  loadErr();
+}
+
+async function repComp(){
+  loading();const temps=await getTmps();
+  if(temps.length<2){document.getElementById('ct').innerHTML='<div class="empty">Se necesitan al menos 2 temporadas.</div>';return}
+  document.getElementById('ct').innerHTML=`<div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end;flex-wrap:wrap">
+    <div class="f"><label>Temporada A</label><select id="ca" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${temps.map((t,i)=>`<option value="${t.id}" ${i===1?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <div class="f"><label>Temporada B</label><select id="cb" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${temps.map((t,i)=>`<option value="${t.id}" ${i===0?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <button class="btn btn-p" onclick="loadComp()">Comparar</button>
+    <button class="btn" onclick="exportPDF('Comparativo de temporadas')">\u2b07 Exportar PDF</button>
+  </div><div id="comp-body"></div>`;
+}
+
+async function recurrentes(){
+  loading();setR(`<button class="btn" onclick="gstCats('categorias_gasto_recurrente',recurrentes)">Categor\u00edas</button><button class="btn btn-p" onclick="newRec()">+ Nuevo</button>`);
+  const{data}=await sb.from('gastos_recurrentes').select('*,categorias_gasto_recurrente(nombre),sucursales(nombre)').order('concepto');
+  document.getElementById('ct').innerHTML=`
+    <div class="al al-info" style="margin-bottom:16px">Los vencimientos generados aparecen en <strong>Vencimientos</strong> en color p\u00farpura. Hac\u00e9 clic sobre ellos para registrar el pago.</div>
+    ${!(data||[]).length?'<div class="empty">Sin gastos recurrentes.</div>':
+    data.map(r=>`<div class="ri">
+      <div>
+        <div class="ri-n">${r.concepto}</div>
+        <div class="ri-s">
+          <span class="bd bd-gray">${r.categorias_gasto_recurrente?.nombre||'\u2014'}</span>
+          <span class="bd bd-gray">${r.sucursales?.nombre||'General'}</span>
+          <span>${r.frecuencia} \u00b7 d\u00eda ${r.dia_del_mes}</span>
+          <span>Desde ${fmtD(r.fecha_inicio)}${r.fecha_fin?' hasta '+fmtD(r.fecha_fin):''}</span>
+          ${!r.activo?'<span class="bd bd-gray">Inactivo</span>':''}
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:16px;font-weight:700">${fmt(r.monto)}</div>
+        <button class="btn btn-sm" onclick="editRec('${r.id}')">Editar</button>
+        <button class="btn btn-sm btn-g" onclick="genVencs('${r.id}',true)">\u21ba Generar</button>
+        <button class="btn btn-sm btn-d" onclick="delRec('${r.id}')">\u2715</button>
+      </div>
+    </div>`).join('')}`;
 }
 
 // ---- MÓDULO CONTABLE ----
