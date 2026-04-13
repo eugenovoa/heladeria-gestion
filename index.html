@@ -988,7 +988,7 @@ async function guardarFactIA(){
   const iaTot=parseFloat(document.getElementById('ia-tot')?.value)||iaNeto+iaMwst;
   const iaMp=parseInt(document.getElementById('ia-mp')?.value)||7;
   const iaLineas=getInfoLis('ia-lis');
-  const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('ia-nm').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ia-fv').value||fe,monto_neto:iaNeto*mult,mwst_porcentaje:iaMp,mwst_monto:iaMwst*mult,monto_total:iaTot*mult,tipo:tp,estado:'pendiente'}).select('id').single();
+  const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('ia-nm')?.value||'',proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ia-fv')?.value||fe,monto_neto:iaNeto*mult,mwst_porcentaje:iaMp,mwst_monto:iaMwst*mult,monto_total:iaTot*mult,tipo:tp,estado:'pendiente'}).select('id').single();
   if(error){alert(error.message);return}
   if(iaLineas.length&&fact?.id)await sb.from('lineas_factura').insert(iaLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,monto_neto:l.importe_bruto/(1+iaMp/100)*mult,mwst_porcentaje:iaMp,mwst_monto:l.importe_bruto-l.importe_bruto/(1+iaMp/100)})));
   const adjFile=document.getElementById('fi-fadj')?.files[0];
