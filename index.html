@@ -1260,6 +1260,90 @@ async function pagarRec(id,concepto,monto){
   });
 }
 
+async function gstCats(tabla, callbackFn){
+  const{data:cats}=await sb.from(tabla).select('*').order('nombre');
+  const hasType = tabla==='categorias_gasto';
+  const tipos = hasType ? [
+    {v:'operativo',l:'Operativo'},
+    {v:'financiero',l:'Financiero'},
+    {v:'anticipo_impuesto',l:'Anticipo impuesto'},
+    {v:'impuesto',l:'Impuesto'},
+  ] : null;
+  
+  const renderCats=(list)=>list.length?list.map(c=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <span style="font-weight:600;font-size:13px">${c.nombre}</span>
+        ${hasType?`<span class="bd bd-gray" style="margin-left:6px;font-size:11px">${c.tipo||'operativo'}</span>`:''}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="editCat('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}','${c.tipo||''}',${hasType})">Editar</button>
+        <button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}',callbackFnRef)">✕</button>
+      </div>
+    </div>`).join(''):'<div class="empty">Sin categorías.</div>';
+
+  openMo(`Categorías`,`
+    <div id="cats-list">${renderCats(cats||[])}</div>
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Nueva categoría</div>
+      <div class="fg">
+        <div class="f full"><label>Nombre *</label><input id="cat-nm" placeholder="Nombre de la categoría"></div>
+        ${hasType?`<div class="f full"><label>Tipo</label><select id="cat-tp" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="operativo">Operativo</option><option value="financiero">Financiero</option><option value="anticipo_impuesto">Anticipo impuesto</option><option value="impuesto">Impuesto</option></select></div>`:''}
+      </div>
+      <button class="btn btn-p" style="width:100%;margin-top:8px" onclick="addCat('${tabla}',${hasType})">+ Agregar</button>
+    </div>`,()=>{},true);
+  window._catCallback=callbackFn;
+}
+
+async function addCat(tabla, hasType){
+  const nm=document.getElementById('cat-nm').value.trim();
+  if(!nm){alert('Ingresá un nombre.');return}
+  const obj={nombre:nm};
+  if(hasType)obj.tipo=document.getElementById('cat-tp')?.value||'operativo';
+  const{error}=await sb.from(tabla).insert(obj);
+  if(error){alert(error.message);return}
+  document.getElementById('cat-nm').value='';
+  const{data:cats}=await sb.from(tabla).select('*').order('nombre');
+  const hasT=tabla==='categorias_gasto';
+  document.getElementById('cats-list').innerHTML=cats.length?cats.map(c=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><span style="font-weight:600;font-size:13px">${c.nombre}</span>${hasT?`<span class="bd bd-gray" style="margin-left:6px;font-size:11px">${c.tipo||'operativo'}</span>`:''}</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="editCat('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}','${c.tipo||''}',${hasT})">Editar</button>
+        <button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}')">✕</button>
+      </div>
+    </div>`).join(''):'<div class="empty">Sin categorías.</div>';
+}
+
+async function editCat(tabla, id, nombre, tipo, hasType){
+  openMo('Editar categoría',`<div class="fg">
+    <div class="f full"><label>Nombre</label><input id="ecat-nm" value="${nombre}"></div>
+    ${hasType?`<div class="f full"><label>Tipo</label><select id="ecat-tp" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="operativo" ${tipo==='operativo'?'selected':''}>Operativo</option><option value="financiero" ${tipo==='financiero'?'selected':''}>Financiero</option><option value="anticipo_impuesto" ${tipo==='anticipo_impuesto'?'selected':''}>Anticipo impuesto</option><option value="impuesto" ${tipo==='impuesto'?'selected':''}>Impuesto</option></select></div>`:''}
+  </div>`,async()=>{
+    const obj={nombre:document.getElementById('ecat-nm').value};
+    if(hasType)obj.tipo=document.getElementById('ecat-tp')?.value||'operativo';
+    await sb.from(tabla).update(obj).eq('id',id);
+    closeMo();
+    if(window._catCallback)gstCats(tabla,window._catCallback);
+  });
+}
+
+async function delCat(tabla, id){
+  if(!confirm('¿Eliminar categoría?'))return;
+  const{error}=await sb.from(tabla).delete().eq('id',id);
+  if(error){alert('No se puede eliminar: puede estar en uso.');return}
+  const{data:cats}=await sb.from(tabla).select('*').order('nombre');
+  const hasT=tabla==='categorias_gasto';
+  document.getElementById('cats-list').innerHTML=cats.length?cats.map(c=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><span style="font-weight:600;font-size:13px">${c.nombre}</span>${hasT?`<span class="bd bd-gray" style="margin-left:6px;font-size:11px">${c.tipo||'operativo'}</span>`:''}</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="editCat('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}','${c.tipo||''}',${hasT})">Editar</button>
+        <button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}')">✕</button>
+      </div>
+    </div>`).join(''):'<div class="empty">Sin categorías.</div>';
+}
+
 // ---- GASTOS AL CONTADO ----
 async function gastos(){
   loading();setR(`<button class="btn" onclick="gstCats('categorias_gasto',gastos)">Categorías</button><button class="btn" onclick="newGastoIA()">✦ IA</button><button class="btn btn-p" onclick="newGastoMan()">+ Manual</button>`);
