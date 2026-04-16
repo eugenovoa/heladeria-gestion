@@ -1253,9 +1253,7 @@ async function pagarRec(id,concepto,monto){
     </div>`,
   async()=>{
     const fecha=document.getElementById('pr-d').value;
-    const{data:vr}=await sb.from('vencimientos_recurrentes').select('*,gasto_recurrente:gastos_recurrentes(concepto,sucursal_id,categoria_id)').eq('id',id).single();
     await sb.from('vencimientos_recurrentes').update({estado:'pagado',fecha_pago:fecha,referencia:document.getElementById('pr-r').value}).eq('id',id);
-    if(vr)await sb.from('gastos').insert({fecha,concepto:vr.gasto_recurrente?.concepto,monto:vr.monto,monto_neto:vr.monto,mwst_monto:0,sucursal_id:vr.gasto_recurrente?.sucursal_id,categoria_id:vr.gasto_recurrente?.categoria_id||null});
     closeMo();vencimientos();
   });
 }
