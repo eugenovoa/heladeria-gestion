@@ -1032,7 +1032,7 @@ async function newFactMan(){
     const tp=document.getElementById('fnew-tipo').value,mult=tp==='gutschrift'?-1:1;
     const fmNeto=parseFloat(document.getElementById('fm-neto').value)||0;
     const fmMwst=parseFloat(document.getElementById('fm-mwst').value)||0;
-    const fmTot=parseFloat(document.getElementById('fmt').value)||fmNeto+fmMwst;
+    const fmTot=parseFloat(document.getElementById('fm-t').value)||fmNeto+fmMwst;
     const fmMp=parseInt(document.getElementById('fmp').value)||7;
     const fmLineas=getInfoLis('fm-lis');
     const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('fn').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ffv').value||fe,monto_neto:fmNeto*mult,mwst_porcentaje:fmMp,mwst_monto:fmMwst*mult,monto_total:fmTot*mult,tipo:tp,estado:'pendiente'}).select('id').single();
@@ -1278,7 +1278,7 @@ async function gstCats(tabla, callbackFn){
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm" onclick="editCat('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}','${c.tipo||''}',${hasType})">Editar</button>
-        <button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}',callbackFnRef)">✕</button>
+        <button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}')">✕</button>
       </div>
     </div>`).join(''):'<div class="empty">Sin categorías.</div>';
 
