@@ -1183,13 +1183,13 @@ async function newPago(preFactId=null,preMonto=null){
     <div class="f"><label>Medio de pago</label><select id="pa-md"><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="otro">Otro</option></select></div>
     <div class="f"><label>Referencia</label><input id="pa-r"></div>
     <div class="f"><label>Gasto bancario (€)</label><input id="pa-gb" type="number" step="0.01" value="0"></div>
-    <div class="f full"><label>Observaciones</label><input id="pa-obs"></div>
+    <div class="f full"><label>Notas</label><input id="pa-obs"></div>
   </div>`,async()=>{
     const fid=document.getElementById('pa-f').value,fecha=document.getElementById('pa-d').value,gb=parseFloat(document.getElementById('pa-gb').value)||0;
     if(!fid){alert('Seleccioná una factura.');return}
     if(!fecha){alert('Completá la fecha.');return}
     await getOrCreateTmp(fecha);
-    const{error}=await sb.from('pagos').insert({factura_id:fid,fecha_pago:fecha,monto:parseFloat(document.getElementById('pa-m').value)||0,medio_pago:document.getElementById('pa-md').value,referencia_transferencia:document.getElementById('pa-r').value,observaciones:document.getElementById('pa-obs').value||null,gasto_bancario:gb});
+    const{error}=await sb.from('pagos').insert({factura_id:fid,fecha_pago:fecha,monto:parseFloat(document.getElementById('pa-m').value)||0,medio_pago:document.getElementById('pa-md').value,referencia_transferencia:document.getElementById('pa-r').value,notas:document.getElementById('pa-obs').value||null,gasto_bancario:gb});
     if(!error){await sb.from('facturas').update({estado:'pagada'}).eq('id',fid);closeMo();pagos();}else alert(error.message);
   });
   if(preFactId)setTimeout(()=>{const s=document.getElementById('pa-f');if(s)s.value=preFactId;},50);
