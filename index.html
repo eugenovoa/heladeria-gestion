@@ -409,7 +409,7 @@ function tmFechas(ts,id){const t=ts.find(x=>x.id===id);return t?{desde:t.fecha_i
 function getTempFechas(temps, tempId){
   const t=temps.find(t=>t.id===tempId)||temps[0];
   if(!t) return {desde:'2026-01-01', hasta:'2026-12-31'};
-  return {desde:t.fecha_inicio, hasta:t.fecha_fin};
+  return {desde:t.fecha_inicio, hasta:t.fecha_cierre||today()};
 }
 
 async function getOrCreateTmp(fecha){
@@ -2005,11 +2005,11 @@ async function loadComp(){
   
   const calcTemp=async(t)=>{
     const[{data:cierres},{data:facts},{data:gastos}]=await Promise.all([
-      sb.from('cierres_caja').select('ingresos_dia,sucursal_id').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_cierre||today()),
-      sb.from('facturas').select('monto_neto,monto_total').gte('fecha_emision',t.fecha_inicio).lte('fecha_emision',t.fecha_cierre||today()).eq('tipo','factura'),
-      sb.from('gastos').select('monto').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_cierre||today())
+      sb.from('cierres_caja').select('total_ventas,sucursal_id').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_fin),
+      sb.from('facturas').select('monto_neto,monto_total').gte('fecha_emision',t.fecha_inicio).lte('fecha_emision',t.fecha_fin).eq('tipo','factura'),
+      sb.from('gastos').select('monto').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_fin)
     ]);
-    const ventas=(cierres||[]).reduce((a,c)=>a+parseFloat(c.ingresos_dia||0),0);
+    const ventas=(cierres||[]).reduce((a,c)=>a+parseFloat(c.total_ventas||0),0);
     const compras=(facts||[]).reduce((a,f)=>a+parseFloat(f.monto_neto||0),0);
     const gastosTotal=(gastos||[]).reduce((a,g)=>a+parseFloat(g.monto||0),0);
     return {ventas,compras,gastos:gastosTotal,resultado:ventas-compras-gastosTotal};
