@@ -1763,12 +1763,12 @@ async function nuevoCierre(){
     const eg=parseFloat(document.getElementById('nc-eg').value)||0;
     const ef=parseFloat(document.getElementById('nc-ef').value)||0;
     const dif=ef-(ei+ing-eg);
-    const{error}=await sb.from('cierres_caja').insert({fecha:f,sucursal_id:document.getElementById('nc-s').value||null,efectivo_inicial:ei,ingresos_dia:ing,ventas_tarjeta:tar,egresos_efectivo:eg,efectivo_final_contado:ef,diferencia_caja:dif,observaciones:document.getElementById('nc-obs').value||null});
+    const{data:cierre,error}=await sb.from('cierres_caja').insert({fecha:f,sucursal_id:document.getElementById('nc-s').value||null,efectivo_inicial:ei,ingresos_dia:ing,ventas_tarjeta:tar,egresos_efectivo:eg,efectivo_final_contado:ef,diferencia_caja:dif,observaciones:document.getElementById('nc-obs').value||null}).select('id').single();
     if(error){alert(error.message);return}
-    if(tar>0){
+    if(tar>0&&cierre?.id){
       const comision=parseFloat((tar*0.0079).toFixed(2));
       const fd=f.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
-      await sb.from('gastos').insert({fecha:f,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:document.getElementById('nc-s').value||null,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a'});
+      await sb.from('gastos').insert({fecha:f,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:document.getElementById('nc-s').value||null,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a',cierre_caja_id:cierre.id});
     }
     closeMo();caja();
   });
@@ -1800,9 +1800,11 @@ async function editCierre(id){
   </div>`,
   async()=>{
     const tar=parseFloat(document.getElementById('ec-tar').value)||0;
+    const nuevaFecha=document.getElementById('ec-f').value;
+    const nuevaSuc=document.getElementById('ec-s').value||null;
     const{error}=await sb.from('cierres_caja').update({
-      fecha:document.getElementById('ec-f').value,
-      sucursal_id:document.getElementById('ec-s').value||null,
+      fecha:nuevaFecha,
+      sucursal_id:nuevaSuc,
       efectivo_inicial:parseFloat(document.getElementById('ec-ei').value)||0,
       ingresos_dia:parseFloat(document.getElementById('ec-ing').value)||0,
       ventas_tarjeta:tar,
@@ -1812,6 +1814,17 @@ async function editCierre(id){
       observaciones:document.getElementById('ec-obs').value||null
     }).eq('id',id);
     if(error){alert(error.message);return}
+    // Actualizar gasto de comisión asociado
+    const fd=nuevaFecha.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
+    const comision=parseFloat((tar*0.0079).toFixed(2));
+    const{data:gastoEx}=await sb.from('gastos').select('id').eq('cierre_caja_id',id).single();
+    if(gastoEx&&tar>0){
+      await sb.from('gastos').update({fecha:nuevaFecha,sucursal_id:nuevaSuc,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision}).eq('cierre_caja_id',id);
+    }else if(gastoEx&&tar===0){
+      await sb.from('gastos').delete().eq('cierre_caja_id',id);
+    }else if(!gastoEx&&tar>0){
+      await sb.from('gastos').insert({fecha:nuevaFecha,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:nuevaSuc,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a',cierre_caja_id:id});
+    }
     closeMo();caja();
   });
   setTimeout(()=>{const s=document.getElementById('ec-s');if(s&&c.sucursal_id)s.value=c.sucursal_id;},50);
@@ -1819,13 +1832,9 @@ async function editCierre(id){
 
 async function eliminarCierre(id){
   if(!confirm('¿Eliminar cierre?'))return;
-  const{data:cierre}=await sb.from('cierres_caja').select('fecha,ventas_tarjeta').eq('id',id).single();
+  await sb.from('gastos').delete().eq('cierre_caja_id',id);
   const{error}=await sb.from('cierres_caja').delete().eq('id',id);
   if(error){alert('Error al eliminar: '+error.message);return}
-  if(cierre?.ventas_tarjeta>0){
-    const fd=cierre.fecha.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
-    await sb.from('gastos').delete().eq('fecha',cierre.fecha).ilike('concepto',`%Comisiones Tarjeta Deb/Cred - ${fechaFmt}%`);
-  }
   caja();
 }
 
