@@ -1465,7 +1465,7 @@ async function delCat(tabla, id){
 // ---- GASTOS AL CONTADO ----
 async function gastos(){
   loading();setR(`<button class="btn" onclick="gstCats('categorias_gasto',gastos)">Categorías</button><button class="btn" onclick="newGastoIA()">✦ IA</button><button class="btn btn-p" onclick="newGastoMan()">+ Manual</button>`);
-  const{data}=await sb.from('gastos').select('*,categorias_gasto(nombre),sucursales(nombre)').order('fecha',{ascending:false});
+  const{data}=await sb.from('gastos').select('*,cierre_caja_id,categorias_gasto(nombre),sucursales(nombre)').order('fecha',{ascending:false});
   document.getElementById('ct').innerHTML=`<div class="card"><div style="overflow-x:auto">
     ${!(data||[]).length?'<div class="empty">Sin gastos.</div>':`
     <table><thead><tr><th>Fecha</th><th>N° Doc.</th><th>Concepto</th><th>Categoría</th><th>Sucursal</th><th>Neto</th><th>MwSt</th><th>Total</th><th></th></tr></thead><tbody>
