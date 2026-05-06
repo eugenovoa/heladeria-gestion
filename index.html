@@ -1762,12 +1762,12 @@ async function nuevoCierre(){
     const eg=parseFloat(document.getElementById('nc-eg').value)||0;
     const ef=parseFloat(document.getElementById('nc-ef').value)||0;
     const dif=ef-(ei+ing-eg);
-    const{error}=await sb.from('cierres_caja').insert({fecha:f,sucursal_id:document.getElementById('nc-s').value||null,efectivo_inicial:ei,ingresos_dia:ing,ventas_tarjeta:tar,egresos_efectivo:eg,efectivo_final_contado:ef,diferencia_caja:dif,observaciones:document.getElementById('nc-obs').value||null});
+    const{data:cierre,error}=await sb.from('cierres_caja').insert({fecha:f,sucursal_id:document.getElementById('nc-s').value||null,efectivo_inicial:ei,ingresos_dia:ing,ventas_tarjeta:tar,egresos_efectivo:eg,efectivo_final_contado:ef,diferencia_caja:dif,observaciones:document.getElementById('nc-obs').value||null}).select('id').single();
     if(error){alert(error.message);return}
-    if(tar>0){
+    if(tar>0&&cierre?.id){
       const comision=parseFloat((tar*0.0079).toFixed(2));
       const fd=f.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
-      await sb.from('gastos').insert({fecha:f,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:document.getElementById('nc-s').value||null,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a'});
+      await sb.from('gastos').insert({fecha:f,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:document.getElementById('nc-s').value||null,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a',cierre_caja_id:cierre.id});
     }
     closeMo();caja();
   });
