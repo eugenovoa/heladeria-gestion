@@ -1767,8 +1767,8 @@ async function nuevoCierre(){
     if(error){alert(error.message);return}
     if(tar>0){
       const comision=parseFloat((tar*0.0079).toFixed(2));
-      const{data:cat}=await sb.from('categorias_gasto').select('id').ilike('nombre','%comision%bancaria%').single();
-      await sb.from('gastos').insert({fecha:f,concepto:'Comisiones Tarjeta Deb/Cred',monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:document.getElementById('nc-s').value||null,categoria_id:cat?.id||null});
+      const fd=f.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
+      await sb.from('gastos').insert({fecha:f,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:document.getElementById('nc-s').value||null,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a'});
     }
     closeMo();caja();
   });
@@ -1819,8 +1819,13 @@ async function editCierre(id){
 
 async function eliminarCierre(id){
   if(!confirm('¿Eliminar cierre?'))return;
+  const{data:cierre}=await sb.from('cierres_caja').select('fecha,ventas_tarjeta').eq('id',id).single();
   const{error}=await sb.from('cierres_caja').delete().eq('id',id);
   if(error){alert('Error al eliminar: '+error.message);return}
+  if(cierre?.ventas_tarjeta>0){
+    const fd=cierre.fecha.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
+    await sb.from('gastos').delete().eq('fecha',cierre.fecha).ilike('concepto',`%Comisiones Tarjeta Deb/Cred - ${fechaFmt}%`);
+  }
   caja();
 }
 
@@ -1856,16 +1861,17 @@ async function caja() {
   const { data } = await sb.from('cierres_caja').select('*').order('fecha',{ascending:false});
   document.getElementById('ct').innerHTML=`<div class="card">
     ${!(data||[]).length?'<div class="empty">Sin cierres registrados.</div>':
-    `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Ef. inicial</th><th>Egresos</th><th>Ef. final</th><th>Diferencia</th><th>Ingresos ef.</th><th>Tarjeta</th><th>Obs.</th><th></th></tr></thead><tbody>
-    ${data.map(c=>`<tr>
-      <td>${fmtD(c.fecha)}</td><td style="font-size:12px">${_sucs.find(s=>s.id===c.sucursal_id)?.nombre||'General'}</td><td>${fmt(c.efectivo_inicial)}</td>
-      <td>${fmt(c.egresos_efectivo)}</td><td>${fmt(c.efectivo_final_contado)}</td>
+    `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Diferencia</th><th>Ingresos Efectivo</th><th>Tarjetas</th><th>Total Facturación</th><th>Observaciones</th><th></th></tr></thead><tbody>
+    ${data.map(c=>{const tot=(parseFloat(c.ingresos_dia)||0)+(parseFloat(c.ventas_tarjeta)||0);return`<tr>
+      <td>${fmtD(c.fecha)}</td>
+      <td style="font-size:12px">${_sucs.find(s=>s.id===c.sucursal_id)?.nombre||'General'}</td>
       <td style="color:${(c.diferencia_caja||0)>=0?'var(--green)':'var(--red)'};font-weight:600">${fmt(c.diferencia_caja||0)}</td>
-      <td style="color:var(--green);font-weight:700">${fmt(c.ingresos_dia)}</td>
+      <td style="color:var(--green);font-weight:700">${fmt(c.ingresos_dia||0)}</td>
       <td style="color:var(--blue);font-weight:700">${fmt(c.ventas_tarjeta||0)}</td>
+      <td style="color:var(--amber);font-weight:700">${fmt(tot)}</td>
       <td style="font-size:12px;color:var(--text-muted)">${c.observaciones||'—'}</td>
       <td style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editCierre('${c.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="eliminarCierre('${c.id}')">✕</button></td>
-    </tr>`).join('')}
+    </tr>`}).join('')}
     </tbody></table></div>`}
   </div>`;
 }
