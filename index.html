@@ -2005,11 +2005,11 @@ async function loadComp(){
   
   const calcTemp=async(t)=>{
     const[{data:cierres},{data:facts},{data:gastos}]=await Promise.all([
-      sb.from('cierres_caja').select('total_ventas,sucursal_id').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_fin),
-      sb.from('facturas').select('monto_neto,monto_total').gte('fecha_emision',t.fecha_inicio).lte('fecha_emision',t.fecha_fin).eq('tipo','factura'),
-      sb.from('gastos').select('monto').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_fin)
+      sb.from('cierres_caja').select('ingresos_dia,sucursal_id').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_cierre||today()),
+      sb.from('facturas').select('monto_neto,monto_total').gte('fecha_emision',t.fecha_inicio).lte('fecha_emision',t.fecha_cierre||today()).eq('tipo','factura'),
+      sb.from('gastos').select('monto').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_cierre||today())
     ]);
-    const ventas=(cierres||[]).reduce((a,c)=>a+parseFloat(c.total_ventas||0),0);
+    const ventas=(cierres||[]).reduce((a,c)=>a+parseFloat(c.ingresos_dia||0),0);
     const compras=(facts||[]).reduce((a,f)=>a+parseFloat(f.monto_neto||0),0);
     const gastosTotal=(gastos||[]).reduce((a,g)=>a+parseFloat(g.monto||0),0);
     return {ventas,compras,gastos:gastosTotal,resultado:ventas-compras-gastosTotal};
