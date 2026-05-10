@@ -1168,7 +1168,7 @@ async function subirAdjFact(factId,provNombre,fecha){
 // ---- PAGOS ----
 async function pagos(){
   loading();setR(`<button class="btn btn-p" onclick="newPago()">+ Registrar pago</button>`);
-  const{data}=await sb.from('pagos').select('*,facturas(numero_factura,categoria_id,proveedores(nombre)),categorias_factura(nombre)').order('fecha_pago',{ascending:false});
+  const{data}=await sb.from('pagos').select('*,facturas(numero_factura,proveedores(nombre))').order('fecha_pago',{ascending:false});
   document.getElementById('ct').innerHTML=`<div class="card"><div style="overflow-x:auto">
     ${!(data||[]).length?'<div class="empty">Sin pagos.</div>':`
     <table><thead><tr><th>Fecha</th><th>Factura</th><th>Proveedor</th><th>Monto</th><th>Medio</th><th>Referencia</th><th>Notas</th></tr></thead><tbody>
