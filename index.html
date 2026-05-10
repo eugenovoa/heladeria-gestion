@@ -1032,7 +1032,7 @@ async function newFactMan(){
     const tp=document.getElementById('fnew-tipo').value,mult=tp==='gutschrift'?-1:1;
     const fmNeto=parseFloat(document.getElementById('fm-neto').value)||0;
     const fmMwst=parseFloat(document.getElementById('fm-mwst').value)||0;
-    const fmTot=parseFloat(document.getElementById('fm-t').value)||fmNeto+fmMwst;
+    const fmTot=parseFloat(document.getElementById('fmt').value)||fmNeto+fmMwst;
     const fmMp=parseInt(document.getElementById('fmp').value)||7;
     const fmLineas=getInfoLis('fm-lis');
     const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('fn').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ffv').value||fe,monto_neto:fmNeto*mult,mwst_porcentaje:fmMp,mwst_monto:fmMwst*mult,monto_total:fmTot*mult,tipo:tp,estado:'pendiente'}).select('id').single();
@@ -1804,9 +1804,11 @@ async function editCierre(id){
   </div>`,
   async()=>{
     const tar=parseFloat(document.getElementById('ec-tar').value)||0;
+    const nuevaFecha=document.getElementById('ec-f').value;
+    const nuevaSuc=document.getElementById('ec-s').value||null;
     const{error}=await sb.from('cierres_caja').update({
-      fecha:document.getElementById('ec-f').value,
-      sucursal_id:document.getElementById('ec-s').value||null,
+      fecha:nuevaFecha,
+      sucursal_id:nuevaSuc,
       efectivo_inicial:parseFloat(document.getElementById('ec-ei').value)||0,
       ingresos_dia:parseFloat(document.getElementById('ec-ing').value)||0,
       ventas_tarjeta:tar,
@@ -1816,6 +1818,16 @@ async function editCierre(id){
       observaciones:document.getElementById('ec-obs').value||null
     }).eq('id',id);
     if(error){alert(error.message);return}
+    const fd=nuevaFecha.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
+    const comision=parseFloat((tar*0.0079).toFixed(2));
+    const{data:gastoEx}=await sb.from('gastos').select('id').eq('cierre_caja_id',id).maybeSingle();
+    if(gastoEx&&tar>0){
+      await sb.from('gastos').update({fecha:nuevaFecha,sucursal_id:nuevaSuc,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision}).eq('cierre_caja_id',id);
+    }else if(gastoEx&&tar===0){
+      await sb.from('gastos').delete().eq('cierre_caja_id',id);
+    }else if(!gastoEx&&tar>0){
+      await sb.from('gastos').insert({fecha:nuevaFecha,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:nuevaSuc,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a',cierre_caja_id:id});
+    }
     closeMo();caja();
   });
   setTimeout(()=>{const s=document.getElementById('ec-s');if(s&&c.sucursal_id)s.value=c.sucursal_id;},50);
@@ -1823,13 +1835,9 @@ async function editCierre(id){
 
 async function eliminarCierre(id){
   if(!confirm('¿Eliminar cierre?'))return;
-  const{data:cierre}=await sb.from('cierres_caja').select('fecha,ventas_tarjeta').eq('id',id).single();
+  await sb.from('gastos').delete().eq('cierre_caja_id',id);
   const{error}=await sb.from('cierres_caja').delete().eq('id',id);
   if(error){alert('Error al eliminar: '+error.message);return}
-  if(cierre?.ventas_tarjeta>0){
-    const fd=cierre.fecha.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
-    await sb.from('gastos').delete().eq('fecha',cierre.fecha).ilike('concepto',`%Comisiones Tarjeta Deb/Cred - ${fechaFmt}%`);
-  }
   caja();
 }
 
@@ -2038,11 +2046,11 @@ async function loadComp(){
   
   const calcTemp=async(t)=>{
     const[{data:cierres},{data:facts},{data:gastos}]=await Promise.all([
-      sb.from('cierres_caja').select('total_ventas,sucursal_id').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_fin),
-      sb.from('facturas').select('monto_neto,monto_total').gte('fecha_emision',t.fecha_inicio).lte('fecha_emision',t.fecha_fin).eq('tipo','factura'),
-      sb.from('gastos').select('monto').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_fin)
+      sb.from('cierres_caja').select('ingresos_dia,sucursal_id').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_cierre||today()),
+      sb.from('facturas').select('monto_neto,monto_total').gte('fecha_emision',t.fecha_inicio).lte('fecha_emision',t.fecha_cierre||today()).eq('tipo','factura'),
+      sb.from('gastos').select('monto').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_cierre||today())
     ]);
-    const ventas=(cierres||[]).reduce((a,c)=>a+parseFloat(c.total_ventas||0),0);
+    const ventas=(cierres||[]).reduce((a,c)=>a+parseFloat(c.ingresos_dia||0),0);
     const compras=(facts||[]).reduce((a,f)=>a+parseFloat(f.monto_neto||0),0);
     const gastosTotal=(gastos||[]).reduce((a,g)=>a+parseFloat(g.monto||0),0);
     return {ventas,compras,gastos:gastosTotal,resultado:ventas-compras-gastosTotal};
