@@ -552,11 +552,17 @@ async function iaFactura(b64,mime){
     return JSON.parse((d.content?.[0]?.text||'').replace(/```json|```/g,'').trim());
   }catch(e){console.error('iaFactura:',e);return null}
 }
-async function iaTicket(b64,mime){
-  const prompt=`Sos un extractor de tickets de compras alemanas. Devolvé SOLO JSON válido sin markdown:\n{"proveedor":"","fecha":"","numero_documento":"","neto_total":0,"mwst_total":0,"total_bruto":0,"mwst_pct":7,"lineas":[{"descripcion":"","importe_bruto":0}]}\nREGLAS:\n- fecha en YYYY-MM-DD (pie del ticket en DD.MM.YY)\n- numero_documento: número largo al pie del ticket\n- neto_total, mwst_total, total_bruto: del resumen al pie (NETTO, MWST, BRUTTO/SUMME)\n- mwst_pct: tasa predominante (7 o 19). Si hay mixtas usar la mayoritaria\n- lineas: cada producto con su descripción y precio bruto tal como aparece en el ticket (no calcules neto)\n- total_bruto debe coincidir con SUMME del ticket`;
+async function iaTicket(archivos){
+  // archivos puede ser un array de {b64, mime}
+  const lista=Array.isArray(archivos)?archivos:[archivos];
+  const prompt=`Sos un extractor de tickets y facturas de compras alemanas. Devolvé SOLO JSON válido sin markdown:\n{"proveedor":"","fecha":"","numero_documento":"","neto_total":0,"mwst_total":0,"total_bruto":0,"mwst_pct":7,"lineas":[{"descripcion":"","importe_bruto":0}]}\nREGLAS:\n- fecha en YYYY-MM-DD (pie del ticket en DD.MM.YY)\n- numero_documento: número largo al pie del ticket\n- neto_total, mwst_total, total_bruto: del resumen al pie (NETTO, MWST, BRUTTO/SUMME)\n- mwst_pct: tasa predominante (7 o 19). Si hay mixtas usar la mayoritaria\n- lineas: cada producto con su descripción y precio bruto tal como aparece (no calcules neto)\n- total_bruto debe coincidir con SUMME del ticket\n- Si hay múltiples imágenes o páginas son del mismo documento — consolidá toda la información`;
   try{
-    const isImg=!mime.includes('pdf');
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:IA_HEADERS,body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,messages:[{role:'user',content:[{type:isImg?'image':'document',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:prompt}]}]})});
+    const content=lista.map(a=>{
+      const isImg=!a.mime.includes('pdf');
+      return{type:isImg?'image':'document',source:{type:'base64',media_type:a.mime,data:a.b64}};
+    });
+    content.push({type:'text',text:prompt});
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:IA_HEADERS,body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content}]})});
     if(!r.ok){console.error('IA HTTP',r.status,await r.text());return null}
     const d=await r.json();
     return JSON.parse((d.content?.[0]?.text||'').replace(/```json|```/g,'').trim());
@@ -952,6 +958,7 @@ async function newFactIA(){
   document.getElementById('mo-save').style.display='none';
 }
 function handleFactDrop(e){e.preventDefault();e.currentTarget.classList.remove('over');if(e.dataTransfer.files[0])procFactIA(e.dataTransfer.files[0])}
+function handleGDrop(e){e.preventDefault();e.currentTarget.classList.remove('over');if(e.dataTransfer.files.length)procGastoIA(e.dataTransfer.files)}
 async function procFactIA(file){
   document.getElementById('ia-fs').innerHTML='<div class="al al-info">⏳ Analizando con IA...</div>';
   const b64=await fileToB64(file);
@@ -1527,9 +1534,9 @@ async function newGastoIA(){
   const{data:cats}=await sb.from('categorias_gasto').select('*').order('nombre');
   openMo('Cargar gasto con IA',`
     <div class="upz" onclick="document.getElementById('fi-g').click()" ondragover="this.classList.add('over');event.preventDefault()" ondragleave="this.classList.remove('over')" ondrop="handleGDrop(event)">
-      <div class="ui">🧾</div><div class="ut">Arrastrá el ticket o hacé clic</div><div class="us">PDF, JPG o PNG</div>
+      <div class="ui">🧾</div><div class="ut">Arrastrá el archivo o hacé clic</div><div class="us">PDF multipágina, o varias fotos JPG/PNG del mismo documento</div>
     </div>
-    <input type="file" id="fi-g" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="procGastoIA(this.files[0])">
+    <input type="file" id="fi-g" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="procGastoIA(this.files)">
     <div id="g-ias" style="margin-top:10px"></div>
     <div id="g-iaf" style="display:none;margin-top:14px">
       <div class="fg">
@@ -1576,12 +1583,14 @@ async function newGastoIA(){
   });
   document.getElementById('mo-save').style.display='none';
 }
-async function procGastoIA(file){
-  document.getElementById('g-ias').innerHTML='<div class="al al-info">⏳ Analizando con IA...</div>';
-  const b64=await fileToB64(file);
-  const r=await iaTicket(b64,file.type||'image/jpeg');
+async function procGastoIA(files){
+  const fileList=Array.from(files||[]);
+  if(!fileList.length)return;
+  document.getElementById('g-ias').innerHTML=`<div class="al al-info">⏳ Analizando ${fileList.length>1?fileList.length+' archivos':'archivo'} con IA...</div>`;
+  const archivos=await Promise.all(fileList.map(async f=>({b64:await fileToB64(f),mime:f.type||'image/jpeg'})));
+  const r=await iaTicket(archivos);
   if(!r){document.getElementById('g-ias').innerHTML='<div class="al al-err">No se pudo leer. Intentá manualmente.</div>';return}
-  document.getElementById('g-ias').innerHTML='<div class="al al-ok">✓ Leído — verificá y guardá.</div>';
+  document.getElementById('g-ias').innerHTML=`<div class="al al-ok">✓ Leído (${fileList.length} archivo${fileList.length>1?'s':''}) — verificá y guardá.</div>`;
   document.getElementById('g-iaf').style.display='';
   document.getElementById('gi-d').value=r.fecha||today();
   document.getElementById('gi-nd').value=r.numero_documento||'';
