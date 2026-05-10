@@ -368,6 +368,14 @@ async function autoMarcarVencidas(){
     .lte('fecha_vencimiento',hoy);
 }
 
+async function autoMarcarVencidosRec(){
+  const hoy=today();
+  await sb.from('vencimientos_recurrentes')
+    .update({estado:'vencido'})
+    .eq('estado','pendiente')
+    .lte('fecha_vencimiento',hoy);
+}
+
 function nav(p){
   if(_rol==='readonly'&&['facturas','pagos','gastos','recurrentes','caja','stock','proveedores','productos'].includes(p))p='dashboard';
   if(_rol==='operador'&&['rep-compras','rep-err','rep-flujo','rep-comp','config'].includes(p))p='dashboard';
@@ -376,6 +384,7 @@ function nav(p){
   document.getElementById('ptitle').textContent=_titles[p]||p;
   document.getElementById('tbar-r').innerHTML='';
   if(p==='facturas'||p==='vencimientos')autoMarcarVencidas();
+  if(p==='vencimientos'||p==='recurrentes')autoMarcarVencidosRec();
   const map={dashboard,proveedores,productos,facturas,pagos,vencimientos,gastos,recurrentes,caja,stock,'rep-compras':repCompras,'rep-err':repErr,'rep-flujo':repFlujo,'rep-comp':repComp,contable:contablePage,config:configPage};
   if(map[p])map[p]();
 }
