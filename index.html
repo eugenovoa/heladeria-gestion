@@ -1486,10 +1486,15 @@ function updS(pfx){
   const neto=parseFloat(document.getElementById(pfx+'-neto')?.value||document.getElementById(pfx+'-n')?.value)||0;
   const mwst=parseFloat(document.getElementById(pfx+'-mwst')?.value||document.getElementById(pfx+'-m')?.value)||0;
   const total=neto+mwst;
+  // Actualizar campo Total Bruto (IDs inconsistentes según formulario)
+  const totField=document.getElementById(pfx+'-tot')||document.getElementById(pfx+'-t')||(pfx==='fm'?document.getElementById('fmt'):null);
+  if(totField&&document.activeElement!==totField)totField.value=total.toFixed(2);
+  // Actualizar resumen visual
   const s=document.getElementById(pfx+'-summary');if(!s)return;
-  document.getElementById(pfx+'-s-neto').textContent='\u20ac'+neto.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
-  document.getElementById(pfx+'-s-mwst').textContent='\u20ac'+mwst.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
-  document.getElementById(pfx+'-s-total').textContent='\u20ac'+total.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const displayTotal=totField?parseFloat(totField.value)||total:total;
+  document.getElementById(pfx+'-s-neto').textContent='€'+neto.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById(pfx+'-s-mwst').textContent='€'+mwst.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById(pfx+'-s-total').textContent='€'+displayTotal.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function addLiInfo(cid){
   const c=document.getElementById(cid);if(!c)return;
