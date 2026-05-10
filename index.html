@@ -1168,10 +1168,10 @@ async function subirAdjFact(factId,provNombre,fecha){
 // ---- PAGOS ----
 async function pagos(){
   loading();setR(`<button class="btn btn-p" onclick="newPago()">+ Registrar pago</button>`);
-  const{data}=await sb.from('pagos').select('*,facturas(numero_factura,proveedores(nombre))').order('fecha_pago',{ascending:false});
+  const{data}=await sb.from('pagos').select('*,facturas(numero_factura,categoria_id,proveedores(nombre)),categorias_factura(nombre)').order('fecha_pago',{ascending:false});
   document.getElementById('ct').innerHTML=`<div class="card"><div style="overflow-x:auto">
     ${!(data||[]).length?'<div class="empty">Sin pagos.</div>':`
-    <table><thead><tr><th>Fecha</th><th>Factura</th><th>Proveedor</th><th>Monto</th><th>Medio</th><th>Referencia</th></tr></thead><tbody>
+    <table><thead><tr><th>Fecha</th><th>Factura</th><th>Proveedor</th><th>Monto</th><th>Medio</th><th>Referencia</th><th>Notas</th></tr></thead><tbody>
     ${data.map(p=>`<tr>
       <td>${fmtD(p.fecha_pago)}</td>
       <td style="font-size:12px;font-family:monospace">${p.facturas?.numero_factura||'—'}</td>
@@ -1179,6 +1179,7 @@ async function pagos(){
       <td style="font-weight:600">${fmt(p.monto)}</td>
       <td><span class="bd bd-gray">${p.medio_pago}</span></td>
       <td style="font-size:12px">${p.referencia_transferencia||'—'}${p.gasto_bancario>0?` <span style="color:var(--red);font-size:11px">(banco: ${fmt(p.gasto_bancario)})</span>`:''}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${p.notas||'—'}</td>
     </tr>`).join('')}
     </tbody></table>`}
   </div></div>`;
@@ -1327,9 +1328,10 @@ async function editRec(id){
   async()=>{
     const concepto=document.getElementById('rc-con').value.trim();
     if(!concepto){alert('Ingresá el concepto.');return}
+    const nuevoMonto=parseFloat(document.getElementById('rc-mon').value)||0;
     const{error}=await sb.from('gastos_recurrentes').update({
       concepto,
-      monto:parseFloat(document.getElementById('rc-mon').value)||0,
+      monto:nuevoMonto,
       frecuencia:document.getElementById('rc-frq').value,
       dia_del_mes:parseInt(document.getElementById('rc-dia').value)||1,
       categoria_id:document.getElementById('rc-cat').value||null,
@@ -1340,6 +1342,9 @@ async function editRec(id){
       notas:document.getElementById('rc-not').value||null
     }).eq('id',id);
     if(error){alert(error.message);return}
+    if(nuevoMonto!==r.monto){
+      await sb.from('vencimientos_recurrentes').update({monto:nuevoMonto}).eq('gasto_recurrente_id',id).in('estado',['pendiente','vencido']);
+    }
     closeMo();recurrentes();
   });
   setTimeout(()=>{const s=document.getElementById('rc-suc');if(s&&r.sucursal_id)s.value=r.sucursal_id;},50);
