@@ -614,7 +614,7 @@ async function loadDashboard(){
   // Build ventas query with optional sucursal filter
   let qV=sb.from('cierres_caja').select('ingresos_dia,fecha,sucursal_id').gte('fecha',desde).lte('fecha',hasta).order('fecha');
   if(sucId)qV=qV.eq('sucursal_id',sucId);
-  let qVm=sb.from('cierres_caja').select('ingresos_dia').gte('fecha',desde).lte('fecha',hasta);
+  let qVm=sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta').gte('fecha',desde).lte('fecha',hasta);
   if(sucId)qVm=qVm.eq('sucursal_id',sucId);
 
   const[{data:fv},{data:fp},{data:rp},{data:cm},{data:vm},{data:vc}]=await Promise.all([
@@ -630,7 +630,7 @@ async function loadDashboard(){
   const totP=(fp||[]).reduce((a,f)=>a+parseFloat(f.monto_total),0);
   const totC=(cm||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
   const totCBruto=(cm||[]).reduce((a,f)=>a+parseFloat(f.monto_neto||0)+parseFloat(f.mwst_monto||0),0);
-  const totVm=(vm||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
+  const totVm=(vm||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia||0)+parseFloat(v.ventas_tarjeta||0),0);
 
   const perLabel={mes:'mes en curso',semana:'semana en curso',custom:`${fmtD(desde)} — ${fmtD(hasta)}`}[per];
   const sucLabel=sucId?(_sucs.find(s=>s.id===sucId)?.nombre||''):'Todas las sucursales';
@@ -2001,13 +2001,13 @@ async function repFlujoCargar() {
   document.getElementById('flujo-body').innerHTML='<div class="loading">Calculando...</div>';
   const allTemps = await getTmps();
   const {desde, hasta} = tmFechas(allTemps, tempId);
-  let qVentas = sb.from('cierres_caja').select('ingresos_dia');
+  let qVentas = sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta');
   let qPagos = sb.from('pagos').select('monto,gasto_bancario');
   let qGastos = sb.from('gastos').select('monto,categorias_gasto(tipo)');
   if (desde) { qVentas=qVentas.gte('fecha',desde); qPagos=qPagos.gte('fecha_pago',desde); qGastos=qGastos.gte('fecha',desde); }
   if (hasta) { qVentas=qVentas.lte('fecha',hasta); qPagos=qPagos.lte('fecha_pago',hasta); qGastos=qGastos.lte('fecha',hasta); }
   const [{data:ventasD},{data:pagosD},{data:gastosD}]=await Promise.all([qVentas, qPagos, qGastos]);
-  const totVentas=(ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia),0);
+  const totVentas=(ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia||0)+parseFloat(v.ventas_tarjeta||0),0);
   const totPagos=(pagosD||[]).reduce((a,p)=>a+parseFloat(p.monto),0);
   const totGastosOp=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='operativo').reduce((a,g)=>a+parseFloat(g.monto),0);
   const totGastosFinanc=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='financiero').reduce((a,g)=>a+parseFloat(g.monto),0);
@@ -2046,11 +2046,11 @@ async function loadComp(){
   
   const calcTemp=async(t)=>{
     const[{data:cierres},{data:facts},{data:gastos}]=await Promise.all([
-      sb.from('cierres_caja').select('ingresos_dia,sucursal_id').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_cierre||today()),
+      sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta,sucursal_id').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_cierre||today()),
       sb.from('facturas').select('monto_neto,monto_total').gte('fecha_emision',t.fecha_inicio).lte('fecha_emision',t.fecha_cierre||today()).eq('tipo','factura'),
       sb.from('gastos').select('monto').gte('fecha',t.fecha_inicio).lte('fecha',t.fecha_cierre||today())
     ]);
-    const ventas=(cierres||[]).reduce((a,c)=>a+parseFloat(c.ingresos_dia||0),0);
+    const ventas=(cierres||[]).reduce((a,c)=>a+parseFloat(c.ingresos_dia||0)+parseFloat(c.ventas_tarjeta||0),0);
     const compras=(facts||[]).reduce((a,f)=>a+parseFloat(f.monto_neto||0),0);
     const gastosTotal=(gastos||[]).reduce((a,g)=>a+parseFloat(g.monto||0),0);
     return {ventas,compras,gastos:gastosTotal,resultado:ventas-compras-gastosTotal};
