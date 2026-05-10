@@ -1192,7 +1192,7 @@ async function newPago(preFactId=null,preMonto=null){
     const{error}=await sb.from('pagos').insert({factura_id:fid,fecha_pago:fecha,monto:parseFloat(document.getElementById('pa-m').value)||0,medio_pago:document.getElementById('pa-md').value,referencia_transferencia:document.getElementById('pa-r').value,notas:document.getElementById('pa-obs').value||null,gasto_bancario:gb});
     if(!error){await sb.from('facturas').update({estado:'pagada'}).eq('id',fid);closeMo();pagos();}else alert(error.message);
   });
-  if(preFactId)setTimeout(()=>{const s=document.getElementById('pa-f');if(s)s.value=preFactId;},50);
+  if(preFactId)setTimeout(()=>{const s=document.getElementById('pa-f');if(s){s.value=preFactId;preloadPagoMonto(s);}},50);
 }
 
 function preloadPagoMonto(sel){
