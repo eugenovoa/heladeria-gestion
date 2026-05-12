@@ -452,19 +452,30 @@ async function uploadAdjunto(file,carpeta,nombre,fecha=null){
   return signed?.signedUrl||null;
 }
 function adjuntoField(id='adj-file'){return`<div class="f full" style="margin-top:4px"><label>Adjuntar archivo (opcional)</label><input type="file" id="${id}" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%"></div>`}
-async function verAdjunto(url){
+async function verAdjunto(url,nombre=null){
   if(!url){alert('Sin adjunto.');return}
   try{
+    let finalUrl=url;
     // If it's a public URL (broken - bucket is private), regenerate as signed
     if(url.includes('/object/public/')){
       const match=url.match(/\/object\/public\/adjuntos\/(.+)/);
       if(match){
         const{data}=await sb.storage.from('adjuntos').createSignedUrl(match[1],60*60*24*7);
-        if(data?.signedUrl){window.open(data.signedUrl,'_blank');return;}
+        if(data?.signedUrl)finalUrl=data.signedUrl;
       }
     }
-    // Signed URL - open directly
-    window.open(url,'_blank');
+    // If nombre provided, download with that name; otherwise open in new tab
+    if(nombre){
+      const resp=await fetch(finalUrl);
+      const blob=await resp.blob();
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download=nombre;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }else{
+      window.open(finalUrl,'_blank');
+    }
   }catch(e){window.open(url,'_blank')}
 }
 
@@ -926,7 +937,7 @@ function renderFactsTable(){
         <td style="color:${f.estado==='vencida'?'var(--red)':''};font-weight:${f.estado==='vencida'?'600':'400'}">${fmtD(f.fecha_vencimiento)}</td>
         <td style="font-weight:600">${fmt(f.monto_total)}</td>
         <td>${bEst(f.estado)}</td>
-        <td><div style="display:flex;gap:4px">${f.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto(this.dataset.url)" data-url="${f.adjunto_url}">📎</button>`:''}<button class="btn btn-sm" onclick="verFact('${f.id}')">Ver</button><button class="btn btn-sm btn-g" onclick="editFact('${f.id}')">Editar</button></div></td>
+        <td><div style="display:flex;gap:4px">${f.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${f.adjunto_url}','${((f.proveedores?.nombre||'factura')+' - '+(f.numero_factura||f.id)).replace(/'/g,"\\'")}')">📎</button>`:''}<button class="btn btn-sm" onclick="verFact('${f.id}')">Ver</button><button class="btn btn-sm btn-g" onclick="editFact('${f.id}')">Editar</button></div></td>
       </tr>`).join('')}
       </tbody></table></div>
     </div>
@@ -1078,7 +1089,7 @@ async function verFact(id){
     </tbody></table>`:''}
     <div style="margin-top:16px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        ${f.adjunto_url?`<button class="btn btn-sm" onclick="verAdjunto('${f.adjunto_url}')">📎 Ver adjunto</button>`:''}
+        ${f.adjunto_url?`<button class="btn btn-sm" onclick="verAdjunto('${f.adjunto_url}','${((f.proveedores?.nombre||'factura')+' - '+(f.numero_factura||f.id)).replace(/'/g,"\\'")}')">📎 Ver adjunto</button>`:''}
         ${f.estado!=='pagada'?`<button class="btn btn-sm btn-ok" onclick="closeMo();newPago('${f.id}',${Math.abs(f.monto_total)})">€ Registrar pago</button>`:''}
         <button class="btn btn-sm btn-g" onclick="setFactEst('${f.id}','vencida')">Marcar vencida</button>
         <button class="btn btn-sm btn-d" onclick="delFact('${f.id}')">Eliminar</button>
@@ -1497,7 +1508,7 @@ async function gastos(){
       <td>${fmt(g.monto_neto||g.monto)}</td>
       <td>${(g.mwst_monto||0)>0?fmt(g.mwst_monto):'—'}</td>
       <td style="font-weight:600;color:var(--red)">${fmt(g.monto)}</td>
-      <td><div style="display:flex;gap:5px">${g.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${g.adjunto_url}')">📎</button>`:''}<button class="btn btn-sm" onclick="verGasto('${g.id}')">Ver</button>${!g.cierre_caja_id?`<button class="btn btn-sm" onclick="editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button>`:''}</div></td>
+      <td><div style="display:flex;gap:5px">${g.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${g.adjunto_url}','${((g.concepto||'gasto')+' - '+(g.fecha||'')).replace(/'/g,"\\'")}')">📎</button>`:''}<button class="btn btn-sm" onclick="verGasto('${g.id}')">Ver</button>${!g.cierre_caja_id?`<button class="btn btn-sm" onclick="editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button>`:''}</div></td>
     </tr>`).join('')}
     </tbody></table>`}
   </div></div>`;
@@ -1691,7 +1702,7 @@ async function editGasto(id){
   <div class="fg" style="margin-top:14px">
     <div class="f full">
       <label>${g.adjunto_url?'Reemplazar adjunto':'Subir adjunto (opcional)'}</label>
-      ${g.adjunto_url?`<div style="margin-bottom:6px"><button class="btn btn-sm" onclick="verAdjunto('${g.adjunto_url}')">📎 Ver adjunto actual</button></div>`:''}
+      ${g.adjunto_url?`<div style="margin-bottom:6px"><button class="btn btn-sm" onclick="verAdjunto('${g.adjunto_url}','${((g.concepto||'gasto')+' - '+(g.fecha||'')).replace(/'/g,"\\'")}')">📎 Ver adjunto actual</button></div>`:''}
       <input type="file" id="eg-adj" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%">
     </div>
   </div>`,
@@ -1744,7 +1755,7 @@ async function verGasto(id){
     </div>
     ${lineas.length?`<table style="font-size:12px;width:100%"><thead><tr><th>Detalle</th><th>Cant.</th><th>MwSt</th><th>Monto</th></tr></thead><tbody>${lineas.map(l=>`<tr><td>${l.desc||l.descripcion||'—'}</td><td>${l.qty||l.cantidad||1}</td><td>${l.mwst||0}%</td><td>${fmt(l.monto||l.importe_bruto||0)}</td></tr>`).join('')}</tbody></table>`:''}
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-      ${g.adjunto_url?`<button class="btn btn-sm" onclick="verAdjunto('${g.adjunto_url}')">📎 Adjunto</button>`:''}
+      ${g.adjunto_url?`<button class="btn btn-sm" onclick="verAdjunto('${g.adjunto_url}','${((g.concepto||'gasto')+' - '+(g.fecha||'')).replace(/'/g,"\\'")}')">📎 Adjunto</button>`:''}
       ${!g.cierre_caja_id?`<button class="btn btn-sm" onclick="closeMo();editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="closeMo();delGasto('${g.id}')">Eliminar</button>`:''}
     </div>
     <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px">
