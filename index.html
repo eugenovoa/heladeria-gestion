@@ -1593,6 +1593,9 @@ async function newGastoIA(){
     closeMo();gastos();
   });
   document.getElementById('mo-save').style.display='none';
+}
+
+async function procGastoIA(files){
   const fileList=Array.from(files||[]);
   if(!fileList.length)return;
   document.getElementById('g-ias').innerHTML=`<div class="al al-info">⏳ Analizando ${fileList.length>1?fileList.length+' archivos':'archivo'} con IA...</div>`;
