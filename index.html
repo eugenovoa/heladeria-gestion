@@ -1979,17 +1979,42 @@ async function eliminarStock(id){
   stock();
 }
 
+let _cajaData=[];
+
 async function caja() {
   loading();
   setR(`<button class="btn btn-p" onclick="nuevoCierre()">+ Registrar cierre</button>`);
-  const { data } = await sb.from('cierres_caja').select('*').order('fecha',{ascending:false});
-  const totEf=(data||[]).reduce((a,c)=>a+parseFloat(c.ingresos_dia||0),0);
-  const totTar=(data||[]).reduce((a,c)=>a+parseFloat(c.ventas_tarjeta||0),0);
-  const totFac=totEf+totTar;
-  const totDif=(data||[]).reduce((a,c)=>a+parseFloat(c.diferencia_caja||0),0);
+  const{data}=await sb.from('cierres_caja').select('*').order('fecha',{ascending:false});
+  _cajaData=data||[];
   document.getElementById('ct').innerHTML=`<div class="card">
-    ${!(data||[]).length?'<div class="empty">Sin cierres registrados.</div>':
-    `<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Diferencia</th><th>Ingresos Efectivo</th><th>Tarjetas</th><th>Total Facturación</th><th>Observaciones</th><th></th></tr></thead><tbody>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <select id="caja-suc" onchange="renderCaja()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+        <option value="">Todas las sucursales</option>
+        ${(_sucs||[]).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}
+      </select>
+      <input id="caja-mes" type="month" onchange="renderCaja()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+      <button class="btn btn-sm" onclick="document.getElementById('caja-suc').value='';document.getElementById('caja-mes').value='';renderCaja()">✕ Limpiar</button>
+    </div>
+    <div id="caja-tabla"></div>
+  </div>`;
+  renderCaja();
+}
+
+function renderCaja(){
+  const suc=document.getElementById('caja-suc')?.value||'';
+  const mes=document.getElementById('caja-mes')?.value||'';
+  let data=_cajaData.filter(c=>{
+    if(suc&&c.sucursal_id!==suc)return false;
+    if(mes&&!(c.fecha||'').startsWith(mes))return false;
+    return true;
+  });
+  const totEf=data.reduce((a,c)=>a+parseFloat(c.ingresos_dia||0),0);
+  const totTar=data.reduce((a,c)=>a+parseFloat(c.ventas_tarjeta||0),0);
+  const totFac=totEf+totTar;
+  const totDif=data.reduce((a,c)=>a+parseFloat(c.diferencia_caja||0),0);
+  const el=document.getElementById('caja-tabla');if(!el)return;
+  el.innerHTML=!data.length?'<div class="empty">Sin cierres registrados.</div>':`
+    <div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Diferencia</th><th>Ingresos Efectivo</th><th>Tarjetas</th><th>Total Facturación</th><th>Observaciones</th><th></th></tr></thead><tbody>
     ${data.map(c=>{const tot=(parseFloat(c.ingresos_dia)||0)+(parseFloat(c.ventas_tarjeta)||0);return`<tr>
       <td>${fmtD(c.fecha)}</td>
       <td style="font-size:12px">${_sucs.find(s=>s.id===c.sucursal_id)?.nombre||'General'}</td>
@@ -2009,8 +2034,7 @@ async function caja() {
       <td style="color:var(--amber);font-weight:700">${fmt(totFac)}</td>
       <td colspan="2"></td>
     </tr></tfoot>
-    </table></div>`}
-  </div>`;
+    </table></div>`;
 }
 
 async function stock() {
