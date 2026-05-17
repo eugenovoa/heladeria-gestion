@@ -279,7 +279,7 @@ tbody tr:hover td{background:var(--surface2)}
   </div>
 </div>
 
-<div class="mo" id="mo">
+<div class="mo" id="mo" onclick="if(event.target===this){if(window._moIsIA){if(confirm('¿Cancelar? Los datos ingresados se perderán.'))closeMo();}else closeMo();}">
   <div class="mo-box">
     <h2 id="mo-title"></h2>
     <div id="mo-body"></div>
@@ -399,8 +399,8 @@ const fmtD=d=>{if(!d)return'—';const[y,m,dd]=d.split('-');return`${dd}/${m}/${
 const today=()=>{const n=new Date();return`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`};
 const loading=()=>document.getElementById('ct').innerHTML='<div class="ld">Cargando...</div>';
 const setR=h=>document.getElementById('tbar-r').innerHTML=h;
-function openMo(title,body,saveFn,noSave=false){document.getElementById('mo-title').textContent=title;document.getElementById('mo-body').innerHTML=body;_moFn=saveFn;document.getElementById('mo-save').textContent='Guardar';document.getElementById('mo-save').style.display=noSave?'none':'';document.getElementById('mo').classList.add('open')}
-function closeMo(){document.getElementById('mo').classList.remove('open');_moFn=null}
+function openMo(title,body,saveFn,noSave=false,isIA=false){document.getElementById('mo-title').textContent=title;document.getElementById('mo-body').innerHTML=body;_moFn=saveFn;window._moIsIA=isIA;document.getElementById('mo-save').textContent='Guardar';document.getElementById('mo-save').style.display=noSave?'none':'';document.getElementById('mo').classList.add('open')}
+function closeMo(){document.getElementById('mo').classList.remove('open');_moFn=null;window._moIsIA=false}
 async function saveMo(){
   const btn=document.getElementById('mo-save');
   if(!btn||btn.disabled)return;
@@ -1000,6 +1000,7 @@ async function procFactIA(file){
     <button class="btn btn-sm" style="margin-top:8px" onclick="addLiInfo('ia-lis')">+ Línea</button>
     <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="ia-summary"><div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="ia-s-neto">€0,00</div></div><div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="ia-s-mwst">€0,00</div></div><div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="ia-s-total">€0,00</div></div></div>
     <div style="margin-top:14px">${adjuntoField('fi-fadj')}</div>`;
+  window._moIsIA=true;
   swMoTab(document.querySelector('.mo-tab:last-child'),'tab-ver');
   document.getElementById('mo-save').textContent='Guardar factura';
   document.getElementById('mo-save').style.display='';
@@ -1670,6 +1671,7 @@ async function newGastoIA(){
     closeMo();gastos();
   });
   document.getElementById('mo-save').style.display='none';
+  window._moIsIA=true;
 }
 
 async function procGastoIA(files){
