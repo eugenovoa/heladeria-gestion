@@ -226,7 +226,8 @@ tbody tr:hover td{background:var(--surface2)}
       <div class="nav-sec">
         <div class="nav-lbl">Compras</div>
         <div class="nav-item" data-p="facturas"><span class="nav-ico">▤</span>Facturas</div>
-        <div class="nav-item" data-p="pagos"><span class="nav-ico">✦</span>Pagos</div>
+        <div class="nav-item" data-p="pagos"><span class="nav-ico">✦</span>Pagos a Proveedores</div>
+        <div class="nav-item" data-p="pagos-rec"><span class="nav-ico">↺</span>Pagos Recurrentes</div>
         <div class="nav-item" data-p="vencimientos"><span class="nav-ico">◷</span>Vencimientos</div>
       </div>
       <div class="nav-sec">
@@ -352,11 +353,11 @@ function editBrand(){nav('config');}
 // ---- NAV ----
 function setupNav(){
   document.querySelectorAll('.nav-item').forEach(el=>el.addEventListener('click',()=>{nav(el.dataset.p);closeSB()}));
-  if(_rol==='operador'){['rep-compras','rep-err','rep-flujo','rep-comp','config','facturas','pagos','proveedores','productos','stock'].forEach(p=>{const e=document.querySelector(`[data-p="${p}"]`);if(e)e.style.display='none'})}
+  if(_rol==='operador'){['rep-compras','rep-err','rep-flujo','rep-comp','config','facturas','pagos','pagos-rec','proveedores','productos','stock'].forEach(p=>{const e=document.querySelector(`[data-p="${p}"]`);if(e)e.style.display='none'})}
   if(_rol==='readonly'){['facturas','pagos','gastos','recurrentes','caja','stock','proveedores','productos'].forEach(p=>{const e=document.querySelector(`[data-p="${p}"]`);if(e)e.style.display='none'})}
 }
 
-const _titles={dashboard:'Dashboard',proveedores:'Proveedores',productos:'Productos / Materias primas',facturas:'Facturas de proveedores',pagos:'Pagos',vencimientos:'Vencimientos',gastos:'Gastos al contado',recurrentes:'Gastos recurrentes',caja:'Cierre de caja',stock:'Stock','rep-compras':'Compras por período',contable:'Módulo contable','rep-err':'Estado de resultados','rep-flujo':'Flujo de caja','rep-comp':'Comparativo de temporadas',config:'Configuración',contable:'Módulo contable'};
+const _titles={dashboard:'Dashboard',proveedores:'Proveedores',productos:'Productos / Materias primas',facturas:'Facturas de proveedores',pagos:'Pagos a Proveedores','pagos-rec':'Pagos Gastos Recurrentes',vencimientos:'Vencimientos',gastos:'Gastos al contado',recurrentes:'Gastos recurrentes',caja:'Cierre de caja',stock:'Stock','rep-compras':'Compras por período',contable:'Módulo contable','rep-err':'Estado de resultados','rep-flujo':'Flujo de caja','rep-comp':'Comparativo de temporadas',config:'Configuración'};
 
 
 async function autoMarcarVencidas(){
@@ -385,7 +386,7 @@ function nav(p){
   document.getElementById('tbar-r').innerHTML='';
   if(p==='facturas'||p==='vencimientos')autoMarcarVencidas();
   if(p==='vencimientos'||p==='recurrentes')autoMarcarVencidosRec();
-  const map={dashboard,proveedores,productos,facturas,pagos,vencimientos,gastos,recurrentes,caja,stock,'rep-compras':repCompras,'rep-err':repErr,'rep-flujo':repFlujo,'rep-comp':repComp,contable:contablePage,config:configPage};
+  const map={dashboard,proveedores,productos,facturas,pagos,vencimientos,'pagos-rec':pagosRec,gastos,recurrentes,caja,stock,'rep-compras':repCompras,'rep-err':repErr,'rep-flujo':repFlujo,'rep-comp':repComp,contable:contablePage,config:configPage};
   if(map[p])map[p]();
 }
 
@@ -1202,6 +1203,28 @@ async function pagos(){
     </tbody></table>`}
   </div></div>`;
 }
+
+async function pagosRec(){
+  loading();setR('');
+  const{data}=await sb.from('vencimientos_recurrentes')
+    .select('*,gasto_recurrente:gastos_recurrentes(concepto,sucursal_id,categoria_id,categorias_gasto_recurrente(nombre))')
+    .eq('estado','pagado')
+    .order('fecha_pago',{ascending:false});
+  document.getElementById('ct').innerHTML=`<div class="card"><div style="overflow-x:auto">
+    ${!(data||[]).length?'<div class="empty">Sin pagos de recurrentes.</div>':`
+    <table><thead><tr><th>Fecha pago</th><th>Concepto</th><th>Categoría</th><th>Sucursal</th><th>Monto</th><th>Referencia</th></tr></thead><tbody>
+    ${data.map(p=>`<tr>
+      <td>${fmtD(p.fecha_pago||p.fecha_vencimiento)}</td>
+      <td style="font-weight:500">${p.gasto_recurrente?.concepto||'—'}</td>
+      <td><span class="bd bd-gray" style="font-size:11px">${p.gasto_recurrente?.categorias_gasto_recurrente?.nombre||'—'}</span></td>
+      <td style="font-size:12px">${sucNom(p.gasto_recurrente?.sucursal_id)}</td>
+      <td style="font-weight:600">${fmt(p.monto)}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${p.referencia||'—'}</td>
+    </tr>`).join('')}
+    </tbody></table>`}
+  </div></div>`;
+}
+
 async function newPago(preFactId=null,preMonto=null){
   const{data:facts}=await sb.from('facturas').select('id,numero_factura,monto_total,proveedores(nombre)').in('estado',['pendiente','vencida']).eq('tipo','factura').order('fecha_vencimiento');
   openMo('Registrar pago',`<div class="fg">
