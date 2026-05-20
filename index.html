@@ -1464,7 +1464,7 @@ async function gstCats(tabla, callbackFn){
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm" onclick="editCat('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}','${c.tipo||''}',${hasType})">Editar</button>
-        <button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}',callbackFnRef)">✕</button>
+        <button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}')">✕</button>
       </div>
     </div>`).join(''):'<div class="empty">Sin categorías.</div>';
 
@@ -1516,7 +1516,17 @@ async function editCat(tabla, id, nombre, tipo, hasType){
 }
 
 async function delCat(tabla, id){
-  if(!confirm('¿Eliminar categoría?'))return;
+  // Contar registros asociados
+  const tablaAsoc={categorias_gasto:'gastos',categorias_factura:'facturas',categorias_gasto_recurrente:'gastos_recurrentes'}[tabla];
+  let count=0;
+  if(tablaAsoc){
+    const{count:c}=await sb.from(tablaAsoc).select('*',{count:'exact',head:true}).eq('categoria_id',id);
+    count=c||0;
+  }
+  const msg=count>0
+    ?`¿Eliminar esta categoría? Tiene ${count} registro${count>1?'s':''} asociado${count>1?'s':''}. Esos registros quedarán sin categoría.`
+    :'¿Eliminar esta categoría?';
+  if(!confirm(msg))return;
   const{error}=await sb.from(tabla).delete().eq('id',id);
   if(error){alert('No se puede eliminar: puede estar en uso.');return}
   const{data:cats}=await sb.from(tabla).select('*').order('nombre');
