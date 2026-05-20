@@ -1490,6 +1490,7 @@ async function addCat(tabla, hasType){
   if(error){alert(error.message);return}
   document.getElementById('cat-nm').value='';
   const{data:cats}=await sb.from(tabla).select('*').order('nombre');
+  if(tabla==='categorias_factura')window._catsFact=cats||[];
   const hasT=tabla==='categorias_gasto'||tabla==='categorias_factura'||tabla==='categorias_gasto_recurrente';
   document.getElementById('cats-list').innerHTML=cats.length?cats.map(c=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
@@ -1519,7 +1520,8 @@ async function delCat(tabla, id){
   const{error}=await sb.from(tabla).delete().eq('id',id);
   if(error){alert('No se puede eliminar: puede estar en uso.');return}
   const{data:cats}=await sb.from(tabla).select('*').order('nombre');
-  const hasT=tabla==='categorias_gasto';
+  if(tabla==='categorias_factura')window._catsFact=cats||[];
+  const hasT=tabla==='categorias_gasto'||tabla==='categorias_factura'||tabla==='categorias_gasto_recurrente';
   document.getElementById('cats-list').innerHTML=cats.length?cats.map(c=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
       <div><span style="font-weight:600;font-size:13px">${c.nombre}</span>${hasT?`<span class="bd bd-gray" style="margin-left:6px;font-size:11px">${c.tipo||'operativo'}</span>`:''}</div>
