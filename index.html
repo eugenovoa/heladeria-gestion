@@ -2368,14 +2368,9 @@ async function loadErr(){
   const montoD=impD?.monto_definitivo!=null?parseFloat(impD.monto_definitivo):null;
   const impEst=ebt*aliq/100,impFin=montoD;
 
-  // Anticipos pagados - query separada para asegurar que trae bien
-  const{data:catAnts}=await sb.from('categorias_gasto').select('id').eq('tipo','anticipo_impuesto');
-  const idsAnts=(catAnts||[]).map(c=>c.id);
-  let gAnts=0;
-  if(idsAnts.length){
-    const{data:gastosAnts}=await sb.from('gastos').select('monto').in('categoria_id',idsAnts).gte('fecha',desde).lte('fecha',hasta);
-    gAnts=(gastosAnts||[]).reduce((a,g)=>a+parseFloat(g.monto||0),0);
-  }
+  // Anticipos pagados - query directa filtrando por tipo en join
+  const{data:gastosAntsD}=await sb.from('gastos').select('monto,categorias_gasto!inner(tipo)').eq('categorias_gasto.tipo','anticipo_impuesto').gte('fecha',desde).lte('fecha',hasta);
+  const gAnts=(gastosAntsD||[]).reduce((a,g)=>a+parseFloat(g.monto||0),0);
   const saldoP=Math.max(0,(impFin||impEst)-gAnts);
   const neto=ebt-(impFin||impEst);
 
