@@ -320,6 +320,7 @@ async function initApp(user){
   if(_init)return;_init=true;_user=user;
   try{const{data:rd}=await sb.from('user_roles').select('rol,sucursal_id').eq('user_id',user.id).maybeSingle();_rol=rd?.rol||'admin';_sucId=rd?.sucursal_id||null;}catch(e){_rol='admin';}
   try{const{data:sd}=await sb.from('sucursales').select('*').order('nombre');_sucs=sd||[];}catch(e){_sucs=[];}
+  try{const{data:cf}=await sb.from('categorias_factura').select('*').order('nombre');window._catsFact=cf||[];}catch(e){window._catsFact=[];}
   try{await loadApiKey();}catch(e){}
   try{await loadBrandFromDB();}catch(e){}
   const cfg=localStorage.getItem('hg_cfg');if(cfg)_cfg=JSON.parse(cfg);
@@ -874,7 +875,7 @@ async function delProd(id,n){if(!confirm(`¿Eliminar "${n}"?`))return;const{erro
 // ---- FACTURAS (IA + manual + Gutschrift) ----
 async function facturas(){
   loading();setR(`<button class="btn" onclick="newFactIA()">✦ Cargar con IA</button><button class="btn btn-p" onclick="newFactMan()">+ Manual</button>`);
-  const{data}=await sb.from('facturas').select('*,proveedores(nombre)').order('estado',{ascending:true}).order('fecha_emision',{ascending:false});
+  const{data}=await sb.from('facturas').select('*,proveedores(nombre),categorias_factura(nombre,tipo)').order('estado',{ascending:true}).order('fecha_emision',{ascending:false});
   window._factsData=data||[];
   window._factSort={col:'fecha_emision',asc:false};
   renderFactsTable();
@@ -926,6 +927,7 @@ function renderFactsTable(){
         <th onclick="sortFacts('proveedores')" style="${thStyle}">Proveedor${arrow('proveedores')}</th>
         <th onclick="sortFacts('fecha_emision')" style="${thStyle}">Emisión${arrow('fecha_emision')}</th>
         <th onclick="sortFacts('fecha_vencimiento')" style="${thStyle}">Vencimiento${arrow('fecha_vencimiento')}</th>
+        <th>Categoría</th>
         <th>Total</th>
         <th onclick="sortFacts('estado')" style="${thStyle}">Estado${arrow('estado')}</th>
         <th></th>
@@ -934,6 +936,7 @@ function renderFactsTable(){
         <td>${f.tipo==='gutschrift'?'<span class="bd bd-pur">Gutschrift</span>':'<span class="bd bd-info">Factura</span>'}</td>
         <td style="font-family:monospace;font-size:12px">${f.numero_factura}</td>
         <td><strong>${f.proveedores?.nombre||'—'}</strong></td>
+        <td><span class="bd bd-gray" style="font-size:11px">${f.categorias_factura?.nombre||'—'}</span></td>
         <td>${fmtD(f.fecha_emision)}</td>
         <td style="color:${f.estado==='vencida'?'var(--red)':''};font-weight:${f.estado==='vencida'?'600':'400'}">${fmtD(f.fecha_vencimiento)}</td>
         <td style="font-weight:600">${fmt(f.monto_total)}</td>
@@ -989,6 +992,7 @@ async function procFactIA(file){
       <div class="f"><label>Proveedor *</label><select id="ia-pv"><option value="">— Seleccionar —</option>${provs.map(p=>`<option value="${p.id}" data-d="${p.condicion_pago_dias||30}" ${match?.id===p.id?'selected':''}>${p.nombre}</option>`).join('')}</select></div>
       <div class="f"><label>Fecha emisión</label><input id="ia-fe" type="date" value="${r.fecha||today()}"></div>
       <div class="f"><label>Fecha vencimiento</label><input id="ia-fv" type="date" value="${r.fecha_vencimiento||''}"></div>
+      <div class="f full"><label>Categoría *</label><select id="ia-cat" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="">— Seleccionar categoría —</option>${(window._catsFact||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
       <div class="f"><label>Neto (sin MwSt)</label><input id="ia-neto" type="number" step="0.01" value="${(r.neto_total||0).toFixed(2)}" oninput="updS('ia')"></div>
       <div class="f"><label>MwSt %</label><select id="ia-mp" onchange="updS('ia')" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7" ${(r.mwst_pct||7)===7?'selected':''}>7%</option><option value="19" ${r.mwst_pct===19?'selected':''}>19%</option><option value="0">0%</option></select></div>
       <div class="f"><label>MwSt Monto</label><input id="ia-mwst" type="number" step="0.01" value="${(r.mwst_total||0).toFixed(2)}" oninput="updS('ia')"></div>
@@ -1010,6 +1014,7 @@ async function procFactIA(file){
 async function guardarFactIA(){
   if(!window._iaR){alert('Primero subí un PDF.');return}
   const pv=document.getElementById('ia-pv').value;if(!pv){alert('Seleccioná proveedor.');return}
+  const cat=document.getElementById('ia-cat')?.value;if(!cat){alert('Seleccioná una categoría.');return}
   const fe=document.getElementById('ia-fe').value,tp=document.getElementById('ia-tp').value,mult=tp==='gutschrift'?-1:1;
   await getOrCreateTmp(fe);
   const iaNeto=parseFloat(document.getElementById('ia-neto')?.value)||0;
@@ -1017,7 +1022,7 @@ async function guardarFactIA(){
   const iaTot=parseFloat(document.getElementById('ia-tot')?.value)||iaNeto+iaMwst;
   const iaMp=parseInt(document.getElementById('ia-mp')?.value)||7;
   const iaLineas=getInfoLis('ia-lis');
-  const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('ia-nm')?.value||'',proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ia-fv')?.value||fe,monto_neto:iaNeto*mult,mwst_porcentaje:iaMp,mwst_monto:iaMwst*mult,monto_total:iaTot*mult,tipo:tp,estado:'pendiente'}).select('id').single();
+  const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('ia-nm')?.value||'',proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ia-fv')?.value||fe,monto_neto:iaNeto*mult,mwst_porcentaje:iaMp,mwst_monto:iaMwst*mult,monto_total:iaTot*mult,tipo:tp,estado:'pendiente',categoria_id:cat}).select('id').single();
   if(error){alert(error.message);return}
   if(iaLineas.length&&fact?.id)await sb.from('lineas_factura').insert(iaLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.monto*mult,mwst_porcentaje:l.mwst,mwst_monto:0})));
   const adjFile=document.getElementById('fi-fadj')?.files[0];
@@ -1033,6 +1038,7 @@ async function newFactMan(){
     <div class="f"><label>Proveedor *</label><select id="fp" onchange="autoVenc(this)">${(provs||[]).map(p=>`<option value="${p.id}" data-d="${p.condicion_pago_dias||30}">${p.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Fecha emisión *</label><input id="ffe" type="date" value="${today()}" oninput="autoVenc(document.getElementById('fp'))"></div>
     <div class="f"><label>Fecha vencimiento *</label><input id="ffv" type="date"></div>
+    <div class="f full"><label>Categoría *</label><select id="fm-cat" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="">— Seleccionar categoría —</option>${(window._catsFact||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Neto (sin MwSt) *</label><input id="fm-neto" type="number" step="0.01" value="0" oninput="updS('fm')"></div>
     <div class="f"><label>MwSt %</label><select id="fmp" onchange="updS('fm')" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7">7%</option><option value="19">19%</option><option value="0">0%</option></select></div>
     <div class="f"><label>MwSt Monto</label><input id="fm-mwst" type="number" step="0.01" value="0" oninput="updS('fm')"></div>
@@ -1057,6 +1063,7 @@ async function newFactMan(){
   async()=>{
     const fe=document.getElementById('ffe').value,pv=document.getElementById('fp').value;
     if(!pv){alert('Seleccioná proveedor.');return}
+    const cat=document.getElementById('fm-cat')?.value;if(!cat){alert('Seleccioná una categoría.');return}
     await getOrCreateTmp(fe);
     const tp=document.getElementById('fnew-tipo').value,mult=tp==='gutschrift'?-1:1;
     const fmNeto=parseFloat(document.getElementById('fm-neto').value)||0;
@@ -1064,7 +1071,7 @@ async function newFactMan(){
     const fmTot=parseFloat(document.getElementById('fmt').value)||fmNeto+fmMwst;
     const fmMp=parseInt(document.getElementById('fmp').value)||7;
     const fmLineas=getInfoLis('fm-lis');
-    const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('fn').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ffv').value||fe,monto_neto:fmNeto*mult,mwst_porcentaje:fmMp,mwst_monto:fmMwst*mult,monto_total:fmTot*mult,tipo:tp,estado:'pendiente'}).select('id').single();
+    const{data:fact,error}=await sb.from('facturas').insert({numero_factura:document.getElementById('fn').value,proveedor_id:pv,fecha_emision:fe,fecha_vencimiento:document.getElementById('ffv').value||fe,monto_neto:fmNeto*mult,mwst_porcentaje:fmMp,mwst_monto:fmMwst*mult,monto_total:fmTot*mult,tipo:tp,estado:'pendiente',categoria_id:cat}).select('id').single();
     if(error){alert(error.message);return}
     if(fmLineas.length&&fact?.id)await sb.from('lineas_factura').insert(fmLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.monto,mwst_porcentaje:l.mwst,mwst_monto:0})));
     const mAdj=document.getElementById('fi-madj')?.files[0];
@@ -1077,13 +1084,14 @@ async function newFactMan(){
 function autoVenc(sel){const d=parseInt(sel.options[sel.selectedIndex]?.dataset.d)||30;const fe=document.getElementById('ffe').value;if(fe){const dt=new Date(fe+'T00:00:00');dt.setDate(dt.getDate()+d);document.getElementById('ffv').value=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`}}
 
 async function verFact(id){
-  const[{data:f},{data:ls}]=await Promise.all([sb.from('facturas').select('*,proveedores(nombre)').eq('id',id).single(),sb.from('lineas_factura').select('*').eq('factura_id',id)]);
+  const[{data:f},{data:ls}]=await Promise.all([sb.from('facturas').select('*,proveedores(nombre),categorias_factura(nombre,tipo)').eq('id',id).single(),sb.from('lineas_factura').select('*').eq('factura_id',id)]);
   openMo(f.tipo==='gutschrift'?'Gutschrift':'Factura',`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px">
       <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Proveedor</div><div style="font-weight:600">${f.proveedores?.nombre}</div></div>
       <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">N° Documento</div><div style="font-family:monospace">${f.numero_factura}</div></div>
       <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Emisión → Vencimiento</div><div>${fmtD(f.fecha_emision)} → ${fmtD(f.fecha_vencimiento)}</div></div>
       <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Total / Estado</div><div><strong style="font-size:17px">${fmt(f.monto_total)}</strong> ${bEst(f.estado)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Categoría</div><div><span class="bd bd-gray">${f.categorias_factura?.nombre||'—'}</span></div></div>
     </div>
     ${(ls||[]).length?`<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Líneas de detalle</div>
     <table style="font-size:12px"><thead><tr><th>Descripción</th><th>Cant.</th><th>Neto</th><th>MwSt</th></tr></thead><tbody>
@@ -1125,6 +1133,7 @@ async function editFact(id){
     <div class="f"><label>Proveedor</label><select id="ep">${provs.map(p=>`<option value="${p.id}" ${p.id===f.proveedor_id?'selected':''}>${p.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Fecha emisión</label><input id="efe" type="date" value="${f.fecha_emision}"></div>
     <div class="f"><label>Fecha vencimiento</label><input id="efv" type="date" value="${f.fecha_vencimiento}"></div>
+    <div class="f full"><label>Categoría *</label><select id="ef-cat" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="">— Seleccionar categoría —</option>${(window._catsFact||[]).map(c=>`<option value="${c.id}" ${c.id===f.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Neto (sin MwSt)</label><input id="ef-neto" type="number" step="0.01" value="${Math.abs(f.monto_neto||0).toFixed(2)}" oninput="updS('ef')"></div>
     <div class="f"><label>MwSt %</label><select id="ef-mp" onchange="updS('ef')" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7" ${(f.mwst_porcentaje||7)===7?'selected':''}>7%</option><option value="19" ${f.mwst_porcentaje===19?'selected':''}>19%</option><option value="0">0%</option></select></div>
     <div class="f"><label>MwSt Monto</label><input id="ef-mwst" type="number" step="0.01" value="${Math.abs(f.mwst_monto||0).toFixed(2)}" oninput="updS('ef')"></div>
@@ -1153,7 +1162,7 @@ async function editFact(id){
     const efTot=parseFloat(document.getElementById('ef-tot').value)||efNeto+efMwst;
     const efMp=parseInt(document.getElementById('ef-mp').value)||7;
     const efLineas=getInfoLis('ef-lis');
-    const{error}=await sb.from('facturas').update({tipo:tp,numero_factura:document.getElementById('en').value,proveedor_id:document.getElementById('ep').value,fecha_emision:document.getElementById('efe').value,fecha_vencimiento:document.getElementById('efv').value,monto_neto:efNeto*mult2,mwst_porcentaje:efMp,mwst_monto:efMwst*mult2,monto_total:efTot*mult2,estado:document.getElementById('ees').value}).eq('id',id);
+    const{error}=await sb.from('facturas').update({tipo:tp,numero_factura:document.getElementById('en').value,proveedor_id:document.getElementById('ep').value,fecha_emision:document.getElementById('efe').value,fecha_vencimiento:document.getElementById('efv').value,monto_neto:efNeto*mult2,mwst_porcentaje:efMp,mwst_monto:efMwst*mult2,monto_total:efTot*mult2,estado:document.getElementById('ees').value,categoria_id:document.getElementById('ef-cat')?.value||null}).eq('id',id);
     if(error){alert(error.message);return}
     await sb.from('lineas_factura').delete().eq('factura_id',id);
     if(efLineas.length)await sb.from('lineas_factura').insert(efLineas.map(l=>({factura_id:id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.monto*mult2,mwst_porcentaje:l.mwst,mwst_monto:0})));
