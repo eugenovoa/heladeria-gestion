@@ -2290,31 +2290,89 @@ async function loadErr(){
   const temps=await getTmps();const tm=temps.find(x=>x.id===tid);
   const desde=tm?.fecha_inicio,hasta=tm?.fecha_cierre||today();
   const sucsV=_sucs.filter(s=>!s.es_centro_produccion);
+  const c=n=>n>=0?'var(--green)':'var(--red)';
+
+  // 1. VENTAS por sucursal
   const vS={};
-  for(const s of sucsV){const{data:v}=await sb.from('cierres_caja').select('ingresos_dia').eq('sucursal_id',s.id).gte('fecha',desde).lte('fecha',hasta);vS[s.id]={nombre:s.nombre,total:(v||[]).reduce((a,x)=>a+parseFloat(x.ingresos_dia),0)}}
+  for(const s of sucsV){
+    const{data:v}=await sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta').eq('sucursal_id',s.id).gte('fecha',desde).lte('fecha',hasta);
+    vS[s.id]={nombre:s.nombre,total:(v||[]).reduce((a,x)=>a+parseFloat(x.ingresos_dia||0)+parseFloat(x.ventas_tarjeta||0),0)};
+  }
   const totV=Object.values(vS).reduce((a,v)=>a+v.total,0);
-  const{data:cd}=await sb.from('facturas').select('monto_neto').eq('tipo','factura').gte('fecha_emision',desde).lte('fecha_emision',hasta);
-  const compras=(cd||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
-  const{data:gmpD}=await sb.from('gastos').select('monto_neto,monto,categorias_gasto(nombre)').gte('fecha',desde).lte('fecha',hasta).not('categoria_id','is',null);
-  const comprasMP=(gmpD||[]).filter(g=>/materia|prima/i.test(g.categorias_gasto?.nombre||'')).reduce((a,g)=>a+parseFloat(g.monto_neto||g.monto),0);
+
+  // 2. CMV
+  const{data:factsCMV}=await sb.from('facturas').select('monto_neto,categorias_factura(tipo)').eq('tipo','factura').gte('fecha_emision',desde).lte('fecha_emision',hasta);
+  const comprasCMV=(factsCMV||[]).filter(f=>f.categorias_factura?.tipo==='cmv').reduce((a,f)=>a+parseFloat(f.monto_neto||0),0);
+  const{data:gastosCMV}=await sb.from('gastos').select('monto_neto,monto,categorias_gasto(tipo)').gte('fecha',desde).lte('fecha',hasta);
+  const comprasGCMV=(gastosCMV||[]).filter(g=>g.categorias_gasto?.tipo==='cmv').reduce((a,g)=>a+parseFloat(g.monto_neto||g.monto||0),0);
   const{data:sd}=await sb.from('stock').select('tipo,valor_total').eq('temporada_id',tid);
   const sI=(sd||[]).filter(s=>s.tipo==='inicial').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
   const sF=(sd||[]).filter(s=>s.tipo==='final').reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
-  const cmv=sI+compras+comprasMP-sF,ub=totV-cmv;
-  const{data:gd}=await sb.from('gastos').select('monto,sucursal_id,categorias_gasto(nombre,tipo)').gte('fecha',desde).lte('fecha',hasta);
-  const gSuc={};sucsV.forEach(s=>{gSuc[s.id]={nombre:s.nombre,total:0}});
-  let gGen=0,gFin=0,gAnts=0;
-  (gd||[]).forEach(g=>{const tp=g.categorias_gasto?.tipo,nm=g.categorias_gasto?.nombre||'',m=parseFloat(g.monto);
-    if(tp==='financiero'){gFin+=m;return}if(tp==='anticipo_impuesto'){gAnts+=m;return}if(tp==='impuesto')return;
-    if(/materia|prima/i.test(nm))return;
-    if(g.sucursal_id&&gSuc[g.sucursal_id])gSuc[g.sucursal_id].total+=m;else gGen+=m});
-  const totG=Object.values(gSuc).reduce((a,v)=>a+v.total,0)+gGen;
-  const ebit=ub-totG,ebt=ebit-gFin;
+  const cmv=sI+comprasCMV+comprasGCMV-sF;
+  const ub=totV-cmv;
+
+  // 3. Cargar todos los gastos con categoria
+  const{data:todosGastos}=await sb.from('gastos').select('monto,monto_neto,categoria_id,categorias_gasto(nombre,tipo)').gte('fecha',desde).lte('fecha',hasta).not('categoria_id','is',null);
+
+  // 4. Cargar todas las facturas (no cmv) con categoria
+  const{data:todasFacts}=await sb.from('facturas').select('monto_neto,categoria_id,categorias_factura(nombre,tipo)').eq('tipo','factura').gte('fecha_emision',desde).lte('fecha_emision',hasta).not('categoria_id','is',null);
+
+  // 5. Cargar recurrentes pagados
+  const{data:recsP}=await sb.from('vencimientos_recurrentes').select('monto,gasto_recurrente:gastos_recurrentes(categoria_id,categorias_gasto_recurrente(nombre,tipo))').eq('estado','pagado').gte('fecha_pago',desde).lte('fecha_pago',hasta);
+
+  // Helper: agrupar por categoría para un tipo dado
+  function agruparPorCat(tipo){
+    const cats={};
+    // Gastos al contado
+    (todosGastos||[]).filter(g=>g.categorias_gasto?.tipo===tipo).forEach(g=>{
+      const n=g.categorias_gasto?.nombre||'Sin categoría';
+      if(!cats[n])cats[n]=0;
+      cats[n]+=parseFloat(g.monto||0);
+    });
+    // Facturas
+    (todasFacts||[]).filter(f=>f.categorias_factura?.tipo===tipo).forEach(f=>{
+      const n=f.categorias_factura?.nombre||'Sin categoría';
+      if(!cats[n])cats[n]=0;
+      cats[n]+=parseFloat(f.monto_neto||0);
+    });
+    // Recurrentes pagados
+    (recsP||[]).filter(r=>r.gasto_recurrente?.categorias_gasto_recurrente?.tipo===tipo).forEach(r=>{
+      const n=r.gasto_recurrente?.categorias_gasto_recurrente?.nombre||'Sin categoría';
+      if(!cats[n])cats[n]=0;
+      cats[n]+=parseFloat(r.monto||0);
+    });
+    return cats;
+  }
+
+  // Helper: renderizar sección con detalle por categoría
+  function renderSeccion(titulo,tipo){
+    const cats=agruparPorCat(tipo);
+    const total=Object.values(cats).reduce((a,v)=>a+v,0);
+    if(total===0)return{html:'',total:0};
+    const filas=Object.entries(cats).map(([n,v])=>`<tr class="ind"><td>${n}</td><td style="color:var(--red)">(${fmt(v)})</td></tr>`).join('');
+    return{html:`<tr class="hd"><td colspan="2">${titulo}</td></tr>${filas}`,total};
+  }
+
+  const op=renderSeccion('Gastos operativos','operativo');
+  const per=renderSeccion('Personal','personal');
+  const fin=renderSeccion('Gastos financieros','financiero');
+  const ext=renderSeccion('Gastos extraordinarios','extraordinario');
+
+  const totG=op.total+per.total;
+  const ebit=ub-totG;
+  const ebt=ebit-fin.total-ext.total;
+
+  // Impuestos
   const{data:impD}=await sb.from('impuesto_temporada').select('*').eq('temporada_id',tid).maybeSingle();
-  const aliq=parseFloat(impD?.alicuota_estimada)||0,montoD=impD?.monto_definitivo!=null?parseFloat(impD.monto_definitivo):null;
+  const aliq=parseFloat(impD?.alicuota_estimada)||0;
+  const montoD=impD?.monto_definitivo!=null?parseFloat(impD.monto_definitivo):null;
   const impEst=ebt*aliq/100,impFin=montoD;
-  const saldoP=Math.max(0,(impFin||impEst)-gAnts);const neto=ebt-(impFin||impEst);
-  const c=n=>n>=0?'var(--green)':'var(--red)';
+
+  // Anticipos pagados
+  const gAnts=(todosGastos||[]).filter(g=>g.categorias_gasto?.tipo==='anticipo_impuesto').reduce((a,g)=>a+parseFloat(g.monto||0),0);
+  const saldoP=Math.max(0,(impFin||impEst)-gAnts);
+  const neto=ebt-(impFin||impEst);
+
   document.getElementById('err-body').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;max-width:600px">
       <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;white-space:nowrap">Impuesto</span>
@@ -2332,27 +2390,37 @@ async function loadErr(){
       <div style="font-size:16px;font-weight:700;margin-bottom:4px">${tm?.nombre||'ERR'}</div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Período: ${fmtD(desde)} — ${fmtD(hasta)}</div>
       <table class="stmt">
-        <tr class="hd"><td colspan="2">Ingresos por sucursal</td></tr>
+        <tr class="hd"><td colspan="2">Ventas por sucursal</td></tr>
         ${sucsV.map(s=>`<tr class="suc"><td>${s.nombre}</td><td style="color:var(--green)">${fmt(vS[s.id]?.total||0)}</td></tr>`).join('')}
         <tr class="st"><td>Total ventas</td><td style="color:${c(totV)};font-weight:700">${fmt(totV)}</td></tr>
-        <tr class="hd"><td colspan="2">CMV — consolidado</td></tr>
+
+        <tr class="hd"><td colspan="2">CMV</td></tr>
         <tr class="ind"><td>Stock inicial</td><td>${fmt(sI)}</td></tr>
-        <tr class="ind"><td>+ Compras netas facturas (sin MwSt)</td><td>${fmt(compras)}</td></tr>
-        ${comprasMP>0?`<tr class="ind"><td>+ Compras MP gastos al contado</td><td>${fmt(comprasMP)}</td></tr>`:''}
+        <tr class="ind"><td>+ Compras facturas (neto, tipo CMV)</td><td>${fmt(comprasCMV)}</td></tr>
+        ${comprasGCMV>0?`<tr class="ind"><td>+ Compras gastos al contado (CMV)</td><td>${fmt(comprasGCMV)}</td></tr>`:''}
         <tr class="ind"><td>- Stock final</td><td>(${fmt(sF)})</td></tr>
         <tr class="st"><td>CMV</td><td style="color:var(--red)">(${fmt(cmv)})</td></tr>
-        <tr class="st" style="border-top:2px solid var(--border-md)"><td>Utilidad bruta</td><td style="color:${c(ub)};font-weight:700">${fmt(ub)}</td></tr>
-        <tr class="hd"><td colspan="2">Gastos operativos</td></tr>
-        ${sucsV.filter(s=>(gSuc[s.id]?.total||0)>0).map(s=>`<tr class="suc"><td>${s.nombre}</td><td>(${fmt(gSuc[s.id].total)})</td></tr>`).join('')}
-        ${gGen>0?`<tr class="ind"><td>Gastos generales</td><td>(${fmt(gGen)})</td></tr>`:''}
-        <tr class="st"><td>Resultado operativo</td><td style="color:${c(ebit)}">${fmt(ebit)}</td></tr>
-        ${gFin>0?`<tr class="ind"><td>Gastos financieros</td><td>(${fmt(gFin)})</td></tr>`:''}
-        <tr class="st" style="border-top:2px solid var(--border-md)"><td><strong>Resultado antes de impuestos</strong></td><td style="color:${c(ebt)};font-weight:700">${fmt(ebt)}</td></tr>
+        <tr class="tt" style="font-size:15px"><td>Utilidad bruta</td><td style="color:${c(ub)}">${fmt(ub)}</td></tr>
+
+        ${op.html}
+        ${op.total>0?`<tr class="st"><td>Total gastos operativos</td><td style="color:var(--red)">(${fmt(op.total)})</td></tr>`:''}
+        ${per.html}
+        ${per.total>0?`<tr class="st"><td>Total personal</td><td style="color:var(--red)">(${fmt(per.total)})</td></tr>`:''}
+        <tr class="tt" style="font-size:15px"><td>Resultado operativo</td><td style="color:${c(ebit)}">${fmt(ebit)}</td></tr>
+
+        ${fin.html}
+        ${fin.total>0?`<tr class="st"><td>Total gastos financieros</td><td style="color:var(--red)">(${fmt(fin.total)})</td></tr>`:''}
+        ${ext.html}
+        ${ext.total>0?`<tr class="st"><td>Total gastos extraordinarios</td><td style="color:var(--red)">(${fmt(ext.total)})</td></tr>`:''}
+        <tr class="tt" style="font-size:15px"><td><strong>Resultado antes de impuestos</strong></td><td style="color:${c(ebt)};font-weight:700">${fmt(ebt)}</td></tr>
+
         <tr class="hd"><td colspan="2">Impuestos</td></tr>
-        ${impFin!=null?`<tr class="ind"><td>Impuesto definitivo <span class="bd bd-ok" style="font-size:10px">Confirmado</span></td><td style="color:var(--red)">(${fmt(impFin)})</td></tr>`:`<tr class="ind est"><td>Impuesto estimado (${aliq}%) <span class="bd bd-warn" style="font-size:10px">Estimado</span></td><td style="color:var(--amber)">(${fmt(impEst)})</td></tr>`}
-        ${gAnts>0?`<tr class="ind2"><td>Anticipos pagados</td><td style="color:var(--green)">${fmt(gAnts)}</td></tr>`:''}
+        ${impFin!=null?
+          `<tr class="ind"><td>Impuesto definitivo <span class="bd bd-ok" style="font-size:10px">Confirmado</span></td><td style="color:var(--red)">(${fmt(impFin)})</td></tr>`:
+          `<tr class="ind est"><td>Impuesto estimado (${aliq}%) <span class="bd bd-warn" style="font-size:10px">Estimado</span></td><td style="color:var(--amber)">(${fmt(impEst)})</td></tr>`}
+        ${gAnts>0?`<tr class="ind2"><td>Anticipos pagados (Vorauszahlung)</td><td style="color:var(--green)">${fmt(gAnts)}</td></tr>`:''}
         ${saldoP>0?`<tr class="ind2"><td>Saldo a pagar</td><td style="color:var(--amber)">(${fmt(saldoP)})</td></tr>`:''}
-        <tr class="tt"><td>Resultado neto</td><td style="color:${c(neto)}">${fmt(neto)}</td></tr>
+        <tr class="tt"><td><strong>Resultado neto</strong></td><td style="color:${c(neto)};font-weight:700">${fmt(neto)}</td></tr>
       </table>
       ${sF===0?'<div class="al al-warn" style="margin-top:12px">⚠ Stock final no registrado — CMV provisorio.</div>':''}
     </div>`;
