@@ -1570,6 +1570,7 @@ async function gastos(){
         <option value="efectivo">Efectivo</option>
         <option value="tarjeta_debito">Tarjeta de débito</option>
         <option value="transferencia">Transferencia</option>
+        <option value="debito_automatico">Débito automático</option>
       </select>
       <button class="btn btn-sm" onclick="document.getElementById('gst-q').value='';document.getElementById('gst-cat').value='';document.getElementById('gst-suc').value='';document.getElementById('gst-mes').value='';document.getElementById('gst-mp').value='';renderGastos()">✕ Limpiar</button>
     </div>
@@ -1608,7 +1609,7 @@ function renderGastos(){
   const lbl=['Fecha','Concepto','Categoría','Sucursal','Total'];
   const th=arr.map((c,i)=>`<th style="cursor:pointer;user-select:none" onclick="gastosSortBy('${c==='categorias_gasto'?'categoria_id':c==='sucursales'?'sucursal_id':c}')">${lbl[i]}${_gastosSortCol===(c==='categorias_gasto'?'categoria_id':c==='sucursales'?'sucursal_id':c)?(_gastosSortAsc?' ↑':' ↓'):''}</th>`).join('');
   const el=document.getElementById('gst-tabla');if(!el)return;
-  const mpLabel={efectivo:'Efectivo',tarjeta_debito:'T. Débito',transferencia:'Transf.'};
+  const mpLabel={efectivo:'Efectivo',tarjeta_debito:'T. Débito',transferencia:'Transf.',debito_automatico:'Déb. Auto.'};
   el.innerHTML=`<div style="overflow-x:auto">${!data.length?'<div class="empty">Sin gastos.</div>':`
     <table><thead><tr>${th}<th>Neto</th><th>MwSt</th><th>Medio</th><th>N° Doc.</th><th></th></tr></thead><tbody>
     ${data.map(g=>`<tr>
@@ -1672,7 +1673,7 @@ async function newGastoIA(){
         <div class="f"><label>Total Bruto</label><input id="gi-t" type="number" step="0.01" value="0" oninput="updS('gi')"></div>
         <div class="f"><label>Categoría</label><select id="gi-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
         <div class="f"><label>Sucursal</label><select id="gi-s"><option value="">General</option>${sucOpts()}</select></div>
-        <div class="f"><label>Medio de pago</label><select id="gi-mp2" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo">Efectivo</option><option value="tarjeta_debito">Tarjeta de débito</option><option value="transferencia">Transferencia</option></select></div>
+        <div class="f"><label>Medio de pago</label><select id="gi-mp2" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo">Efectivo</option><option value="tarjeta_debito">Tarjeta de débito</option><option value="transferencia">Transferencia</option><option value="debito_automatico">Débito automático</option></select></div>
       </div>
       <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
       <div style="display:grid;grid-template-columns:1fr 70px 75px 90px 32px;gap:6px;padding:0 4px;margin-bottom:4px">
@@ -1742,7 +1743,7 @@ async function newGastoMan(){
     <div class="f"><label>Total Bruto</label><input id="gm-t" type="number" step="0.01" value="0" oninput="updS('gm')"></div>
     <div class="f"><label>Categoría</label><select id="gm-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="gm-s"><option value="">General</option>${sucOpts()}</select></div>
-    <div class="f"><label>Medio de pago</label><select id="gm-mp" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo">Efectivo</option><option value="tarjeta_debito">Tarjeta de débito</option><option value="transferencia">Transferencia</option></select></div>
+    <div class="f"><label>Medio de pago</label><select id="gm-mp" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo">Efectivo</option><option value="tarjeta_debito">Tarjeta de débito</option><option value="transferencia">Transferencia</option><option value="debito_automatico">Débito automático</option></select></div>
     <div class="f full"><label>Notas</label><input id="gm-no"></div>
   </div>
   <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
@@ -1800,7 +1801,7 @@ async function editGasto(id){
     <div class="f"><label>Total Bruto</label><input id="eg-t" type="number" step="0.01" value="${g.monto||0}" oninput="updS('eg')"></div>
     <div class="f"><label>Categoría</label><select id="eg-cat"><option value="">— Seleccionar —</option>${cats.map(c=>`<option value="${c.id}" ${c.id===g.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="eg-s"><option value="">General</option>${sucOpts()}</select></div>
-    <div class="f"><label>Medio de pago</label><select id="eg-mpago" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo" ${(g.medio_pago||'efectivo')==='efectivo'?'selected':''}>Efectivo</option><option value="tarjeta_debito" ${g.medio_pago==='tarjeta_debito'?'selected':''}>Tarjeta de débito</option><option value="transferencia" ${g.medio_pago==='transferencia'?'selected':''}>Transferencia</option></select></div>
+    <div class="f"><label>Medio de pago</label><select id="eg-mpago" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo" ${(g.medio_pago||'efectivo')==='efectivo'?'selected':''}>Efectivo</option><option value="tarjeta_debito" ${g.medio_pago==='tarjeta_debito'?'selected':''}>Tarjeta de débito</option><option value="transferencia" ${g.medio_pago==='transferencia'?'selected':''}>Transferencia</option><option value="debito_automatico" ${g.medio_pago==='debito_automatico'?'selected':''}>Débito automático</option></select></div>
     <div class="f full"><label>Notas</label><input id="eg-no" value="${g.notas||''}"></div>
   </div>
   <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
@@ -1924,7 +1925,7 @@ async function nuevoCierre(){
     if(tar>0&&cierre?.id){
       const comision=parseFloat((tar*0.0079).toFixed(2));
       const fd=f.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
-      await sb.from('gastos').insert({fecha:f,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:document.getElementById('nc-s').value||null,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a',cierre_caja_id:cierre.id});
+      await sb.from('gastos').insert({fecha:f,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:document.getElementById('nc-s').value||null,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a',cierre_caja_id:cierre.id,medio_pago:'debito_automatico'});
     }
     closeMo();caja();
   });
@@ -1978,7 +1979,7 @@ async function editCierre(id){
     }else if(gastoEx&&tar===0){
       await sb.from('gastos').delete().eq('cierre_caja_id',id);
     }else if(!gastoEx&&tar>0){
-      await sb.from('gastos').insert({fecha:nuevaFecha,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:nuevaSuc,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a',cierre_caja_id:id});
+      await sb.from('gastos').insert({fecha:nuevaFecha,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:nuevaSuc,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a',cierre_caja_id:id,medio_pago:'debito_automatico'});
     }
     closeMo();caja();
   });
