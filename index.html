@@ -1565,7 +1565,13 @@ async function gastos(){
         ${(_sucs||[]).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}
       </select>
       <input id="gst-mes" type="month" onchange="renderGastos()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
-      <button class="btn btn-sm" onclick="document.getElementById('gst-q').value='';document.getElementById('gst-cat').value='';document.getElementById('gst-suc').value='';document.getElementById('gst-mes').value='';renderGastos()">✕ Limpiar</button>
+      <select id="gst-mp" onchange="renderGastos()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+        <option value="">Todos los medios</option>
+        <option value="efectivo">Efectivo</option>
+        <option value="tarjeta_debito">Tarjeta de débito</option>
+        <option value="transferencia">Transferencia</option>
+      </select>
+      <button class="btn btn-sm" onclick="document.getElementById('gst-q').value='';document.getElementById('gst-cat').value='';document.getElementById('gst-suc').value='';document.getElementById('gst-mes').value='';document.getElementById('gst-mp').value='';renderGastos()">✕ Limpiar</button>
     </div>
     <div id="gst-tabla"></div>
   </div>`;
@@ -1583,11 +1589,13 @@ function renderGastos(){
   const cat=document.getElementById('gst-cat')?.value||'';
   const suc=document.getElementById('gst-suc')?.value||'';
   const mes=document.getElementById('gst-mes')?.value||'';
+  const mp=document.getElementById('gst-mp')?.value||'';
   let data=_gastosData.filter(g=>{
     if(q&&!(g.concepto||'').toLowerCase().includes(q)&&!(g.numero_documento||'').toLowerCase().includes(q))return false;
     if(cat&&g.categoria_id!==cat)return false;
     if(suc&&g.sucursal_id!==suc)return false;
     if(mes&&!(g.fecha||'').startsWith(mes))return false;
+    if(mp&&(g.medio_pago||'efectivo')!==mp)return false;
     return true;
   });
   const col=_gastosSortCol;const asc=_gastosSortAsc;
@@ -1600,8 +1608,9 @@ function renderGastos(){
   const lbl=['Fecha','Concepto','Categoría','Sucursal','Total'];
   const th=arr.map((c,i)=>`<th style="cursor:pointer;user-select:none" onclick="gastosSortBy('${c==='categorias_gasto'?'categoria_id':c==='sucursales'?'sucursal_id':c}')">${lbl[i]}${_gastosSortCol===(c==='categorias_gasto'?'categoria_id':c==='sucursales'?'sucursal_id':c)?(_gastosSortAsc?' ↑':' ↓'):''}</th>`).join('');
   const el=document.getElementById('gst-tabla');if(!el)return;
+  const mpLabel={efectivo:'Efectivo',tarjeta_debito:'T. Débito',transferencia:'Transf.'};
   el.innerHTML=`<div style="overflow-x:auto">${!data.length?'<div class="empty">Sin gastos.</div>':`
-    <table><thead><tr>${th}<th>Neto</th><th>MwSt</th><th>N° Doc.</th><th></th></tr></thead><tbody>
+    <table><thead><tr>${th}<th>Neto</th><th>MwSt</th><th>Medio</th><th>N° Doc.</th><th></th></tr></thead><tbody>
     ${data.map(g=>`<tr>
       <td>${fmtD(g.fecha)}</td>
       <td>${g.concepto||'—'}</td>
@@ -1610,6 +1619,7 @@ function renderGastos(){
       <td style="font-weight:600;color:var(--red)">${fmt(g.monto)}</td>
       <td>${fmt(g.monto_neto||g.monto)}</td>
       <td>${(g.mwst_monto||0)>0?fmt(g.mwst_monto):'—'}</td>
+      <td><span class="bd ${g.medio_pago==='tarjeta_debito'?'bd-info':g.medio_pago==='transferencia'?'bd-pur':'bd-gray'}" style="font-size:11px">${mpLabel[g.medio_pago||'efectivo']||g.medio_pago||'Efectivo'}</span></td>
       <td style="font-size:11px;font-family:monospace;color:var(--text-muted)">${g.numero_documento||'—'}</td>
       <td><div style="display:flex;gap:5px">${g.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${g.adjunto_url}','${((g.concepto||'gasto')+' - '+(g.fecha||'')).replace(/'/g,"\\'")}')">📎</button>`:''}<button class="btn btn-sm" onclick="verGasto('${g.id}')">Ver</button>${!g.cierre_caja_id?`<button class="btn btn-sm" onclick="editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button>`:''}</div></td>
     </tr>`).join('')}
@@ -1662,6 +1672,7 @@ async function newGastoIA(){
         <div class="f"><label>Total Bruto</label><input id="gi-t" type="number" step="0.01" value="0" oninput="updS('gi')"></div>
         <div class="f"><label>Categoría</label><select id="gi-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
         <div class="f"><label>Sucursal</label><select id="gi-s"><option value="">General</option>${sucOpts()}</select></div>
+        <div class="f"><label>Medio de pago</label><select id="gi-mp2" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo">Efectivo</option><option value="tarjeta_debito">Tarjeta de débito</option><option value="transferencia">Transferencia</option></select></div>
       </div>
       <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
       <div style="display:grid;grid-template-columns:1fr 70px 75px 90px 32px;gap:6px;padding:0 4px;margin-bottom:4px">
@@ -1688,7 +1699,7 @@ async function newGastoIA(){
     const giTot=parseFloat(document.getElementById('gi-t').value)||giNeto+giMwst;
     const giMp=parseInt(document.getElementById('gi-mp').value)||7;
     const giLineas=getInfoLis('gi-lis');
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:giTot,monto_neto:giNeto,mwst_porcentaje:giMp,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,lineas_json:JSON.stringify(giLineas),numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:giTot,monto_neto:giNeto,mwst_porcentaje:giMp,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,medio_pago:document.getElementById('gi-mp2').value||'efectivo',lineas_json:JSON.stringify(giLineas),numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gi-adj').files[0];
     if(file&&row?.id){const concepto=document.getElementById('gi-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,nombreArch,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
@@ -1731,6 +1742,7 @@ async function newGastoMan(){
     <div class="f"><label>Total Bruto</label><input id="gm-t" type="number" step="0.01" value="0" oninput="updS('gm')"></div>
     <div class="f"><label>Categoría</label><select id="gm-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="gm-s"><option value="">General</option>${sucOpts()}</select></div>
+    <div class="f"><label>Medio de pago</label><select id="gm-mp" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo">Efectivo</option><option value="tarjeta_debito">Tarjeta de débito</option><option value="transferencia">Transferencia</option></select></div>
     <div class="f full"><label>Notas</label><input id="gm-no"></div>
   </div>
   <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
@@ -1757,7 +1769,7 @@ async function newGastoMan(){
     const gmTot=parseFloat(document.getElementById('gm-t').value)||gmNeto+gmMwst;
     const gmMp=parseInt(document.getElementById('gm-p').value)||7;
     const gmLineas=getInfoLis('gm-lis');
-    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,numero_documento:document.getElementById('gm-nd')?.value||null,categoria_id:document.getElementById('gm-cat').value||null,monto:gmTot,monto_neto:gmNeto,mwst_porcentaje:gmMp,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,notas:document.getElementById('gm-no').value,lineas_json:JSON.stringify(gmLineas)}).select('id').single();
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,numero_documento:document.getElementById('gm-nd')?.value||null,categoria_id:document.getElementById('gm-cat').value||null,monto:gmTot,monto_neto:gmNeto,mwst_porcentaje:gmMp,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,medio_pago:document.getElementById('gm-mp').value||'efectivo',notas:document.getElementById('gm-no').value,lineas_json:JSON.stringify(gmLineas)}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gm-adj').files[0];
     if(file&&row?.id){const concepto=document.getElementById('gm-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,nombreArch,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
@@ -1788,6 +1800,7 @@ async function editGasto(id){
     <div class="f"><label>Total Bruto</label><input id="eg-t" type="number" step="0.01" value="${g.monto||0}" oninput="updS('eg')"></div>
     <div class="f"><label>Categoría</label><select id="eg-cat"><option value="">— Seleccionar —</option>${cats.map(c=>`<option value="${c.id}" ${c.id===g.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
     <div class="f"><label>Sucursal</label><select id="eg-s"><option value="">General</option>${sucOpts()}</select></div>
+    <div class="f"><label>Medio de pago</label><select id="eg-mpago" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo" ${(g.medio_pago||'efectivo')==='efectivo'?'selected':''}>Efectivo</option><option value="tarjeta_debito" ${g.medio_pago==='tarjeta_debito'?'selected':''}>Tarjeta de débito</option><option value="transferencia" ${g.medio_pago==='transferencia'?'selected':''}>Transferencia</option></select></div>
     <div class="f full"><label>Notas</label><input id="eg-no" value="${g.notas||''}"></div>
   </div>
   <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
@@ -1825,6 +1838,7 @@ async function editGasto(id){
       categoria_id:document.getElementById('eg-cat').value||null,
       monto:egTot,monto_neto:egNeto,mwst_porcentaje:egMp,mwst_monto:egMwst,
       sucursal_id:document.getElementById('eg-s').value||null,
+      medio_pago:document.getElementById('eg-mpago').value||'efectivo',
       notas:document.getElementById('eg-no').value,
       lineas_json:JSON.stringify(egLineas)
     }).eq('id',id);
