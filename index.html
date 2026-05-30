@@ -922,28 +922,28 @@ function renderFactsTable(){
         <select id="ft" onchange="filtFact()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="">Fact. y Gutsch.</option><option value="factura">Facturas</option><option value="gutschrift">Gutschriften</option></select>
       </div>
       <div style="overflow-x:auto"><table id="ft-tbl"><thead><tr>
-        <th onclick="sortFacts('tipo')" style="${thStyle}">Tipo${arrow('tipo')}</th>
-        <th>N° Doc.</th>
-        <th onclick="sortFacts('proveedores')" style="${thStyle}">Proveedor${arrow('proveedores')}</th>
-        <th>Categoría</th>
-        <th onclick="sortFacts('fecha_emision')" style="${thStyle}">Emisión${arrow('fecha_emision')}</th>
-        <th onclick="sortFacts('fecha_vencimiento')" style="${thStyle}">Vencimiento${arrow('fecha_vencimiento')}</th>
-        <th>Total</th>
-        <th onclick="sortFacts('estado')" style="${thStyle}">Estado${arrow('estado')}</th>
+        <th onclick="sortFacts('tipo')" style="${thStyle};text-align:center">Tipo${arrow('tipo')}</th>
+        <th style="text-align:center">N° Doc.</th>
+        <th onclick="sortFacts('proveedores')" style="${thStyle};text-align:center">Proveedor${arrow('proveedores')}</th>
+        <th style="text-align:center">Categoría</th>
+        <th onclick="sortFacts('fecha_emision')" style="${thStyle};text-align:center">Emisión${arrow('fecha_emision')}</th>
+        <th onclick="sortFacts('fecha_vencimiento')" style="${thStyle};text-align:center">Vencimiento${arrow('fecha_vencimiento')}</th>
+        <th style="text-align:center">Total</th>
+        <th onclick="sortFacts('estado')" style="${thStyle};text-align:center">Estado${arrow('estado')}</th>
         <th style="width:32px"></th>
         <th></th>
       </tr></thead><tbody>
       ${data.map(f=>`<tr data-n="${(f.proveedores?.nombre||'').toLowerCase()}" data-d="${(f.numero_factura||'').toLowerCase()}" data-e="${f.estado||''}" data-t="${f.tipo||'factura'}">
-        <td>${f.tipo==='gutschrift'?'<span class="bd bd-pur">Gutschrift</span>':'<span class="bd bd-info">Factura</span>'}</td>
-        <td>${f.numero_factura&&f.numero_factura.length>14?`<span style="cursor:pointer;font-family:monospace;font-size:12px" onclick="navigator.clipboard.writeText('${(f.numero_factura||'').replace(/'/g,"\\'")}');this.textContent='¡Copiado!';setTimeout(()=>this.textContent='${(f.numero_factura||'').substring(0,14).replace(/'/g,"\\'")}...',1500)">${f.numero_factura.substring(0,14)}...</span>`:`<span style="font-family:monospace;font-size:12px">${f.numero_factura||'—'}</span>`}</td>
-        <td><strong>${f.proveedores?.nombre||'—'}</strong></td>
-        <td><span class="bd bd-gray" style="font-size:11px;white-space:nowrap">${f.categorias_factura?.nombre||'—'}</span></td>
-        <td style="white-space:nowrap">${fmtD(f.fecha_emision)}</td>
-        <td style="color:${f.estado==='vencida'?'var(--red)':''};font-weight:${f.estado==='vencida'?'600':'400'};white-space:nowrap">${fmtD(f.fecha_vencimiento)}</td>
-        <td style="font-weight:600;white-space:nowrap">${fmt(f.monto_total)}</td>
-        <td>${bEst(f.estado)}</td>
+        <td style="text-align:center">${f.tipo==='gutschrift'?'<span class="bd bd-pur">Gutschrift</span>':'<span class="bd bd-info">Factura</span>'}</td>
+        <td style="text-align:center">${f.numero_factura&&f.numero_factura.length>14?`<span style="cursor:pointer;font-family:monospace;font-size:12px" onclick="navigator.clipboard.writeText('${(f.numero_factura||'').replace(/'/g,"\\'")}');this.textContent='¡Copiado!';setTimeout(()=>this.textContent='${(f.numero_factura||'').substring(0,14).replace(/'/g,"\\'")}...',1500)">${f.numero_factura.substring(0,14)}...</span>`:`<span style="font-family:monospace;font-size:12px">${f.numero_factura||'—'}</span>`}</td>
+        <td style="text-align:center"><strong>${f.proveedores?.nombre||'—'}</strong></td>
+        <td style="text-align:center"><span class="bd bd-gray" style="font-size:11px;white-space:nowrap">${f.categorias_factura?.nombre||'—'}</span></td>
+        <td style="text-align:center;white-space:nowrap">${fmtD(f.fecha_emision)}</td>
+        <td style="text-align:center;color:${f.estado==='vencida'?'var(--red)':''};font-weight:${f.estado==='vencida'?'600':'400'};white-space:nowrap">${fmtD(f.fecha_vencimiento)}</td>
+        <td style="text-align:center;font-weight:600;white-space:nowrap">${fmt(f.monto_total)}</td>
+        <td style="text-align:center">${bEst(f.estado)}</td>
         <td style="width:32px;text-align:center">${f.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${f.adjunto_url}','${((f.proveedores?.nombre||'factura')+' - '+(f.numero_factura||f.id)).replace(/'/g,"\\'")}')">📎</button>`:''}</td>
-        <td style="white-space:nowrap"><div style="display:flex;gap:4px"><button class="btn btn-sm" onclick="verFact('${f.id}')">Ver</button><button class="btn btn-sm btn-g" onclick="editFact('${f.id}')">Editar</button></div></td>
+        <td style="white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center"><button class="btn btn-sm" onclick="verFact('${f.id}')">Ver</button><button class="btn btn-sm btn-g" onclick="editFact('${f.id}')">Editar</button></div></td>
       </tr>`).join('')}
       </tbody></table></div>
     </div>
