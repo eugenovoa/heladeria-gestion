@@ -930,18 +930,20 @@ function renderFactsTable(){
         <th onclick="sortFacts('fecha_vencimiento')" style="${thStyle}">Vencimiento${arrow('fecha_vencimiento')}</th>
         <th>Total</th>
         <th onclick="sortFacts('estado')" style="${thStyle}">Estado${arrow('estado')}</th>
+        <th style="width:32px"></th>
         <th></th>
       </tr></thead><tbody>
       ${data.map(f=>`<tr data-n="${(f.proveedores?.nombre||'').toLowerCase()}" data-d="${(f.numero_factura||'').toLowerCase()}" data-e="${f.estado||''}" data-t="${f.tipo||'factura'}">
         <td>${f.tipo==='gutschrift'?'<span class="bd bd-pur">Gutschrift</span>':'<span class="bd bd-info">Factura</span>'}</td>
         <td>${f.numero_factura&&f.numero_factura.length>14?`<span style="cursor:pointer;font-family:monospace;font-size:12px" onclick="navigator.clipboard.writeText('${(f.numero_factura||'').replace(/'/g,"\\'")}');this.textContent='¡Copiado!';setTimeout(()=>this.textContent='${(f.numero_factura||'').substring(0,14).replace(/'/g,"\\'")}...',1500)">${f.numero_factura.substring(0,14)}...</span>`:`<span style="font-family:monospace;font-size:12px">${f.numero_factura||'—'}</span>`}</td>
-        <td><strong>${f.proveedores?.nombre||'—'}</strong></td>
-        <td><span class="bd bd-gray" style="font-size:11px">${f.categorias_factura?.nombre||'—'}</span></td>
-        <td>${fmtD(f.fecha_emision)}</td>
-        <td style="color:${f.estado==='vencida'?'var(--red)':''};font-weight:${f.estado==='vencida'?'600':'400'}">${fmtD(f.fecha_vencimiento)}</td>
-        <td style="font-weight:600">${fmt(f.monto_total)}</td>
+        <td style="text-align:center"><strong>${f.proveedores?.nombre||'—'}</strong></td>
+        <td><span class="bd bd-gray" style="font-size:11px;white-space:nowrap">${f.categorias_factura?.nombre||'—'}</span></td>
+        <td style="white-space:nowrap">${fmtD(f.fecha_emision)}</td>
+        <td style="color:${f.estado==='vencida'?'var(--red)':''};font-weight:${f.estado==='vencida'?'600':'400'};white-space:nowrap">${fmtD(f.fecha_vencimiento)}</td>
+        <td style="font-weight:600;white-space:nowrap">${fmt(f.monto_total)}</td>
         <td>${bEst(f.estado)}</td>
-        <td><div style="display:flex;gap:4px">${f.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${f.adjunto_url}','${((f.proveedores?.nombre||'factura')+' - '+(f.numero_factura||f.id)).replace(/'/g,"\\'")}')">📎</button>`:''}<button class="btn btn-sm" onclick="verFact('${f.id}')">Ver</button><button class="btn btn-sm btn-g" onclick="editFact('${f.id}')">Editar</button></div></td>
+        <td style="width:32px;text-align:center">${f.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${f.adjunto_url}','${((f.proveedores?.nombre||'factura')+' - '+(f.numero_factura||f.id)).replace(/'/g,"\\'")}')">📎</button>`:''}</td>
+        <td style="white-space:nowrap"><div style="display:flex;gap:4px"><button class="btn btn-sm" onclick="verFact('${f.id}')">Ver</button><button class="btn btn-sm btn-g" onclick="editFact('${f.id}')">Editar</button></div></td>
       </tr>`).join('')}
       </tbody></table></div>
     </div>
