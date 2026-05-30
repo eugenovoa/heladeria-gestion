@@ -642,7 +642,7 @@ async function loadDashboard(){
   const en7s=`${en7.getFullYear()}-${String(en7.getMonth()+1).padStart(2,'0')}-${String(en7.getDate()).padStart(2,'0')}`;
 
   // Build ventas query with optional sucursal filter
-  let qV=sb.from('cierres_caja').select('ingresos_dia,fecha,sucursal_id').gte('fecha',desde).lte('fecha',hasta).order('fecha');
+  let qV=sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta,fecha,sucursal_id').gte('fecha',desde).lte('fecha',hasta).order('fecha');
   if(sucId)qV=qV.eq('sucursal_id',sucId);
   let qVm=sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta').gte('fecha',desde).lte('fecha',hasta);
   if(sucId)qVm=qVm.eq('sucursal_id',sucId);
@@ -707,7 +707,7 @@ async function loadDashboard(){
     label:s.nombre,
     data:fechas.map(f=>{
       const row=(vc||[]).find(v=>v.fecha===f&&v.sucursal_id===s.id);
-      return parseFloat(row?.ingresos_dia)||0;
+      return (parseFloat(row?.ingresos_dia)||0)+(parseFloat(row?.ventas_tarjeta)||0);
     }),
     backgroundColor:palette[i]||'rgba(180,180,180,0.8)',
     borderRadius:4,
@@ -752,7 +752,7 @@ async function loadDashboard(){
     const colores=['rgba(59,130,246,.85)','rgba(34,197,94,.85)','rgba(251,146,60,.85)','rgba(168,85,247,.85)'];
     const totPorSuc=sucNoCP.map((s,i)=>({
       nombre:s.nombre,
-      total:(vc||[]).filter(v=>v.sucursal_id===s.id).reduce((a,v)=>a+parseFloat(v.ingresos_dia||0),0),
+      total:(vc||[]).filter(v=>v.sucursal_id===s.id).reduce((a,v)=>a+parseFloat(v.ingresos_dia||0)+parseFloat(v.ventas_tarjeta||0),0),
       color:colores[i]
     })).filter(s=>s.total>0);
     if(totPorSuc.length){
