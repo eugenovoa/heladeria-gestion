@@ -279,7 +279,7 @@ tbody tr:hover td{background:var(--surface2)}
   </div>
 </div>
 
-<div class="mo" id="mo" onclick="if(event.target===this){if(window._moIsIA){if(confirm('¿Cancelar? Los datos ingresados se perderán.'))closeMo();}else closeMo();}">
+<div class="mo" id="mo" onclick="if(event.target===this){if(window._moIsIA){if(confirm('¿Querés salir? Los datos ingresados se perderán.'))closeMo();}else closeMo();}">
   <div class="mo-box">
     <h2 id="mo-title"></h2>
     <div id="mo-body"></div>
@@ -1914,6 +1914,20 @@ async function nuevoCierre(){
     <div class="f"><label>Efectivo final contado</label><input id="nc-ef" type="number" step="0.01" value="0" oninput="calcDifCierre()"></div>
     <div class="f"><label>Diferencia</label><input id="nc-dif" type="number" step="0.01" value="0" readonly style="background:var(--surface2)"></div>
     <div class="f full"><label>Observaciones</label><input id="nc-obs"></div>
+  </div>
+  <div id="nc-summary" style="display:flex;gap:0;margin-top:12px;border-radius:var(--r);overflow:hidden;border:1px solid var(--border-md)">
+    <div style="flex:1;padding:12px 16px;background:var(--surface2);text-align:center">
+      <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Efectivo</div>
+      <div id="nc-sv-ef" style="font-size:18px;font-weight:700;color:var(--green)">€0,00</div>
+    </div>
+    <div style="flex:1;padding:12px 16px;background:var(--surface2);text-align:center;border-left:1px solid var(--border-md)">
+      <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Tarjeta</div>
+      <div id="nc-sv-tar" style="font-size:18px;font-weight:700;color:var(--blue)">€0,00</div>
+    </div>
+    <div style="flex:1;padding:12px 16px;background:var(--surface);text-align:center;border-left:1px solid var(--border-md)">
+      <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Total ventas</div>
+      <div id="nc-sv-tot" style="font-size:18px;font-weight:700;color:var(--amber)">€0,00</div>
+    </div>
   </div>`,
   async()=>{
     const f=document.getElementById('nc-f').value;if(!f){alert('Completá la fecha.');return}
@@ -1939,10 +1953,18 @@ function calcDifCierre(){
   const pfx=document.getElementById('nc-ei')?'nc':'ec';
   const ei=parseFloat(document.getElementById(`${pfx}-ei`)?.value)||0;
   const ing=parseFloat(document.getElementById(`${pfx}-ing`)?.value)||0;
+  const tar=parseFloat(document.getElementById(`${pfx}-tar`)?.value)||0;
   const eg=parseFloat(document.getElementById(`${pfx}-eg`)?.value)||0;
   const ef=parseFloat(document.getElementById(`${pfx}-ef`)?.value)||0;
   const dif=document.getElementById(`${pfx}-dif`);
   if(dif)dif.value=(ef-(ei+ing-eg)).toFixed(2);
+  // Actualizar resumen ventas
+  const svEf=document.getElementById(`${pfx}-sv-ef`);
+  const svTar=document.getElementById(`${pfx}-sv-tar`);
+  const svTot=document.getElementById(`${pfx}-sv-tot`);
+  if(svEf)svEf.textContent=fmt(ing);
+  if(svTar)svTar.textContent=fmt(tar);
+  if(svTot)svTot.textContent=fmt(ing+tar);
 }
 
 async function editCierre(id){
@@ -1953,11 +1975,25 @@ async function editCierre(id){
     <div class="f"><label>Sucursal</label><select id="ec-s"><option value="">General</option>${sucOpts()}</select></div>
     <div class="f"><label>Efectivo inicial</label><input id="ec-ei" type="number" step="0.01" value="${c.efectivo_inicial||0}" oninput="calcDifCierre()"></div>
     <div class="f"><label>Ingresos del día (efectivo)</label><input id="ec-ing" type="number" step="0.01" value="${c.ingresos_dia||0}" oninput="calcDifCierre()"></div>
-    <div class="f"><label>Ventas tarjeta</label><input id="ec-tar" type="number" step="0.01" value="${c.ventas_tarjeta||0}"></div>
+    <div class="f"><label>Ventas tarjeta</label><input id="ec-tar" type="number" step="0.01" value="${c.ventas_tarjeta||0}" oninput="calcDifCierre()"></div>
     <div class="f"><label>Egresos efectivo</label><input id="ec-eg" type="number" step="0.01" value="${c.egresos_efectivo||0}" oninput="calcDifCierre()"></div>
     <div class="f"><label>Efectivo final contado</label><input id="ec-ef" type="number" step="0.01" value="${c.efectivo_final_contado||0}" oninput="calcDifCierre()"></div>
     <div class="f"><label>Diferencia</label><input id="ec-dif" type="number" step="0.01" value="${c.diferencia_caja||0}"></div>
     <div class="f full"><label>Observaciones</label><input id="ec-obs" value="${c.observaciones||''}"></div>
+  </div>
+  <div id="ec-summary" style="display:flex;gap:0;margin-top:12px;border-radius:var(--r);overflow:hidden;border:1px solid var(--border-md)">
+    <div style="flex:1;padding:12px 16px;background:var(--surface2);text-align:center">
+      <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Efectivo</div>
+      <div id="ec-sv-ef" style="font-size:18px;font-weight:700;color:var(--green)">${fmt(c.ingresos_dia||0)}</div>
+    </div>
+    <div style="flex:1;padding:12px 16px;background:var(--surface2);text-align:center;border-left:1px solid var(--border-md)">
+      <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Tarjeta</div>
+      <div id="ec-sv-tar" style="font-size:18px;font-weight:700;color:var(--blue)">${fmt(c.ventas_tarjeta||0)}</div>
+    </div>
+    <div style="flex:1;padding:12px 16px;background:var(--surface);text-align:center;border-left:1px solid var(--border-md)">
+      <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Total ventas</div>
+      <div id="ec-sv-tot" style="font-size:18px;font-weight:700;color:var(--amber)">${fmt((c.ingresos_dia||0)+(c.ventas_tarjeta||0))}</div>
+    </div>
   </div>`,
   async()=>{
     const tar=parseFloat(document.getElementById('ec-tar').value)||0;
