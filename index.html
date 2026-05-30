@@ -936,7 +936,7 @@ function renderFactsTable(){
       ${data.map(f=>`<tr data-n="${(f.proveedores?.nombre||'').toLowerCase()}" data-d="${(f.numero_factura||'').toLowerCase()}" data-e="${f.estado||''}" data-t="${f.tipo||'factura'}">
         <td>${f.tipo==='gutschrift'?'<span class="bd bd-pur">Gutschrift</span>':'<span class="bd bd-info">Factura</span>'}</td>
         <td>${f.numero_factura&&f.numero_factura.length>14?`<span style="cursor:pointer;font-family:monospace;font-size:12px" onclick="navigator.clipboard.writeText('${(f.numero_factura||'').replace(/'/g,"\\'")}');this.textContent='¡Copiado!';setTimeout(()=>this.textContent='${(f.numero_factura||'').substring(0,14).replace(/'/g,"\\'")}...',1500)">${f.numero_factura.substring(0,14)}...</span>`:`<span style="font-family:monospace;font-size:12px">${f.numero_factura||'—'}</span>`}</td>
-        <td style="text-align:center"><strong>${f.proveedores?.nombre||'—'}</strong></td>
+        <td><strong>${f.proveedores?.nombre||'—'}</strong></td>
         <td><span class="bd bd-gray" style="font-size:11px;white-space:nowrap">${f.categorias_factura?.nombre||'—'}</span></td>
         <td style="white-space:nowrap">${fmtD(f.fecha_emision)}</td>
         <td style="color:${f.estado==='vencida'?'var(--red)':''};font-weight:${f.estado==='vencida'?'600':'400'};white-space:nowrap">${fmtD(f.fecha_vencimiento)}</td>
