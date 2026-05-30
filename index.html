@@ -125,9 +125,11 @@ tbody tr:hover td{background:var(--surface2)}
 .chip.fact:hover{border-color:var(--border-md)}
 .chip.venc{background:var(--red-bg);border-color:#fca5a5}
 .chip.rec{background:var(--purple-bg);border-color:#c4b5fd}
+.chip.rec-venc{background:#fff7ed;border-color:#fdba74}
 .chip .cp{font-size:11px;font-weight:600;color:var(--text)}
 .chip.venc .cp{color:var(--red)}
 .chip.rec .cp{color:var(--purple)}
+.chip.rec-venc .cp{color:var(--amber)}
 .chip .cm{font-size:11px;color:var(--text-muted)}
 .stmt{width:100%;font-size:13px;border-collapse:collapse}
 .stmt td{padding:8px}
@@ -1285,7 +1287,7 @@ async function vencimientos(){
     return`<div class="wk-day${ds===hS?' today':''}">
       <div class="wk-dn">${dias[i]} ${d.getDate()}</div>
       ${ff.map(f=>`<div class="chip ${f.estado==='vencida'?'venc':'fact'}" onclick="newPago('${f.id}',${Math.abs(f.monto_total)})"><div class="cp">${f.numero_factura||f.proveedores?.nombre||'—'}</div><div class="cm">${fmt(f.monto_total)}</div></div>`).join('')}
-      ${rr.map(r=>`<div class="chip rec" onclick="pagarRec('${r.id}','${(r.gasto_recurrente?.concepto||'').replace(/'/g,"\\'")}',${r.monto})"><div class="cp">↻ ${r.gasto_recurrente?.concepto||'—'}</div><div class="cm">${fmt(r.monto)} · ${sucNom(r.gasto_recurrente?.sucursal_id)}</div></div>`).join('')}
+      ${rr.map(r=>`<div class="chip ${r.estado==='vencido'?'rec-venc':'rec'}" onclick="pagarRec('${r.id}','${(r.gasto_recurrente?.concepto||'').replace(/'/g,"\\'")}',${r.monto})"><div class="cp">↻ ${r.gasto_recurrente?.concepto||'—'}</div><div class="cm">${fmt(r.monto)} · ${sucNom(r.gasto_recurrente?.sucursal_id)}</div></div>`).join('')}
     </div>`;
   }).join('');
   const semF=(facts||[]).filter(f=>f.fecha_vencimiento>=lS&&f.fecha_vencimiento<=dS).reduce((a,f)=>a+parseFloat(f.monto_total),0);
@@ -1296,12 +1298,17 @@ async function vencimientos(){
     <div style="margin-bottom:10px;font-size:13px;color:var(--text-muted);font-weight:500">Semana del ${lun.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})} al ${dom.toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'})}</div>
     <div style="display:flex;gap:12px;margin-bottom:10px;font-size:12px;flex-wrap:wrap">
       <span><span style="display:inline-block;width:10px;height:10px;background:var(--surface2);border:1px solid var(--border);border-radius:2px;margin-right:4px"></span>Factura (clic para ver)</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:var(--purple-bg);border:1px solid #c4b5fd;border-radius:2px;margin-right:4px"></span>Gasto recurrente (clic para pagar)</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--purple-bg);border:1px solid #c4b5fd;border-radius:2px;margin-right:4px"></span>Recurrente pendiente</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#fff7ed;border:1px solid #fdba74;border-radius:2px;margin-right:4px"></span>Recurrente vencido</span>
     </div>
     <div class="wk-grid">${cols}</div>
     <div class="card" style="padding:14px 20px"><div style="display:flex;gap:24px;flex-wrap:wrap">
       <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Esta semana</div><div style="font-size:18px;font-weight:700">${fmt(semF+semR)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">↳ Facturas</div><div style="font-size:15px;font-weight:600">${fmt(semF)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">↳ Recurrentes</div><div style="font-size:15px;font-weight:600">${fmt(semR)}</div></div>
       <div><div style="font-size:11px;color:var(--red);font-weight:600;text-transform:uppercase;margin-bottom:3px">Vencidos (total)</div><div style="font-size:18px;font-weight:700;color:var(--red)">${fmt(vF+vR)}</div></div>
+      <div><div style="font-size:11px;color:var(--red);font-weight:600;text-transform:uppercase;margin-bottom:3px">↳ Facturas</div><div style="font-size:15px;font-weight:600;color:var(--red)">${fmt(vF)}</div></div>
+      <div><div style="font-size:11px;color:var(--amber);font-weight:600;text-transform:uppercase;margin-bottom:3px">↳ Recurrentes</div><div style="font-size:15px;font-weight:600;color:var(--amber)">${fmt(vR)}</div></div>
     </div></div>`;
 }
 async function pagarRec(id,concepto,monto){
