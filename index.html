@@ -1302,13 +1302,19 @@ async function vencimientos(){
       <span><span style="display:inline-block;width:10px;height:10px;background:#fff7ed;border:1px solid #fdba74;border-radius:2px;margin-right:4px"></span>Recurrente vencido</span>
     </div>
     <div class="wk-grid">${cols}</div>
-    <div class="card" style="padding:14px 20px"><div style="display:flex;gap:24px;flex-wrap:wrap">
-      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Esta semana</div><div style="font-size:18px;font-weight:700">${fmt(semF+semR)}</div></div>
-      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">↳ Facturas</div><div style="font-size:15px;font-weight:600">${fmt(semF)}</div></div>
-      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">↳ Recurrentes</div><div style="font-size:15px;font-weight:600">${fmt(semR)}</div></div>
-      <div><div style="font-size:11px;color:var(--red);font-weight:600;text-transform:uppercase;margin-bottom:3px">Vencidos (total)</div><div style="font-size:18px;font-weight:700;color:var(--red)">${fmt(vF+vR)}</div></div>
-      <div><div style="font-size:11px;color:var(--red);font-weight:600;text-transform:uppercase;margin-bottom:3px">↳ Facturas</div><div style="font-size:15px;font-weight:600;color:var(--red)">${fmt(vF)}</div></div>
-      <div><div style="font-size:11px;color:var(--amber);font-weight:600;text-transform:uppercase;margin-bottom:3px">↳ Recurrentes</div><div style="font-size:15px;font-weight:600;color:var(--amber)">${fmt(vR)}</div></div>
+    <div class="card" style="padding:14px 20px"><div style="display:flex;gap:40px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:6px">Esta semana</div>
+        <div style="font-size:20px;font-weight:700;margin-bottom:6px">${fmt(semF+semR)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px">↳ Facturas: <strong>${fmt(semF)}</strong></div>
+        <div style="font-size:12px;color:var(--text-muted)">↳ Recurrentes: <strong>${fmt(semR)}</strong></div>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:40px">
+        <div style="font-size:11px;color:var(--red);font-weight:600;text-transform:uppercase;margin-bottom:6px">Vencidos (total)</div>
+        <div style="font-size:20px;font-weight:700;color:var(--red);margin-bottom:6px">${fmt(vF+vR)}</div>
+        <div style="font-size:12px;color:var(--red);margin-bottom:2px">↳ Facturas: <strong>${fmt(vF)}</strong></div>
+        <div style="font-size:12px;color:var(--amber)">↳ Recurrentes: <strong>${fmt(vR)}</strong></div>
+      </div>
     </div></div>`;
 }
 async function pagarRec(id,concepto,monto){
