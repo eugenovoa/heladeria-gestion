@@ -1612,18 +1612,19 @@ function renderGastos(){
   const mpLabel={efectivo:'Efectivo',tarjeta_debito:'T. Débito',transferencia:'Transf.',debito_automatico:'Déb. Auto.'};
   const ndFmt=nd=>!nd?'—':nd.length>14?`<span style="cursor:pointer;font-family:monospace;font-size:11px;color:var(--text-muted)" onclick="navigator.clipboard.writeText('${nd.replace(/'/g,"\\'")}');this.textContent='¡Copiado!';setTimeout(()=>this.textContent='${nd.substring(0,14).replace(/'/g,"\\'")}...',1500)">${nd.substring(0,14)}...</span>`:`<span style="font-family:monospace;font-size:11px;color:var(--text-muted)">${nd}</span>`;
   el.innerHTML=`<div style="overflow-x:auto">${!data.length?'<div class="empty">Sin gastos.</div>':`
-    <table><thead><tr>${th}<th>Neto</th><th>MwSt</th><th>Medio</th><th>N° Doc.</th><th></th></tr></thead><tbody>
+    <table><thead><tr>${th}<th>Neto</th><th>MwSt</th><th>Medio</th><th>N° Doc.</th><th style="width:32px"></th><th></th></tr></thead><tbody>
     ${data.map(g=>`<tr>
-      <td>${fmtD(g.fecha)}</td>
+      <td style="white-space:nowrap">${fmtD(g.fecha)}</td>
       <td>${g.concepto||'—'}</td>
-      <td><span class="bd bd-gray">${g.categorias_gasto?.nombre||'—'}</span></td>
-      <td><span class="bd bd-gray" style="font-size:10px">${g.sucursales?.nombre||'General'}</span></td>
-      <td style="font-weight:600;color:var(--red)">${fmt(g.monto)}</td>
-      <td>${fmt(g.monto_neto||g.monto)}</td>
-      <td>${(g.mwst_monto||0)>0?fmt(g.mwst_monto):'—'}</td>
-      <td><span class="bd ${g.medio_pago==='tarjeta_debito'?'bd-info':g.medio_pago==='transferencia'?'bd-pur':g.medio_pago==='debito_automatico'?'bd-warn':'bd-gray'}" style="font-size:11px">${mpLabel[g.medio_pago||'efectivo']||g.medio_pago||'Efectivo'}</span></td>
+      <td><span class="bd bd-gray" style="white-space:nowrap">${g.categorias_gasto?.nombre||'—'}</span></td>
+      <td><span class="bd bd-gray" style="font-size:10px;white-space:nowrap">${g.sucursales?.nombre||'General'}</span></td>
+      <td style="font-weight:600;color:var(--red);white-space:nowrap">${fmt(g.monto)}</td>
+      <td style="white-space:nowrap">${fmt(g.monto_neto||g.monto)}</td>
+      <td style="white-space:nowrap">${(g.mwst_monto||0)>0?fmt(g.mwst_monto):'—'}</td>
+      <td><span class="bd ${g.medio_pago==='tarjeta_debito'?'bd-info':g.medio_pago==='transferencia'?'bd-pur':g.medio_pago==='debito_automatico'?'bd-warn':'bd-ok'}" style="font-size:11px;white-space:nowrap">${mpLabel[g.medio_pago||'efectivo']||g.medio_pago||'Efectivo'}</span></td>
       <td>${ndFmt(g.numero_documento)}</td>
-      <td><div style="display:flex;gap:5px">${g.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${g.adjunto_url}','${((g.concepto||'gasto')+' - '+(g.fecha||'')).replace(/'/g,"\\'")}')">📎</button>`:''}<button class="btn btn-sm" onclick="verGasto('${g.id}')">Ver</button>${!g.cierre_caja_id?`<button class="btn btn-sm" onclick="editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button>`:''}</div></td>
+      <td style="width:32px;text-align:center">${g.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${g.adjunto_url}','${((g.concepto||'gasto')+' - '+(g.fecha||'')).replace(/'/g,"\\'")}')">📎</button>`:''}</td>
+      <td style="white-space:nowrap"><div style="display:flex;gap:5px"><button class="btn btn-sm" onclick="verGasto('${g.id}')">Ver</button>${!g.cierre_caja_id?`<button class="btn btn-sm" onclick="editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button>`:''}</div></td>
     </tr>`).join('')}
     </tbody></table>`}</div>`;
 }
