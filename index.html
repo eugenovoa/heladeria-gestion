@@ -2613,7 +2613,7 @@ function exportPDF(titulo){
 }
 
 // ---- INIT ----
-document.getElementById('mo').addEventListener('click',e=>{if(e.target===document.getElementById('mo'))closeMo()});
+
 sb.auth.onAuthStateChange((ev,session)=>{
   if(ev==='SIGNED_IN'&&session&&!_init)initApp(session.user);
   if(ev==='SIGNED_OUT'){_init=false;if(_rt)clearInterval(_rt);document.getElementById('app').style.display='none';document.getElementById('auth').style.display='flex';}
