@@ -257,6 +257,10 @@ tbody tr:hover td{background:var(--surface2)}
         <div class="nav-item" data-p="contable"><span class="nav-ico">🗂️</span>Descarga de facturas</div>
       </div>
       <div class="nav-sec">
+        <div class="nav-lbl">Producción</div>
+        <div class="nav-item" data-p="produccion"><span class="nav-ico">🧊</span>Producción</div>
+      </div>
+      <div class="nav-sec">
         <div class="nav-lbl">Sistema</div>
       <div class="nav-item" data-p="config"><span class="nav-ico">⚙</span>Configuración</div>
       </div>
@@ -360,7 +364,7 @@ function setupNav(){
   if(_rol==='readonly'){['facturas','pagos','gastos','recurrentes','caja','stock','proveedores','productos'].forEach(p=>{const e=document.querySelector(`[data-p="${p}"]`);if(e)e.style.display='none'})}
 }
 
-const _titles={dashboard:'Dashboard',proveedores:'Proveedores',productos:'Productos / Materias primas',facturas:'Facturas de proveedores',pagos:'Pagos a Proveedores','pagos-rec':'Pagos Gastos Recurrentes',vencimientos:'Vencimientos',gastos:'Gastos al contado',recurrentes:'Gastos recurrentes',caja:'Cierre de caja',stock:'Stock','rep-compras':'Compras por período',contable:'Módulo contable','rep-err':'Estado de resultados','rep-flujo':'Flujo de caja','rep-comp':'Comparativo de temporadas',config:'Configuración'};
+const _titles={dashboard:'Dashboard',proveedores:'Proveedores',productos:'Productos / Materias primas',facturas:'Facturas de proveedores',pagos:'Pagos a Proveedores','pagos-rec':'Pagos Gastos Recurrentes',vencimientos:'Vencimientos',gastos:'Gastos al contado',recurrentes:'Gastos recurrentes',caja:'Cierre de caja',stock:'Stock','rep-compras':'Compras por período',contable:'Módulo contable','rep-err':'Estado de resultados','rep-flujo':'Flujo de caja','rep-comp':'Comparativo de temporadas',config:'Configuración',produccion:'Producción'};
 
 
 async function autoMarcarVencidas(){
@@ -389,7 +393,7 @@ function nav(p){
   document.getElementById('tbar-r').innerHTML='';
   if(p==='facturas'||p==='vencimientos')autoMarcarVencidas();
   if(p==='vencimientos'||p==='recurrentes')autoMarcarVencidosRec();
-  const map={dashboard,proveedores,productos,facturas,pagos,vencimientos,'pagos-rec':pagosRec,gastos,recurrentes,caja,stock,'rep-compras':repCompras,'rep-err':repErr,'rep-flujo':repFlujo,'rep-comp':repComp,contable:contablePage,config:configPage};
+  const map={dashboard,proveedores,productos,facturas,pagos,vencimientos,'pagos-rec':pagosRec,gastos,recurrentes,caja,stock,'rep-compras':repCompras,'rep-err':repErr,'rep-flujo':repFlujo,'rep-comp':repComp,contable:contablePage,config:configPage,produccion:produccionPage};
   if(map[p])map[p]();
 }
 
@@ -2616,6 +2620,636 @@ async function saveCfgApp(){
 function quitarLogo(){_cfg.logo='';localStorage.setItem('hg_cfg',JSON.stringify(_cfg));applyBrand();loadCfgApp();}
 function quitarLogo2(){_cfg.logo2='';localStorage.setItem('hg_cfg',JSON.stringify(_cfg));applyBrand();loadCfgApp();}
 async function saveApiKey(){const k=document.getElementById('ca-ak').value.trim();if(!k){alert('Ingresá la API key.');return}const btn=event.target;btn.textContent='Guardando...';btn.disabled=true;await setApiKey(k);btn.textContent='Guardar API Key';btn.disabled=false;document.getElementById('ca-ak-ok').innerHTML='<div class="al al-ok" style="margin-top:10px">✓ API Key guardada</div>';}
+
+
+// ==== MÓDULO PRODUCCIÓN ====
+let _prodSabs=[],_prodPos=[];
+window._prodEntItems=[];
+
+async function produccionPage(){
+  loading();setR('');
+  document.getElementById('ct').innerHTML=`
+    <div class="tabs">
+      <div class="tab active" data-pt="pd" onclick="prodNav('pd',this)">📊 Dashboard</div>
+      <div class="tab" data-pt="pc" onclick="prodNav('pc',this)">⚙️ Configuración</div>
+      <div class="tab" data-pt="pp" onclick="prodNav('pp',this)">🏭 Producción</div>
+      <div class="tab" data-pt="pe" onclick="prodNav('pe',this)">🚚 Entrega</div>
+      <div class="tab" data-pt="ph" onclick="prodNav('ph',this)">📋 Historial</div>
+    </div>
+    <div id="pd-ct"></div>`;
+  const[{data:s},{data:p}]=await Promise.all([
+    sb.from('prod_sabores').select('*').eq('activo',true).order('nombre'),
+    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero')
+  ]);
+  _prodSabs=s||[];_prodPos=p||[];
+  prodNav('pd');
+}
+
+async function prodNav(tab,el){
+  if(el){document.querySelectorAll('[data-pt]').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
+  const fns={'pd':pdDash,'pc':pdCfg,'pp':pdOrdenProd,'pe':pdOrdenEnt,'ph':pdHist};
+  if(fns[tab])await fns[tab]();
+}
+function pdCt(){return document.getElementById('pd-ct')}
+
+// --- DASHBOARD ---
+async function pdDash(){
+  pdCt().innerHTML='<div class="ld">Cargando...</div>';
+  const[{data:stD},{data:mins},{data:snaps}]=await Promise.all([
+    sb.from('prod_stock_deposito').select('*,prod_sabores(id,codigo,nombre)'),
+    sb.from('prod_stock_minimos').select('*'),
+    sb.from('prod_stock_sucursal').select('*,prod_sabores(id,codigo,nombre)').order('fecha_snapshot',{ascending:false})
+  ]);
+  const depMap={};(stD||[]).forEach(r=>depMap[r.sabor_id]=r.cantidad);
+  const minMap={};(mins||[]).forEach(m=>{if(!minMap[m.posicion_id])minMap[m.posicion_id]={};minMap[m.posicion_id][m.ubicacion]=m.cantidad_minima;});
+  const branches=['eutingen','muhlacker','konigsbacj'];
+  const bLabels={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const latestSnap={};
+  branches.forEach(b=>{
+    const bS=(snaps||[]).filter(s=>s.sucursal===b);
+    if(bS.length){const uid=bS[0].upload_id;latestSnap[b]=bS.filter(s=>s.upload_id===uid);}
+    else latestSnap[b]=[];
+  });
+  const bMaps={};branches.forEach(b=>{bMaps[b]={};(latestSnap[b]||[]).forEach(r=>bMaps[b][r.sabor_id]=r.cantidad);});
+  const analyze=(pos,map,ubic)=>{
+    const ids=(pos.prod_posicion_sabores||[]).map(ps=>ps.sabor_id);
+    const total=ids.reduce((s,id)=>(map[id]||0)+s,0);
+    const min=minMap[pos.id]?.[ubic]||0;
+    const st=total===0&&min>0?'crit':total<min?'low':'ok';
+    return{total,min,st};
+  };
+  const allLocs=[{k:'deposito',l:'Depósito General',map:depMap},...branches.map(b=>({k:b,l:bLabels[b],map:bMaps[b]}))];
+  let html='<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">';
+  allLocs.forEach(loc=>{
+    let ok=0,low=0,crit=0;
+    _prodPos.forEach(pos=>{const{st}=analyze(pos,loc.map,loc.k);if(st==='ok')ok++;else if(st==='low')low++;else crit++;});
+    html+=`<div class="kpi ${crit>0?'r':low>0?'a':'g'}"><div class="kpi-l">${loc.l}</div><div class="kpi-v">${crit>0?`🔴 ${crit} crit.`:low>0?`🟡 ${low} bajas`:'🟢 OK'}</div><div class="kpi-s">${ok} OK · ${low} bajas · ${crit} críticas</div></div>`;
+  });
+  html+='</div>';
+  allLocs.forEach(loc=>{
+    const sn=loc.k!=='deposito'&&latestSnap[loc.k]?.length?new Date(latestSnap[loc.k][0].fecha_snapshot).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):null;
+    html+=`<div class="card"><div class="card-t" style="display:flex;justify-content:space-between;align-items:center">${loc.l}${sn?`<span style="font-size:11px;font-weight:400;color:var(--text-faint)">Actualizado ${sn}</span>`:''}${loc.k==='deposito'?`<button class="btn btn-sm" onclick="pdGoStockEdit()">✏️ Editar stock</button>`:''}</div>
+      <table><thead><tr><th>Pos.</th><th>Sabor activo</th><th>Grupo</th><th>Stock</th><th>Mínimo</th><th>Estado</th></tr></thead><tbody>`;
+    _prodPos.forEach(pos=>{
+      const actPS=(pos.prod_posicion_sabores||[]).find(ps=>ps.es_activo);
+      const grpN=(pos.prod_posicion_sabores||[]).map(ps=>ps.prod_sabores?.nombre).filter(Boolean).join(', ');
+      const{total,min,st}=analyze(pos,loc.map,loc.k);
+      const badge=st==='crit'?'<span class="bd bd-err">🔴 Crítico</span>':st==='low'?'<span class="bd bd-warn">🟡 Bajo</span>':'<span class="bd bd-ok">🟢 OK</span>';
+      html+=`<tr><td><strong>${pos.numero}</strong></td><td>${actPS?.prod_sabores?.nombre||'—'}</td><td style="font-size:11px;color:var(--text-muted)">${grpN||'—'}</td><td><strong>${total}</strong></td><td>${min}</td><td>${badge}</td></tr>`;
+    });
+    html+='</tbody></table></div>';
+  });
+  if(!_prodPos.length)html+='<div class="al al-warn">Configurá las posiciones en la pestaña ⚙️ Configuración antes de usar el dashboard.</div>';
+  pdCt().innerHTML=html;
+}
+
+function pdGoStockEdit(){
+  document.querySelectorAll('[data-pt]').forEach(t=>t.classList.remove('active'));
+  const el=document.querySelector('[data-pt="pc"]');if(el)el.classList.add('active');
+  pdCfg().then(()=>setTimeout(()=>pdCfgShowTab('prod-cfg-stk'),200));
+}
+
+// --- CONFIGURACIÓN ---
+async function pdCfg(){
+  pdCt().innerHTML=`
+    <div class="tabs" style="margin-bottom:0">
+      <div class="tab active" data-pct="prod-cfg-sabs" onclick="pdCfgTab('prod-cfg-sabs',this)">Sabores</div>
+      <div class="tab" data-pct="prod-cfg-pos" onclick="pdCfgTab('prod-cfg-pos',this)">Posiciones</div>
+      <div class="tab" data-pct="prod-cfg-min" onclick="pdCfgTab('prod-cfg-min',this)">Stock Mínimos</div>
+      <div class="tab" data-pct="prod-cfg-stk" onclick="pdCfgTab('prod-cfg-stk',this)">Stock Depósito</div>
+    </div>
+    <div id="prod-cfg-sabs"></div>
+    <div id="prod-cfg-pos" style="display:none"></div>
+    <div id="prod-cfg-min" style="display:none"></div>
+    <div id="prod-cfg-stk" style="display:none"></div>`;
+  await Promise.all([pdCfgLoadSabs(),pdCfgLoadPos(),pdCfgLoadMin(),pdCfgLoadStk()]);
+}
+
+function pdCfgTab(id,el){
+  document.querySelectorAll('[data-pct]').forEach(t=>t.classList.remove('active'));
+  if(el)el.classList.add('active');
+  ['prod-cfg-sabs','prod-cfg-pos','prod-cfg-min','prod-cfg-stk'].forEach(t=>{const e=document.getElementById(t);if(e)e.style.display=t===id?'':'none';});
+}
+function pdCfgShowTab(id){const el=document.querySelector(`[data-pct="${id}"]`);if(el)pdCfgTab(id,el);}
+
+async function pdCfgLoadSabs(){
+  const{data}=await sb.from('prod_sabores').select('*').order('nombre');
+  const el=document.getElementById('prod-cfg-sabs');if(!el)return;
+  el.innerHTML=`<div class="card"><div class="card-t">Catálogo de Sabores (${(data||[]).length})</div>
+    <table><thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${(data||[]).map(s=>`<tr>
+      <td><span class="bd bd-gray">${s.codigo}</span></td><td>${s.nombre}</td><td style="font-size:12px">${s.categoria||'—'}</td>
+      <td>${s.activo?'<span class="bd bd-ok">Activo</span>':'<span class="bd bd-gray">Inactivo</span>'}</td>
+      <td><button class="btn btn-sm" onclick="pdEditSabor('${s.id}')">Editar</button></td>
+    </tr>`).join('')}
+    </tbody></table>
+    <button class="btn btn-p" style="margin-top:14px" onclick="pdNewSabor()">+ Nuevo sabor</button>
+  </div>`;
+}
+
+function pdNewSabor(){
+  openMo('Nuevo Sabor',`<div class="fg">
+    <div class="f"><label>Código Facciobuono</label><input id="ps-cod" placeholder="Ej: CHO"></div>
+    <div class="f"><label>Nombre</label><input id="ps-nom" placeholder="Ej: Schokolade"></div>
+    <div class="f"><label>Categoría</label><select id="ps-cat"><option value="Milch Eis">Milch Eis</option><option value="Wasser Eis">Wasser Eis</option></select></div>
+  </div>`,async()=>{
+    const cod=document.getElementById('ps-cod').value.trim().toUpperCase();
+    const nom=document.getElementById('ps-nom').value.trim();
+    if(!cod||!nom){alert('Código y nombre requeridos.');return}
+    const{error}=await sb.from('prod_sabores').insert({codigo:cod,nombre:nom,nombre_csv:cod+' - '+nom,categoria:document.getElementById('ps-cat').value,activo:true});
+    if(error){alert('Error: '+error.message);return}
+    closeMo();
+    _prodSabs=(await sb.from('prod_sabores').select('*').eq('activo',true).order('nombre')).data||[];
+    pdCfgLoadSabs();
+  });
+}
+
+async function pdEditSabor(id){
+  const{data:s}=await sb.from('prod_sabores').select('*').eq('id',id).single();
+  if(!s)return;
+  openMo('Editar Sabor',`<div class="fg">
+    <div class="f"><label>Código</label><input id="ps-cod" value="${s.codigo}"></div>
+    <div class="f"><label>Nombre</label><input id="ps-nom" value="${s.nombre.replace(/"/g,'&quot;')}"></div>
+    <div class="f"><label>Categoría</label><select id="ps-cat"><option value="Milch Eis" ${s.categoria==='Milch Eis'?'selected':''}>Milch Eis</option><option value="Wasser Eis" ${s.categoria==='Wasser Eis'?'selected':''}>Wasser Eis</option></select></div>
+    <div class="f"><label>Estado</label><select id="ps-act"><option value="1" ${s.activo?'selected':''}>Activo</option><option value="0" ${!s.activo?'selected':''}>Inactivo</option></select></div>
+  </div>`,async()=>{
+    const cod=document.getElementById('ps-cod').value.trim().toUpperCase();
+    const nom=document.getElementById('ps-nom').value.trim();
+    await sb.from('prod_sabores').update({codigo:cod,nombre:nom,nombre_csv:cod+' - '+nom,categoria:document.getElementById('ps-cat').value,activo:document.getElementById('ps-act').value==='1'}).eq('id',id);
+    closeMo();_prodSabs=(await sb.from('prod_sabores').select('*').eq('activo',true).order('nombre')).data||[];pdCfgLoadSabs();
+  });
+}
+
+async function pdCfgLoadPos(){
+  const{data:pos}=await sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero');
+  _prodPos=pos||[];
+  const el=document.getElementById('prod-cfg-pos');if(!el)return;
+  el.innerHTML=`<div class="card"><div class="card-t">Posiciones de Vitrina (24)</div>
+    <div class="al al-info" style="margin-bottom:12px">Configurá los sabores de cada posición y cuál es el activo (el que se produce cuando hay déficit).</div>
+    ${(pos||[]).map(p=>{
+      const act=(p.prod_posicion_sabores||[]).find(ps=>ps.es_activo);
+      const grp=(p.prod_posicion_sabores||[]).map(ps=>ps.prod_sabores?.nombre).filter(Boolean);
+      return`<div class="ri" style="flex-wrap:wrap;gap:10px">
+        <div style="min-width:200px"><div class="ri-n">Posición ${p.numero}</div>
+        <div class="ri-s">Activo: <strong>${act?.prod_sabores?.nombre||'—'}</strong>${grp.length?`<br>Grupo: ${grp.join(', ')}`:'<br><span style="color:var(--red)">Sin configurar</span>'}</div></div>
+        <button class="btn btn-sm btn-p" onclick="pdConfigPos('${p.id}',${p.numero})">Configurar</button>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+async function pdConfigPos(posId,posNum){
+  const[{data:pos},{data:sabs}]=await Promise.all([
+    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').eq('id',posId).single(),
+    sb.from('prod_sabores').select('*').eq('activo',true).order('nombre')
+  ]);
+  const activoId=(pos?.prod_posicion_sabores||[]).find(ps=>ps.es_activo)?.sabor_id||'';
+  const grupoIds=(pos?.prod_posicion_sabores||[]).map(ps=>ps.sabor_id);
+  const sabOpts=(sabs||[]).map(s=>`<option value="${s.id}" ${s.id===activoId?'selected':''}>${s.nombre}</option>`).join('');
+  const checks=(sabs||[]).map(s=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;cursor:pointer"><input type="checkbox" value="${s.id}" ${grupoIds.includes(s.id)?'checked':''}> ${s.nombre} <span class="bd bd-gray" style="font-size:10px">${s.codigo}</span></label>`).join('');
+  openMo(`Configurar Posición ${posNum}`,`<div class="fg">
+    <div class="f full"><label>Sabores del grupo (todos los que pueden ir en esta posición)</label>
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border-md);border-radius:var(--r);padding:10px 12px;background:var(--surface2)" id="pd-pos-chk">${checks}</div>
+    </div>
+    <div class="f full"><label>Sabor activo (el que se produce si hay déficit)</label><select id="pd-pos-act">${sabOpts}</select></div>
+  </div>`,async()=>{
+    const chks=document.querySelectorAll('#pd-pos-chk input:checked');
+    let grpNew=Array.from(chks).map(c=>c.value);
+    const actNew=document.getElementById('pd-pos-act').value;
+    if(!actNew){alert('Seleccioná el sabor activo.');return}
+    if(!grpNew.includes(actNew))grpNew.push(actNew);
+    await sb.from('prod_posicion_sabores').delete().eq('posicion_id',posId);
+    if(grpNew.length)await sb.from('prod_posicion_sabores').insert(grpNew.map(sid=>({posicion_id:posId,sabor_id:sid,es_activo:sid===actNew})));
+    closeMo();_prodPos=(await sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero')).data||[];pdCfgLoadPos();
+  });
+}
+
+async function pdCfgLoadMin(){
+  const[{data:pos},{data:mins}]=await Promise.all([
+    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero'),
+    sb.from('prod_stock_minimos').select('*')
+  ]);
+  const el=document.getElementById('prod-cfg-min');if(!el)return;
+  const minMap={};(mins||[]).forEach(m=>{if(!minMap[m.posicion_id])minMap[m.posicion_id]={};minMap[m.posicion_id][m.ubicacion]=m.cantidad_minima;});
+  const locs=[{k:'deposito',l:'Depósito'},{k:'eutingen',l:'Eutingen'},{k:'muhlacker',l:'Mühlacker'},{k:'konigsbacj',l:'Königsbach'}];
+  el.innerHTML=`<div class="card"><div class="card-t">Stock Mínimo por Posición</div>
+    <div class="al al-info" style="margin-bottom:12px">Sorbeteras mínimas que debe haber en cada posición por ubicación.</div>
+    <div style="overflow-x:auto"><table><thead><tr><th>Pos.</th><th>Sabor activo</th>${locs.map(l=>`<th style="text-align:center">${l.l}</th>`).join('')}</tr></thead><tbody>
+    ${(pos||[]).map(p=>{
+      const act=(p.prod_posicion_sabores||[]).find(ps=>ps.es_activo)?.prod_sabores?.nombre||'—';
+      return`<tr><td><strong>${p.numero}</strong></td><td style="font-size:12px">${act}</td>${locs.map(l=>`<td style="text-align:center"><input type="number" min="0" value="${minMap[p.id]?.[l.k]||0}" style="width:55px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-pos="${p.id}" data-loc="${l.k}"></td>`).join('')}</tr>`;
+    }).join('')}
+    </tbody></table></div>
+    <button class="btn btn-p" style="margin-top:14px" onclick="pdSaveMinimos()">💾 Guardar mínimos</button>
+    <div id="pd-min-ok"></div>
+  </div>`;
+}
+
+async function pdSaveMinimos(){
+  const ins=document.querySelectorAll('#prod-cfg-min [data-pos][data-loc]');
+  const ups=Array.from(ins).map(i=>({posicion_id:i.dataset.pos,ubicacion:i.dataset.loc,cantidad_minima:parseInt(i.value)||0}));
+  const{error}=await sb.from('prod_stock_minimos').upsert(ups,{onConflict:'posicion_id,ubicacion'});
+  const el=document.getElementById('pd-min-ok');
+  el.innerHTML=error?`<div class="al al-err" style="margin-top:10px">Error: ${error.message}</div>`:'<div class="al al-ok" style="margin-top:10px">✓ Guardado</div>';
+  setTimeout(()=>{if(el)el.innerHTML=''},3000);
+}
+
+async function pdCfgLoadStk(){
+  const{data}=await sb.from('prod_stock_deposito').select('*,prod_sabores(codigo,nombre)').order('prod_sabores(nombre)');
+  const el=document.getElementById('prod-cfg-stk');if(!el)return;
+  el.innerHTML=`<div class="card"><div class="card-t">Cargar Stock Inicial del Depósito</div>
+    <div class="al al-info" style="margin-bottom:12px">Subí el CSV de Facciobuono (vista totalizada) para inicializar el stock. Los valores existentes se sobreescriben.</div>
+    <div class="upz" onclick="document.getElementById('pd-stk-inp').click()" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="this.classList.remove('over');pdParseCsvDep(event.dataTransfer.files[0])">
+      <div class="ui">📂</div><div class="ut">Subir CSV del Depósito</div><div class="us">Exportá el inventario totalizado desde Facciobuono</div>
+    </div>
+    <input type="file" id="pd-stk-inp" style="display:none" accept=".xls,.xlsx,.csv,.html" onchange="pdParseCsvDep(this.files[0])">
+    <div id="pd-stk-prev" style="margin-top:16px"></div>
+  </div>
+  <div class="card"><div class="card-t">Stock Actual del Depósito</div>
+    <table><thead><tr><th>Código</th><th>Sabor</th><th>Sorbeteras</th><th>Actualizado</th></tr></thead><tbody>
+    ${(data||[]).length?(data||[]).map(s=>`<tr>
+      <td><span class="bd bd-gray">${s.prod_sabores?.codigo||'?'}</span></td>
+      <td>${s.prod_sabores?.nombre||'?'}</td><td><strong>${s.cantidad}</strong></td>
+      <td style="font-size:11px;color:var(--text-muted)">${s.ultima_actualizacion?new Date(s.ultima_actualizacion).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'-'}</td>
+    </tr>`).join(''):'<tr><td colspan="4" class="empty" style="padding:20px">Sin stock cargado aún</td></tr>'}
+    </tbody></table>
+  </div>`;
+}
+
+// --- CSV PARSING ---
+function pdParseCsv(txt){
+  const doc=new DOMParser().parseFromString(txt,'text/html');
+  const rows=doc.querySelectorAll('tr');
+  let pIdx=-1,sIdx=-1;const res=[];
+  rows.forEach(row=>{
+    const ths=row.querySelectorAll('th');const tds=row.querySelectorAll('td');
+    if(ths.length){
+      const hds=Array.from(ths).map(th=>th.textContent.trim());
+      pIdx=hds.indexOf('Producto');
+      sIdx=hds.findIndex(h=>h.startsWith('N')&&h.includes('Stocks'));
+      return;
+    }
+    if(tds.length&&pIdx>=0&&sIdx>=0){
+      const cs=Array.from(tds).map(td=>td.textContent.trim());
+      const p=cs[pIdx]||'';const c=parseInt(cs[sIdx])||0;
+      if(p&&!p.includes('Ningún Resultado')&&c>0)res.push({producto:p,cantidad:c});
+    }
+  });
+  return res;
+}
+
+async function pdParseCsvDep(file){
+  if(!file)return;
+  const prev=document.getElementById('pd-stk-prev');
+  prev.innerHTML='<div class="ld">Procesando...</div>';
+  const rows=pdParseCsv(await file.text());
+  if(!rows.length){prev.innerHTML='<div class="al al-err">No se pudo leer el archivo. Verificá que sea el CSV totalizado de Facciobuono.</div>';return}
+  const matched=[],unmatched=[];
+  rows.forEach(r=>{const s=_prodSabs.find(x=>x.nombre_csv===r.producto);if(s)matched.push({s,c:r.cantidad});else unmatched.push(r.producto);});
+  let html=`<div class="al al-ok">✓ ${matched.length} sabores reconocidos.</div>`;
+  if(unmatched.length)html+=`<div class="al al-warn">No reconocidos (no están en catálogo): ${unmatched.join(', ')}</div>`;
+  html+=`<table><thead><tr><th>Sabor</th><th>Sorbeteras</th></tr></thead><tbody>${matched.map(m=>`<tr><td>${m.s.nombre}</td><td><strong>${m.c}</strong></td></tr>`).join('')}</tbody></table>`;
+  html+=`<button class="btn btn-p" style="margin-top:12px" onclick="pdConfirmarStk(${JSON.stringify(matched.map(m=>({id:m.s.id,c:m.c})))})">✅ Confirmar y cargar stock</button>`;
+  prev.innerHTML=html;
+}
+
+async function pdConfirmarStk(items){
+  const ups=items.map(i=>({sabor_id:i.id,cantidad:i.c,ultima_actualizacion:new Date().toISOString()}));
+  const{error}=await sb.from('prod_stock_deposito').upsert(ups,{onConflict:'sabor_id'});
+  if(error){alert('Error: '+error.message);return}
+  alert('✅ Stock del depósito cargado correctamente.');pdCfgLoadStk();
+}
+
+// --- ORDEN DE PRODUCCIÓN ---
+async function pdOrdenProd(){
+  const ct=pdCt();ct.innerHTML='<div class="ld">Cargando...</div>';
+  const[{data:bors},{data:conf}]=await Promise.all([
+    sb.from('prod_ordenes_produccion').select('*').eq('estado','borrador').order('created_at',{ascending:false}),
+    sb.from('prod_ordenes_produccion').select('*').eq('estado','confirmada').order('confirmed_at',{ascending:false}).limit(5)
+  ]);
+  let html='<div class="card"><div class="card-t">Órdenes de Producción</div>';
+  if((bors||[]).length){
+    html+='<div style="margin-bottom:14px">';
+    for(const o of bors){
+      const{count}=await sb.from('prod_ord_prod_items').select('*',{count:'exact',head:true}).eq('orden_id',o.id);
+      html+=`<div class="ri"><div><div class="ri-n">${fmtD(o.fecha)}</div><div class="ri-s"><span class="bd bd-warn">Borrador</span> · ${count||0} sabores</div></div>
+        <div style="display:flex;gap:6px"><button class="btn btn-sm btn-p" onclick="pdVerOrdenProd('${o.id}')">Ver / Editar</button><button class="btn btn-sm btn-d" onclick="pdDelOrdenProd('${o.id}')">✕</button></div></div>`;
+    }
+    html+='</div>';
+  }
+  html+=`<button class="btn btn-p" onclick="pdGenerarOrden()">+ Generar nueva orden de producción</button></div>`;
+  if((conf||[]).length){
+    html+=`<div class="card"><div class="card-t">✅ Últimas confirmadas</div><table><thead><tr><th>Fecha</th><th>Confirmada</th><th></th></tr></thead><tbody>
+    ${conf.map(o=>`<tr><td>${fmtD(o.fecha)}</td><td style="font-size:11px">${o.confirmed_at?new Date(o.confirmed_at).toLocaleDateString('es-AR'):'-'}</td><td><button class="btn btn-sm" onclick="pdVerOrdenProd('${o.id}',true)">Ver</button></td></tr>`).join('')}
+    </tbody></table></div>`;
+  }
+  ct.innerHTML=html;
+}
+
+async function pdGenerarOrden(){
+  const[{data:stD},{data:mins},{data:pos}]=await Promise.all([
+    sb.from('prod_stock_deposito').select('*'),
+    sb.from('prod_stock_minimos').select('*').eq('ubicacion','deposito'),
+    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero')
+  ]);
+  const depMap={};(stD||[]).forEach(r=>depMap[r.sabor_id]=r.cantidad);
+  const minMap={};(mins||[]).forEach(m=>minMap[m.posicion_id]=m.cantidad_minima);
+  const items=[];
+  (pos||[]).forEach(p=>{
+    const ids=(p.prod_posicion_sabores||[]).map(ps=>ps.sabor_id);
+    const act=(p.prod_posicion_sabores||[]).find(ps=>ps.es_activo);
+    if(!act)return;
+    const tot=ids.reduce((s,id)=>(depMap[id]||0)+s,0);
+    const min=minMap[p.id]||0;
+    if(tot<min)items.push({pos:p,sab:act.prod_sabores,stock:tot,min,prod:min-tot});
+  });
+  if(!items.length){alert('✅ Stock al día. No hay nada que producir.');return}
+  const tod=today();
+  openMo('Nueva Orden de Producción',`
+    <div class="al al-info" style="margin-bottom:12px">Revisá las cantidades. Podés editar el campo "Producir" antes de guardar.</div>
+    <div style="overflow-x:auto"><table><thead><tr><th>Pos.</th><th>Sabor activo</th><th>Stock actual</th><th>Mínimo</th><th>Producir</th></tr></thead>
+    <tbody id="pd-ord-items">
+    ${items.map((it,i)=>`<tr><td><strong>${it.pos.numero}</strong></td><td>${it.sab.nombre}</td><td>${it.stock} sorb.</td><td>${it.min} sorb.</td>
+      <td><input type="number" min="0" value="${it.prod}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-i="${i}"></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="f" style="margin-top:14px"><label>Notas (opcional)</label><textarea id="pd-ord-n" style="height:50px;font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);width:100%" placeholder="Observaciones..."></textarea></div>`,
+  async()=>{
+    const inps=document.querySelectorAll('#pd-ord-items input[data-i]');
+    const finals=items.map((it,i)=>({...it,pf:parseInt(inps[i]?.value)||0})).filter(it=>it.pf>0);
+    if(!finals.length){alert('Sin cantidades mayores a 0.');return}
+    const{data:ord,error}=await sb.from('prod_ordenes_produccion').insert({fecha:tod,estado:'borrador',notas:document.getElementById('pd-ord-n').value}).select().single();
+    if(error){alert('Error: '+error.message);return}
+    await sb.from('prod_ord_prod_items').insert(finals.map(it=>({orden_id:ord.id,posicion_id:it.pos.id,sabor_id:it.sab.id,stock_antes:it.stock,cantidad_sugerida:it.prod,cantidad_confirmada:it.pf})));
+    closeMo();pdVerOrdenProd(ord.id);
+  });
+}
+
+async function pdVerOrdenProd(ordenId,readonly=false){
+  const[{data:ord},{data:items}]=await Promise.all([
+    sb.from('prod_ordenes_produccion').select('*').eq('id',ordenId).single(),
+    sb.from('prod_ord_prod_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId)
+  ]);
+  const isConf=ord?.estado==='confirmada';
+  const total=(items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
+  pdCt().innerHTML=`<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div><h3 style="font-size:15px;font-weight:700">Orden de Producción — ${fmtD(ord?.fecha)}</h3>
+      <div style="margin-top:4px">${isConf?'<span class="bd bd-ok">✅ Confirmada</span>':'<span class="bd bd-warn">📝 Borrador</span>'}</div></div>
+      <div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="pdImprimir('${ordenId}','prod')">🖨️ Imprimir</button><button class="btn btn-sm btn-g" onclick="pdOrdenProd()">← Volver</button></div>
+    </div>
+    ${ord?.notas?`<div class="al al-info" style="margin-bottom:12px">${ord.notas}</div>`:''}
+    <table><thead><tr><th>Pos.</th><th>Código</th><th>Sabor</th><th>Stock antes</th><th>Sorbeteras a producir</th></tr></thead>
+    <tbody id="pd-vp-items">
+    ${(items||[]).map(it=>`<tr>
+      <td><strong>${it.prod_posiciones?.numero||'?'}</strong></td>
+      <td><span class="bd bd-gray">${it.prod_sabores?.codigo||'?'}</span></td>
+      <td><strong>${it.prod_sabores?.nombre||'?'}</strong></td>
+      <td>${it.stock_antes} sorb.</td>
+      <td>${isConf||readonly?`<strong>${it.cantidad_confirmada}</strong> sorbeteras`:`<input type="number" min="0" value="${it.cantidad_confirmada}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${it.id}">`}</td>
+    </tr>`).join('')}
+    </tbody></table>
+    <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong>${total} sorbeteras</strong></div>
+    ${!isConf&&!readonly?`<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn" onclick="pdGuardarCants('${ordenId}','prod')">💾 Guardar cambios</button>
+      <button class="btn btn-ok" onclick="pdConfirmarProd('${ordenId}')">✅ Confirmar orden</button>
+    </div>`:''}
+  </div>`;
+}
+
+async function pdGuardarCants(ordenId,tipo){
+  const sel=tipo==='prod'?'#pd-vp-items':'#pd-ve-items';
+  const inps=document.querySelectorAll(`${sel} input[data-item]`);
+  const tbl=tipo==='prod'?'prod_ord_prod_items':'prod_ord_entrega_items';
+  for(const inp of inps)await sb.from(tbl).update({cantidad_confirmada:parseInt(inp.value)||0}).eq('id',inp.dataset.item);
+  alert('✓ Cantidades guardadas.');
+}
+
+async function pdConfirmarProd(ordenId){
+  if(!confirm('¿Confirmar la orden? Se sumará al stock del depósito.'))return;
+  await pdGuardarCants(ordenId,'prod');
+  const{data:items}=await sb.from('prod_ord_prod_items').select('*').eq('orden_id',ordenId);
+  for(const it of(items||[])){
+    const{data:curr}=await sb.from('prod_stock_deposito').select('cantidad').eq('sabor_id',it.sabor_id).maybeSingle();
+    await sb.from('prod_stock_deposito').upsert({sabor_id:it.sabor_id,cantidad:(curr?.cantidad||0)+(it.cantidad_confirmada||0),ultima_actualizacion:new Date().toISOString()},{onConflict:'sabor_id'});
+  }
+  await sb.from('prod_ordenes_produccion').update({estado:'confirmada',confirmed_at:new Date().toISOString()}).eq('id',ordenId);
+  alert('✅ Orden confirmada. Stock del depósito actualizado.');pdOrdenProd();
+}
+
+async function pdDelOrdenProd(id){
+  if(!confirm('¿Eliminar este borrador?'))return;
+  await sb.from('prod_ord_prod_items').delete().eq('orden_id',id);
+  await sb.from('prod_ordenes_produccion').delete().eq('id',id);pdOrdenProd();
+}
+
+// --- ORDEN DE ENTREGA ---
+async function pdOrdenEnt(){
+  const ct=pdCt();ct.innerHTML='<div class="ld">Cargando...</div>';
+  const[{data:bors},{data:conf}]=await Promise.all([
+    sb.from('prod_ordenes_entrega').select('*').eq('estado','borrador').order('created_at',{ascending:false}),
+    sb.from('prod_ordenes_entrega').select('*').eq('estado','confirmada').order('confirmed_at',{ascending:false}).limit(10)
+  ]);
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  let html=`<div class="card"><div class="card-t">Nueva Orden de Entrega</div>
+    <div class="fg"><div class="f"><label>Sucursal</label><select id="pd-ent-suc">
+      <option value="eutingen">Eutingen</option><option value="muhlacker">Mühlacker</option><option value="konigsbacj">Königsbach</option>
+    </select></div></div>
+    <div class="upz" style="margin-top:14px" onclick="document.getElementById('pd-ent-inp').click()" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="this.classList.remove('over');pdParseCsvSuc(event.dataTransfer.files[0])">
+      <div class="ui">📂</div><div class="ut">Subir CSV de la Sucursal</div><div class="us">Inventario totalizado exportado desde Facciobuono</div>
+    </div>
+    <input type="file" id="pd-ent-inp" style="display:none" accept=".xls,.xlsx,.csv,.html" onchange="pdParseCsvSuc(this.files[0])">
+    <div id="pd-ent-prev" style="margin-top:16px"></div>
+  </div>`;
+  if((bors||[]).length){
+    html+='<div class="card"><div class="card-t">📝 Borradores pendientes</div>';
+    for(const o of bors){
+      html+=`<div class="ri"><div><div class="ri-n">${bLab[o.sucursal]||o.sucursal} — ${fmtD(o.fecha)}</div><div class="ri-s"><span class="bd bd-warn">Borrador</span></div></div>
+        <div style="display:flex;gap:6px"><button class="btn btn-sm btn-p" onclick="pdVerOrdenEnt('${o.id}')">Ver / Editar</button><button class="btn btn-sm btn-d" onclick="pdDelOrdenEnt('${o.id}')">✕</button></div></div>`;
+    }
+    html+='</div>';
+  }
+  if((conf||[]).length){
+    html+=`<div class="card"><div class="card-t">✅ Últimas confirmadas</div><table><thead><tr><th>Sucursal</th><th>Fecha</th><th>Confirmada</th><th></th></tr></thead><tbody>
+    ${conf.map(o=>`<tr><td><strong>${bLab[o.sucursal]||o.sucursal}</strong></td><td>${fmtD(o.fecha)}</td><td style="font-size:11px">${o.confirmed_at?new Date(o.confirmed_at).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'-'}</td><td><button class="btn btn-sm" onclick="pdVerOrdenEnt('${o.id}',true)">Ver</button></td></tr>`).join('')}
+    </tbody></table></div>`;
+  }
+  ct.innerHTML=html;
+}
+
+async function pdParseCsvSuc(file){
+  if(!file)return;
+  const prev=document.getElementById('pd-ent-prev');
+  const suc=document.getElementById('pd-ent-suc')?.value||'eutingen';
+  prev.innerHTML='<div class="ld">Procesando...</div>';
+  const rows=pdParseCsv(await file.text());
+  if(!rows.length){prev.innerHTML='<div class="al al-err">No se pudo leer el archivo.</div>';return}
+  const matched=[],unmatched=[];
+  rows.forEach(r=>{const s=_prodSabs.find(x=>x.nombre_csv===r.producto);if(s)matched.push({s,c:r.cantidad});else unmatched.push(r.producto);});
+  const[{data:stD},{data:mins},{data:pos}]=await Promise.all([
+    sb.from('prod_stock_deposito').select('*'),
+    sb.from('prod_stock_minimos').select('*').eq('ubicacion',suc),
+    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero')
+  ]);
+  const depMap={};(stD||[]).forEach(r=>depMap[r.sabor_id]=r.cantidad);
+  const sucMap={};matched.forEach(m=>sucMap[m.s.id]=m.c);
+  const minMap={};(mins||[]).forEach(m=>minMap[m.posicion_id]=m.cantidad_minima);
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const items=[];
+  (pos||[]).forEach(p=>{
+    const ids=(p.prod_posicion_sabores||[]).map(ps=>ps.sabor_id);
+    const act=(p.prod_posicion_sabores||[]).find(ps=>ps.es_activo);
+    if(!act)return;
+    const totSuc=ids.reduce((s,id)=>(sucMap[id]||0)+s,0);
+    const min=minMap[p.id]||0;
+    if(totSuc<min){
+      const def=min-totSuc;
+      const depStock=depMap[act.sabor_id]||0;
+      const noAct=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(sucMap[ps.sabor_id]||0)>0);
+      let warn=null;
+      if(noAct.length)warn=`Suc. tiene: ${noAct.map(ps=>ps.prod_sabores?.nombre+'('+sucMap[ps.sabor_id]+')').join(', ')}`;
+      if(depStock<def)warn=(warn?warn+' · ':'')+`⚠️ Depósito solo tiene ${depStock}`;
+      items.push({posId:p.id,sabId:act.sabor_id,sabNom:act.prod_sabores?.nombre||'?',posNum:p.numero,totSuc,depStock,min,def,warn});
+    }
+  });
+  const uid='snap_'+Date.now();
+  if(matched.length)await sb.from('prod_stock_sucursal').insert(matched.map(m=>({sucursal:suc,fecha_snapshot:new Date().toISOString(),sabor_id:m.s.id,cantidad:m.c,upload_id:uid})));
+  let html=`<div class="al al-ok">✓ ${matched.length} sabores leídos.</div>`;
+  if(unmatched.length)html+=`<div class="al al-warn">No reconocidos: ${unmatched.join(', ')}</div>`;
+  if(!items.length){html+='<div class="al al-ok" style="margin-top:8px">✅ La sucursal tiene todo al día.</div>';prev.innerHTML=html;return}
+  window._prodEntItems=items;
+  html+=`<div class="card" style="margin-top:12px"><div class="card-t">Orden sugerida — ${bLab[suc]}</div>
+    <table><thead><tr><th>Pos.</th><th>Sabor (activo)</th><th>Stock suc.</th><th>Mínimo</th><th>Enviar</th><th>Alertas</th></tr></thead>
+    <tbody id="pd-ent-items">
+    ${items.map((it,i)=>`<tr>
+      <td><strong>${it.posNum}</strong></td><td>${it.sabNom}</td><td>${it.totSuc} sorb.</td><td>${it.min} sorb.</td>
+      <td><input type="number" min="0" value="${it.def}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-i="${i}"></td>
+      <td style="font-size:11px;color:${it.warn?.includes('⚠️')?'var(--amber)':'var(--text-muted)'}">${it.warn||'—'}</td>
+    </tr>`).join('')}
+    </tbody></table>
+    <div class="f" style="margin-top:12px"><label>Notas</label><textarea id="pd-ent-n" style="height:50px;font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);width:100%" placeholder="Observaciones..."></textarea></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn btn-p" onclick="pdCrearOrdenEnt('${suc}')">💾 Guardar orden borrador</button></div>
+  </div>`;
+  prev.innerHTML=html;
+}
+
+async function pdCrearOrdenEnt(suc){
+  const items=window._prodEntItems||[];
+  const finals=items.map((it,i)=>({...it,cf:parseInt(document.querySelector(`#pd-ent-items input[data-i="${i}"]`)?.value)||0})).filter(it=>it.cf>0);
+  if(!finals.length){alert('Sin cantidades mayores a 0.');return}
+  const notas=document.getElementById('pd-ent-n')?.value||'';
+  const{data:ord,error}=await sb.from('prod_ordenes_entrega').insert({sucursal:suc,fecha:today(),estado:'borrador',notas}).select().single();
+  if(error){alert('Error: '+error.message);return}
+  await sb.from('prod_ord_entrega_items').insert(finals.map(it=>({orden_id:ord.id,posicion_id:it.posId,sabor_id:it.sabId,stock_sucursal:it.totSuc,stock_deposito:it.depStock,cantidad_sugerida:it.def,cantidad_confirmada:it.cf})));
+  pdVerOrdenEnt(ord.id);
+}
+
+async function pdVerOrdenEnt(ordenId,readonly=false){
+  const[{data:ord},{data:items}]=await Promise.all([
+    sb.from('prod_ordenes_entrega').select('*').eq('id',ordenId).single(),
+    sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId)
+  ]);
+  const isConf=ord?.estado==='confirmada';
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const total=(items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
+  pdCt().innerHTML=`<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div><h3 style="font-size:15px;font-weight:700">Entrega — ${bLab[ord?.sucursal]||ord?.sucursal} — ${fmtD(ord?.fecha)}</h3>
+      <div style="margin-top:4px">${isConf?'<span class="bd bd-ok">✅ Confirmada</span>':'<span class="bd bd-warn">📝 Borrador</span>'}</div></div>
+      <div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="pdImprimir('${ordenId}','ent')">🖨️ Imprimir</button><button class="btn btn-sm btn-g" onclick="pdOrdenEnt()">← Volver</button></div>
+    </div>
+    ${ord?.notas?`<div class="al al-info" style="margin-bottom:12px">${ord.notas}</div>`:''}
+    <table><thead><tr><th>Pos.</th><th>Código</th><th>Sabor</th><th>Stock suc.</th><th>Sorbeteras a enviar</th></tr></thead>
+    <tbody id="pd-ve-items">
+    ${(items||[]).map(it=>`<tr>
+      <td><strong>${it.prod_posiciones?.numero||'?'}</strong></td>
+      <td><span class="bd bd-gray">${it.prod_sabores?.codigo||'?'}</span></td>
+      <td><strong>${it.prod_sabores?.nombre||'?'}</strong></td>
+      <td>${it.stock_sucursal} sorb.</td>
+      <td>${isConf||readonly?`<strong>${it.cantidad_confirmada}</strong> sorbeteras`:`<input type="number" min="0" value="${it.cantidad_confirmada}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${it.id}">`}</td>
+    </tr>`).join('')}
+    </tbody></table>
+    <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong>${total} sorbeteras</strong></div>
+    ${!isConf&&!readonly?`<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn" onclick="pdGuardarCants('${ordenId}','ent')">💾 Guardar cambios</button>
+      <button class="btn btn-ok" onclick="pdConfirmarEnt('${ordenId}')">✅ Confirmar y despachar</button>
+    </div>`:''}
+  </div>`;
+}
+
+async function pdConfirmarEnt(ordenId){
+  if(!confirm('¿Confirmar la entrega? Se descontará del stock del depósito.'))return;
+  await pdGuardarCants(ordenId,'ent');
+  const{data:items}=await sb.from('prod_ord_entrega_items').select('*').eq('orden_id',ordenId);
+  for(const it of(items||[])){
+    if(!it.cantidad_confirmada)continue;
+    const{data:curr}=await sb.from('prod_stock_deposito').select('cantidad').eq('sabor_id',it.sabor_id).maybeSingle();
+    await sb.from('prod_stock_deposito').upsert({sabor_id:it.sabor_id,cantidad:Math.max(0,(curr?.cantidad||0)-it.cantidad_confirmada),ultima_actualizacion:new Date().toISOString()},{onConflict:'sabor_id'});
+  }
+  await sb.from('prod_ordenes_entrega').update({estado:'confirmada',confirmed_at:new Date().toISOString()}).eq('id',ordenId);
+  alert('✅ Entrega confirmada. Stock del depósito actualizado.');pdOrdenEnt();
+}
+
+async function pdDelOrdenEnt(id){
+  if(!confirm('¿Eliminar este borrador?'))return;
+  await sb.from('prod_ord_entrega_items').delete().eq('orden_id',id);
+  await sb.from('prod_ordenes_entrega').delete().eq('id',id);pdOrdenEnt();
+}
+
+// --- HISTORIAL ---
+async function pdHist(){
+  const ct=pdCt();ct.innerHTML='<div class="ld">Cargando...</div>';
+  const[{data:prod},{data:ent}]=await Promise.all([
+    sb.from('prod_ordenes_produccion').select('*,prod_ord_prod_items(*,prod_sabores(nombre,codigo))').eq('estado','confirmada').order('confirmed_at',{ascending:false}).limit(50),
+    sb.from('prod_ordenes_entrega').select('*,prod_ord_entrega_items(*,prod_sabores(nombre,codigo))').eq('estado','confirmada').order('confirmed_at',{ascending:false}).limit(50)
+  ]);
+  const bSab={};
+  (prod||[]).forEach(o=>(o.prod_ord_prod_items||[]).forEach(it=>{const n=it.prod_sabores?.nombre||'?';bSab[n]=(bSab[n]||0)+(it.cantidad_confirmada||0);}));
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  ct.innerHTML=`<div class="g2">
+    <div class="card"><div class="card-t">Producción total acumulada</div>
+      <table><thead><tr><th>Sabor</th><th>Sorbeteras producidas</th></tr></thead><tbody>
+      ${Object.entries(bSab).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`<tr><td>${n}</td><td><strong>${c}</strong></td></tr>`).join('')||'<tr><td colspan="2" class="empty">Sin datos</td></tr>'}
+      </tbody></table>
+    </div>
+    <div class="card"><div class="card-t">Últimas órdenes de producción</div>
+      <table><thead><tr><th>Fecha</th><th>Sorbeteras</th><th>Confirmada</th><th></th></tr></thead><tbody>
+      ${(prod||[]).map(o=>{const t=(o.prod_ord_prod_items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);return`<tr><td>${fmtD(o.fecha)}</td><td>${t}</td><td style="font-size:11px">${o.confirmed_at?new Date(o.confirmed_at).toLocaleDateString('es-AR'):'-'}</td><td><button class="btn btn-sm" onclick="pdVerOrdenProd('${o.id}',true)">Ver</button></td></tr>`;}).join('')||'<tr><td colspan="4" class="empty">Sin datos</td></tr>'}
+      </tbody></table>
+    </div>
+  </div>
+  <div class="card"><div class="card-t">Historial de entregas</div>
+    <table><thead><tr><th>Sucursal</th><th>Fecha</th><th>Sabores</th><th>Total sorb.</th><th></th></tr></thead><tbody>
+    ${(ent||[]).map(o=>{
+      const t=(o.prod_ord_entrega_items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
+      const ns=(o.prod_ord_entrega_items||[]).map(it=>it.prod_sabores?.nombre).filter(Boolean).join(', ');
+      return`<tr><td><strong>${bLab[o.sucursal]||o.sucursal}</strong></td><td>${fmtD(o.fecha)}</td><td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ns}</td><td><strong>${t}</strong></td><td><button class="btn btn-sm" onclick="pdVerOrdenEnt('${o.id}',true)">Ver</button></td></tr>`;
+    }).join('')||'<tr><td colspan="5" class="empty">Sin entregas</td></tr>'}
+    </tbody></table>
+  </div>`;
+}
+
+// --- IMPRIMIR ---
+async function pdImprimir(ordenId,tipo){
+  let ord,items,title;
+  if(tipo==='prod'){
+    const[r1,r2]=await Promise.all([sb.from('prod_ordenes_produccion').select('*').eq('id',ordenId).single(),sb.from('prod_ord_prod_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId)]);
+    ord=r1.data;items=r2.data;title='Orden de Producción — '+fmtD(ord?.fecha);
+  }else{
+    const[r1,r2]=await Promise.all([sb.from('prod_ordenes_entrega').select('*').eq('id',ordenId).single(),sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId)]);
+    ord=r1.data;items=r2.data;
+    const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+    title='Orden de Entrega — '+(bLab[ord?.sucursal]||ord?.sucursal)+' — '+fmtD(ord?.fecha);
+  }
+  const total=(items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;font-size:13px;color:#1a1a2e;padding:32px;max-width:700px;margin:0 auto}h1{font-size:17px;font-weight:700;margin-bottom:4px}.sub{font-size:12px;color:#64748b;margin-bottom:24px;border-bottom:1px solid #e2e8f0;padding-bottom:12px}table{width:100%;border-collapse:collapse;margin-top:12px}th{font-size:10px;font-weight:600;color:#64748b;text-align:left;padding:7px 8px;border-bottom:2px solid #e2e8f0;text-transform:uppercase}td{padding:9px 8px;border-bottom:1px solid #f1f5f9}.total{margin-top:16px;text-align:right;font-size:14px;color:#475569;border-top:2px solid #e2e8f0;padding-top:12px}@media print{body{padding:16px}}</style></head><body>
+  <h1>${title}</h1><div class="sub">Generado: ${new Date().toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}${ord?.notas?`<br>Nota: ${ord.notas}`:''}</div>
+  <table><thead><tr><th>Pos.</th><th>Código</th><th>Sabor</th><th style="text-align:center">Sorbeteras</th></tr></thead><tbody>
+  ${(items||[]).map(it=>`<tr><td>${it.prod_posiciones?.numero||'?'}</td><td>${it.prod_sabores?.codigo||'?'}</td><td><strong>${it.prod_sabores?.nombre||'?'}</strong></td><td style="text-align:center"><strong>${it.cantidad_confirmada}</strong></td></tr>`).join('')}
+  </tbody></table><div class="total">Total: <strong>${total} sorbeteras</strong></div>
+  <script>window.onload=()=>setTimeout(()=>{window.focus();window.print()},400)<\/script></body></html>`);
+  w.document.close();
+}
 
 // ---- PDF EXPORT ----
 function exportPDF(titulo){
