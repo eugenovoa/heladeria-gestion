@@ -3075,8 +3075,8 @@ async function pdVerOrdenProd(ordenId,readonly=false){
   ]);
   const isConf=ord?.estado==='confirmada';
   const total=(items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
-  const dragCol=!isConf&&!readonly?`<th style="width:28px"></th>`:'';
-  const dragHandle=!isConf&&!readonly?`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none" title="Arrastrá para reordenar">⠿</td>`:'';
+  const dragCol=!isConf&&!readonly?`<th style="width:28px"></th><th style="width:28px"></th>`:'';
+  const dragHandle=!isConf&&!readonly?`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none" title="Arrastrá para reordenar">⠿</td><td><button onclick="this.closest('tr').remove()" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1" title="Quitar de esta orden">✕</button></td>`:'';
   pdCt().innerHTML=`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
       <div><h3 style="font-size:15px;font-weight:700">Orden de Producción — ${fmtD(ord?.fecha)}</h3>
