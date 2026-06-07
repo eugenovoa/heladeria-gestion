@@ -3133,8 +3133,20 @@ async function pdGuardarCants(ordenId,tipo){
   const sel=tipo==='prod'?'#pd-vp-items':'#pd-ve-items';
   const inps=document.querySelectorAll(`${sel} input[data-item]`);
   const tbl=tipo==='prod'?'prod_ord_prod_items':'prod_ord_entrega_items';
-  for(const inp of inps)await sb.from(tbl).update({cantidad_confirmada:parseInt(inp.value)||0}).eq('id',inp.dataset.item);
-  alert('✓ Cantidades guardadas.');
+  // Actualizar cantidades de los ítems visibles
+  const visibleIds=[];
+  for(const inp of inps){
+    await sb.from(tbl).update({cantidad_confirmada:parseInt(inp.value)||0}).eq('id',inp.dataset.item);
+    visibleIds.push(inp.dataset.item);
+  }
+  // Eliminar de la BD los ítems que se borraron con la X
+  if(ordenId){
+    const fk=tipo==='prod'?'orden_id':'orden_id';
+    const{data:todos}=await sb.from(tbl).select('id').eq(fk,ordenId);
+    const borrar=(todos||[]).map(i=>i.id).filter(id=>!visibleIds.includes(id));
+    if(borrar.length)await sb.from(tbl).delete().in('id',borrar);
+  }
+  alert('✓ Cambios guardados.');
 }
 
 async function pdConfirmarProd(ordenId){
