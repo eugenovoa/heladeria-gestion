@@ -3075,16 +3075,20 @@ async function pdVerOrdenProd(ordenId,readonly=false){
   ]);
   const isConf=ord?.estado==='confirmada';
   const total=(items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
+  const dragCol=!isConf&&!readonly?`<th style="width:28px"></th>`:'';
+  const dragHandle=!isConf&&!readonly?`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none" title="Arrastrá para reordenar">⠿</td>`:'';
   pdCt().innerHTML=`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
       <div><h3 style="font-size:15px;font-weight:700">Orden de Producción — ${fmtD(ord?.fecha)}</h3>
       <div style="margin-top:4px">${isConf?'<span class="bd bd-ok">✅ Confirmada</span>':'<span class="bd bd-warn">📝 Borrador</span>'}</div></div>
       <div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="pdImprimir('${ordenId}','prod')">🖨️ Imprimir</button><button class="btn btn-sm btn-g" onclick="pdOrdenProd()">← Volver</button></div>
     </div>
+    ${!isConf&&!readonly?'<div class="al al-info" style="margin-bottom:12px;font-size:12px">⠿ Arrastrá las filas para reordenar según el orden de fabricación. El impreso respeta este orden.</div>':''}
     ${ord?.notas?`<div class="al al-info" style="margin-bottom:12px">${ord.notas}</div>`:''}
-    <table><thead><tr><th>Pos.</th><th>Código</th><th>Sabor</th><th>Stock antes</th><th>Sorbeteras a producir</th></tr></thead>
+    <table><thead><tr>${dragCol}<th>Pos.</th><th>Código</th><th>Sabor</th><th>Stock antes</th><th>Sorbeteras a producir</th></tr></thead>
     <tbody id="pd-vp-items">
-    ${(items||[]).map(it=>`<tr>
+    ${(items||[]).map(it=>`<tr draggable="${!isConf&&!readonly}">
+      ${dragHandle}
       <td><strong>${it.prod_posiciones?.numero||'?'}</strong></td>
       <td><span class="bd bd-gray">${it.prod_sabores?.codigo||'?'}</span></td>
       <td><strong>${it.prod_sabores?.nombre||'?'}</strong></td>
@@ -3098,6 +3102,31 @@ async function pdVerOrdenProd(ordenId,readonly=false){
       <button class="btn btn-ok" onclick="pdConfirmarProd('${ordenId}')">✅ Confirmar orden</button>
     </div>`:''}
   </div>`;
+  if(!isConf&&!readonly)pdInitDrag('pd-vp-items');
+}
+
+function pdInitDrag(tbodyId){
+  const tbody=document.getElementById(tbodyId);if(!tbody)return;
+  let dragging=null,placeholder=null;
+  tbody.querySelectorAll('tr').forEach(row=>{
+    row.addEventListener('dragstart',e=>{
+      dragging=row;
+      setTimeout(()=>row.style.opacity='0.4',0);
+    });
+    row.addEventListener('dragend',()=>{
+      row.style.opacity='';
+      if(placeholder)placeholder.remove();
+      placeholder=null;dragging=null;
+    });
+    row.addEventListener('dragover',e=>{
+      e.preventDefault();
+      if(!dragging||dragging===row)return;
+      const rect=row.getBoundingClientRect();
+      const mid=rect.top+rect.height/2;
+      if(e.clientY<mid)tbody.insertBefore(dragging,row);
+      else tbody.insertBefore(dragging,row.nextSibling);
+    });
+  });
 }
 
 async function pdGuardarCants(ordenId,tipo){
@@ -3317,7 +3346,17 @@ async function pdImprimir(ordenId,tipo){
   let ord,items,title;
   if(tipo==='prod'){
     const[r1,r2]=await Promise.all([sb.from('prod_ordenes_produccion').select('*').eq('id',ordenId).single(),sb.from('prod_ord_prod_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId)]);
-    ord=r1.data;items=r2.data;title='Orden de Producción — '+fmtD(ord?.fecha);
+    ord=r1.data;
+    // Respetar el orden visual (drag-and-drop) si la tabla está en pantalla
+    const tbody=document.getElementById('pd-vp-items');
+    if(tbody){
+      const domOrder=Array.from(tbody.querySelectorAll('tr')).map(tr=>tr.querySelector('[data-item]')?.dataset?.item||tr.querySelector('td:nth-child(3)')?.textContent?.trim());
+      items=(r2.data||[]).sort((a,b)=>{
+        const ia=domOrder.indexOf(a.id);const ib=domOrder.indexOf(b.id);
+        return(ia===-1?999:ia)-(ib===-1?999:ib);
+      });
+    }else{items=r2.data;}
+    title='Orden de Producción — '+fmtD(ord?.fecha);
   }else{
     const[r1,r2]=await Promise.all([sb.from('prod_ordenes_entrega').select('*').eq('id',ordenId).single(),sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId)]);
     ord=r1.data;items=r2.data;
