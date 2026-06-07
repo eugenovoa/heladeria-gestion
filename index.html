@@ -6,6 +6,7 @@
 <title>Heladería — Gestión</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -2734,58 +2735,6 @@ function pdCfgTab(id,el){
 }
 function pdCfgShowTab(id){const el=document.querySelector(`[data-pct="${id}"]`);if(el)pdCfgTab(id,el);}
 
-// --- STOCK SUCURSALES (edición manual) ---
-async function pdCfgLoadStkSuc(suc){
-  const el=document.getElementById('prod-cfg-suc');if(!el)return;
-  suc=suc||'eutingen';
-  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
-  // Get latest snapshot for selected branch
-  const{data:snaps}=await sb.from('prod_stock_sucursal')
-    .select('*,prod_sabores(id,codigo,nombre)')
-    .eq('sucursal',suc)
-    .order('fecha_snapshot',{ascending:false});
-  // Build map from latest upload_id
-  const latestUid=snaps?.length?snaps[0].upload_id:null;
-  const snapMap={};
-  if(latestUid)(snaps||[]).filter(s=>s.upload_id===latestUid).forEach(s=>snapMap[s.sabor_id]=s.cantidad);
-  const snapDate=latestUid&&snaps?.length?new Date(snaps[0].fecha_snapshot).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):null;
-  // Get full flavor list
-  const{data:sabs}=await sb.from('prod_sabores').select('*').eq('activo',true).order('nombre');
-  el.innerHTML=`<div class="card"><div class="card-t">Stock Manual de Sucursal</div>
-    <div class="al al-info" style="margin-bottom:14px">Podés corregir el stock actual de una sucursal sin necesidad de subir un CSV. Los valores que ingreses se guardan como un nuevo snapshot.</div>
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-      <div class="f"><label>Sucursal</label>
-        <select onchange="pdCfgLoadStkSuc(this.value)" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
-          ${['eutingen','muhlacker','konigsbacj'].map(b=>`<option value="${b}" ${b===suc?'selected':''}>${bLab[b]}</option>`).join('')}
-        </select>
-      </div>
-      ${snapDate?`<div style="font-size:12px;color:var(--text-muted);padding-top:18px">Último snapshot: ${snapDate}</div>`:'<div style="font-size:12px;color:var(--amber);padding-top:18px">Sin datos previos</div>'}
-    </div>
-    <table><thead><tr><th>Código</th><th>Sabor</th><th>Sorbeteras actuales</th></tr></thead><tbody>
-    ${(sabs||[]).map(s=>`<tr>
-      <td><span class="bd bd-gray">${s.codigo}</span></td>
-      <td>${s.nombre}</td>
-      <td><input type="number" min="0" value="${snapMap[s.id]||0}" style="width:70px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-sab="${s.id}"></td>
-    </tr>`).join('')}
-    </tbody></table>
-    <div style="display:flex;gap:8px;margin-top:16px;align-items:center">
-      <button class="btn btn-p" onclick="pdSaveStockSuc('${suc}')">💾 Guardar stock de ${bLab[suc]}</button>
-      <span id="pd-suc-ok"></span>
-    </div>
-  </div>`;
-}
-
-async function pdSaveStockSuc(suc){
-  const inputs=document.querySelectorAll('#prod-cfg-suc input[data-sab]');
-  const items=Array.from(inputs).map(i=>({sabor_id:i.dataset.sab,cantidad:parseInt(i.value)||0})).filter(i=>i.cantidad>0);
-  if(!items.length){alert('Ingresá al menos una cantidad mayor a 0.');return}
-  const uid='manual_'+Date.now();
-  const{error}=await sb.from('prod_stock_sucursal').insert(items.map(i=>({sucursal:suc,fecha_snapshot:new Date().toISOString(),sabor_id:i.sabor_id,cantidad:i.cantidad,upload_id:uid})));
-  const ok=document.getElementById('pd-suc-ok');
-  if(error){ok.innerHTML='<span class="bd bd-err">Error: '+error.message+'</span>';}
-  else{ok.innerHTML='<span class="bd bd-ok">✓ Guardado</span>';setTimeout(()=>{if(ok)ok.innerHTML=''},3000);}
-}
-
 async function pdCfgLoadSabs(){
   const{data}=await sb.from('prod_sabores').select('*').order('nombre');
   const el=document.getElementById('prod-cfg-sabs');if(!el)return;
@@ -2884,8 +2833,54 @@ function pdFiltrarSabores(q){
   const term=q.toLowerCase().trim();
   chk.querySelectorAll('label').forEach(lbl=>{
     const txt=lbl.textContent.toLowerCase();
-    lbl.style.display=!term||txt.includes(term)?'':'none';
+    lbl.style.display=!term||txt.includes(term)?'flex':'none';
   });
+}
+
+// --- STOCK SUCURSALES (edición manual) ---
+async function pdCfgLoadStkSuc(suc){
+  const el=document.getElementById('prod-cfg-suc');if(!el)return;
+  suc=suc||'eutingen';
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const{data:snaps}=await sb.from('prod_stock_sucursal').select('*,prod_sabores(id,codigo,nombre)').eq('sucursal',suc).order('fecha_snapshot',{ascending:false});
+  const latestUid=snaps?.length?snaps[0].upload_id:null;
+  const snapMap={};
+  if(latestUid)(snaps||[]).filter(s=>s.upload_id===latestUid).forEach(s=>snapMap[s.sabor_id]=s.cantidad);
+  const snapDate=latestUid&&snaps?.length?new Date(snaps[0].fecha_snapshot).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):null;
+  const{data:sabs}=await sb.from('prod_sabores').select('*').eq('activo',true).order('nombre');
+  el.innerHTML=`<div class="card"><div class="card-t">Stock Manual de Sucursal</div>
+    <div class="al al-info" style="margin-bottom:14px">Corregí el stock de una sucursal sin subir CSV. Se guarda como nuevo snapshot y el dashboard lo toma inmediatamente.</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <div class="f"><label>Sucursal</label>
+        <select onchange="pdCfgLoadStkSuc(this.value)" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+          ${['eutingen','muhlacker','konigsbacj'].map(b=>`<option value="${b}" ${b===suc?'selected':''}>${bLab[b]}</option>`).join('')}
+        </select>
+      </div>
+      ${snapDate?`<div style="font-size:12px;color:var(--text-muted);padding-top:18px">Último snapshot: ${snapDate}</div>`:'<div style="font-size:12px;color:var(--amber);padding-top:18px">Sin datos previos</div>'}
+    </div>
+    <table><thead><tr><th>Código</th><th>Sabor</th><th>Sorbeteras actuales</th></tr></thead><tbody>
+    ${(sabs||[]).map(s=>`<tr>
+      <td><span class="bd bd-gray">${s.codigo}</span></td>
+      <td>${s.nombre}</td>
+      <td><input type="number" min="0" value="${snapMap[s.id]||0}" style="width:70px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-sab="${s.id}"></td>
+    </tr>`).join('')}
+    </tbody></table>
+    <div style="display:flex;gap:8px;margin-top:16px;align-items:center">
+      <button class="btn btn-p" onclick="pdSaveStockSuc('${suc}')">💾 Guardar stock de ${bLab[suc]}</button>
+      <span id="pd-suc-ok"></span>
+    </div>
+  </div>`;
+}
+
+async function pdSaveStockSuc(suc){
+  const inputs=document.querySelectorAll('#prod-cfg-suc input[data-sab]');
+  const items=Array.from(inputs).map(i=>({sabor_id:i.dataset.sab,cantidad:parseInt(i.value)||0})).filter(i=>i.cantidad>0);
+  if(!items.length){alert('Ingresá al menos una cantidad mayor a 0.');return}
+  const uid='manual_'+Date.now();
+  const{error}=await sb.from('prod_stock_sucursal').insert(items.map(i=>({sucursal:suc,fecha_snapshot:new Date().toISOString(),sabor_id:i.sabor_id,cantidad:i.cantidad,upload_id:uid})));
+  const ok=document.getElementById('pd-suc-ok');
+  if(error){ok.innerHTML='<span class="bd bd-err">Error: '+error.message+'</span>';}
+  else{ok.innerHTML='<span class="bd bd-ok">✓ Guardado</span>';setTimeout(()=>{if(ok)ok.innerHTML=''},3000);}
 }
 
 async function pdCfgLoadMin(){
@@ -2940,8 +2935,29 @@ async function pdCfgLoadStk(){
   </div>`;
 }
 
-// --- CSV PARSING ---
-function pdParseCsv(txt){
+// --- CSV/XLS PARSING ---
+// Lee tanto XLS binario real (Facciobuono) como HTML exportado como XLS
+async function pdReadXls(file){
+  const ext=file.name.split('.').pop().toLowerCase();
+  // XLS/XLSX binario real → usar SheetJS
+  if(ext==='xls'||ext==='xlsx'){
+    try{
+      const ab=await file.arrayBuffer();
+      const wb=XLSX.read(ab,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      if(!rows.length)return[];
+      const headers=rows[0].map(h=>String(h).trim());
+      const pIdx=headers.findIndex(h=>h==='Producto');
+      const sIdx=headers.findIndex(h=>h.includes('Stocks'));
+      if(pIdx<0||sIdx<0)return[];
+      return rows.slice(1)
+        .map(r=>({producto:String(r[pIdx]||'').trim(),cantidad:Math.round(parseFloat(r[sIdx])||0)}))
+        .filter(r=>r.producto&&r.cantidad>0&&!r.producto.includes('Ningún Resultado'));
+    }catch(e){console.error('SheetJS error:',e);return[];}
+  }
+  // HTML exportado como XLS → parseo DOM
+  const txt=await file.text();
   const doc=new DOMParser().parseFromString(txt,'text/html');
   const rows=doc.querySelectorAll('tr');
   let pIdx=-1,sIdx=-1;const res=[];
@@ -2955,7 +2971,7 @@ function pdParseCsv(txt){
     }
     if(tds.length&&pIdx>=0&&sIdx>=0){
       const cs=Array.from(tds).map(td=>td.textContent.trim());
-      const p=cs[pIdx]||'';const c=parseInt(cs[sIdx])||0;
+      const p=cs[pIdx]||'';const c=Math.round(parseFloat(cs[sIdx])||0);
       if(p&&!p.includes('Ningún Resultado')&&c>0)res.push({producto:p,cantidad:c});
     }
   });
@@ -2966,7 +2982,7 @@ async function pdParseCsvDep(file){
   if(!file)return;
   const prev=document.getElementById('pd-stk-prev');
   prev.innerHTML='<div class="ld">Procesando...</div>';
-  const rows=pdParseCsv(await file.text());
+  const rows=await pdReadXls(file);
   if(!rows.length){prev.innerHTML='<div class="al al-err">No se pudo leer el archivo. Verificá que sea el CSV totalizado de Facciobuono.</div>';return}
   const matched=[],unmatched=[];
   rows.forEach(r=>{const s=_prodSabs.find(x=>x.nombre_csv===r.producto);if(s)matched.push({s,c:r.cantidad});else unmatched.push(r.producto);});
@@ -3145,7 +3161,7 @@ async function pdParseCsvSuc(file){
   const prev=document.getElementById('pd-ent-prev');
   const suc=document.getElementById('pd-ent-suc')?.value||'eutingen';
   prev.innerHTML='<div class="ld">Procesando...</div>';
-  const rows=pdParseCsv(await file.text());
+  const rows=await pdReadXls(file);
   if(!rows.length){prev.innerHTML='<div class="al al-err">No se pudo leer el archivo.</div>';return}
   const matched=[],unmatched=[];
   rows.forEach(r=>{const s=_prodSabs.find(x=>x.nombre_csv===r.producto);if(s)matched.push({s,c:r.cantidad});else unmatched.push(r.producto);});
