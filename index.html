@@ -2717,20 +2717,74 @@ async function pdCfg(){
       <div class="tab" data-pct="prod-cfg-pos" onclick="pdCfgTab('prod-cfg-pos',this)">Posiciones</div>
       <div class="tab" data-pct="prod-cfg-min" onclick="pdCfgTab('prod-cfg-min',this)">Stock Mínimos</div>
       <div class="tab" data-pct="prod-cfg-stk" onclick="pdCfgTab('prod-cfg-stk',this)">Stock Depósito</div>
+      <div class="tab" data-pct="prod-cfg-suc" onclick="pdCfgTab('prod-cfg-suc',this)">Stock Sucursales</div>
     </div>
     <div id="prod-cfg-sabs"></div>
     <div id="prod-cfg-pos" style="display:none"></div>
     <div id="prod-cfg-min" style="display:none"></div>
-    <div id="prod-cfg-stk" style="display:none"></div>`;
-  await Promise.all([pdCfgLoadSabs(),pdCfgLoadPos(),pdCfgLoadMin(),pdCfgLoadStk()]);
+    <div id="prod-cfg-stk" style="display:none"></div>
+    <div id="prod-cfg-suc" style="display:none"></div>`;
+  await Promise.all([pdCfgLoadSabs(),pdCfgLoadPos(),pdCfgLoadMin(),pdCfgLoadStk(),pdCfgLoadStkSuc()]);
 }
 
 function pdCfgTab(id,el){
   document.querySelectorAll('[data-pct]').forEach(t=>t.classList.remove('active'));
   if(el)el.classList.add('active');
-  ['prod-cfg-sabs','prod-cfg-pos','prod-cfg-min','prod-cfg-stk'].forEach(t=>{const e=document.getElementById(t);if(e)e.style.display=t===id?'':'none';});
+  ['prod-cfg-sabs','prod-cfg-pos','prod-cfg-min','prod-cfg-stk','prod-cfg-suc'].forEach(t=>{const e=document.getElementById(t);if(e)e.style.display=t===id?'':'none';});
 }
 function pdCfgShowTab(id){const el=document.querySelector(`[data-pct="${id}"]`);if(el)pdCfgTab(id,el);}
+
+// --- STOCK SUCURSALES (edición manual) ---
+async function pdCfgLoadStkSuc(suc){
+  const el=document.getElementById('prod-cfg-suc');if(!el)return;
+  suc=suc||'eutingen';
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  // Get latest snapshot for selected branch
+  const{data:snaps}=await sb.from('prod_stock_sucursal')
+    .select('*,prod_sabores(id,codigo,nombre)')
+    .eq('sucursal',suc)
+    .order('fecha_snapshot',{ascending:false});
+  // Build map from latest upload_id
+  const latestUid=snaps?.length?snaps[0].upload_id:null;
+  const snapMap={};
+  if(latestUid)(snaps||[]).filter(s=>s.upload_id===latestUid).forEach(s=>snapMap[s.sabor_id]=s.cantidad);
+  const snapDate=latestUid&&snaps?.length?new Date(snaps[0].fecha_snapshot).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):null;
+  // Get full flavor list
+  const{data:sabs}=await sb.from('prod_sabores').select('*').eq('activo',true).order('nombre');
+  el.innerHTML=`<div class="card"><div class="card-t">Stock Manual de Sucursal</div>
+    <div class="al al-info" style="margin-bottom:14px">Podés corregir el stock actual de una sucursal sin necesidad de subir un CSV. Los valores que ingreses se guardan como un nuevo snapshot.</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <div class="f"><label>Sucursal</label>
+        <select onchange="pdCfgLoadStkSuc(this.value)" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+          ${['eutingen','muhlacker','konigsbacj'].map(b=>`<option value="${b}" ${b===suc?'selected':''}>${bLab[b]}</option>`).join('')}
+        </select>
+      </div>
+      ${snapDate?`<div style="font-size:12px;color:var(--text-muted);padding-top:18px">Último snapshot: ${snapDate}</div>`:'<div style="font-size:12px;color:var(--amber);padding-top:18px">Sin datos previos</div>'}
+    </div>
+    <table><thead><tr><th>Código</th><th>Sabor</th><th>Sorbeteras actuales</th></tr></thead><tbody>
+    ${(sabs||[]).map(s=>`<tr>
+      <td><span class="bd bd-gray">${s.codigo}</span></td>
+      <td>${s.nombre}</td>
+      <td><input type="number" min="0" value="${snapMap[s.id]||0}" style="width:70px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-sab="${s.id}"></td>
+    </tr>`).join('')}
+    </tbody></table>
+    <div style="display:flex;gap:8px;margin-top:16px;align-items:center">
+      <button class="btn btn-p" onclick="pdSaveStockSuc('${suc}')">💾 Guardar stock de ${bLab[suc]}</button>
+      <span id="pd-suc-ok"></span>
+    </div>
+  </div>`;
+}
+
+async function pdSaveStockSuc(suc){
+  const inputs=document.querySelectorAll('#prod-cfg-suc input[data-sab]');
+  const items=Array.from(inputs).map(i=>({sabor_id:i.dataset.sab,cantidad:parseInt(i.value)||0})).filter(i=>i.cantidad>0);
+  if(!items.length){alert('Ingresá al menos una cantidad mayor a 0.');return}
+  const uid='manual_'+Date.now();
+  const{error}=await sb.from('prod_stock_sucursal').insert(items.map(i=>({sucursal:suc,fecha_snapshot:new Date().toISOString(),sabor_id:i.sabor_id,cantidad:i.cantidad,upload_id:uid})));
+  const ok=document.getElementById('pd-suc-ok');
+  if(error){ok.innerHTML='<span class="bd bd-err">Error: '+error.message+'</span>';}
+  else{ok.innerHTML='<span class="bd bd-ok">✓ Guardado</span>';setTimeout(()=>{if(ok)ok.innerHTML=''},3000);}
+}
 
 async function pdCfgLoadSabs(){
   const{data}=await sb.from('prod_sabores').select('*').order('nombre');
@@ -2809,7 +2863,8 @@ async function pdConfigPos(posId,posNum){
   const checks=(sabs||[]).map(s=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;cursor:pointer"><input type="checkbox" value="${s.id}" ${grupoIds.includes(s.id)?'checked':''}> ${s.nombre} <span class="bd bd-gray" style="font-size:10px">${s.codigo}</span></label>`).join('');
   openMo(`Configurar Posición ${posNum}`,`<div class="fg">
     <div class="f full"><label>Sabores del grupo (todos los que pueden ir en esta posición)</label>
-      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border-md);border-radius:var(--r);padding:10px 12px;background:var(--surface2)" id="pd-pos-chk">${checks}</div>
+      <input id="pd-pos-buscar" placeholder="Buscar sabor..." oninput="pdFiltrarSabores(this.value)" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%;margin-bottom:6px">
+      <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border-md);border-radius:var(--r);padding:10px 12px;background:var(--surface2)" id="pd-pos-chk">${checks}</div>
     </div>
     <div class="f full"><label>Sabor activo (el que se produce si hay déficit)</label><select id="pd-pos-act">${sabOpts}</select></div>
   </div>`,async()=>{
@@ -2821,6 +2876,15 @@ async function pdConfigPos(posId,posNum){
     await sb.from('prod_posicion_sabores').delete().eq('posicion_id',posId);
     if(grpNew.length)await sb.from('prod_posicion_sabores').insert(grpNew.map(sid=>({posicion_id:posId,sabor_id:sid,es_activo:sid===actNew})));
     closeMo();_prodPos=(await sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero')).data||[];pdCfgLoadPos();
+  });
+}
+
+function pdFiltrarSabores(q){
+  const chk=document.getElementById('pd-pos-chk');if(!chk)return;
+  const term=q.toLowerCase().trim();
+  chk.querySelectorAll('label').forEach(lbl=>{
+    const txt=lbl.textContent.toLowerCase();
+    lbl.style.display=!term||txt.includes(term)?'':'none';
   });
 }
 
