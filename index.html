@@ -3324,13 +3324,17 @@ async function pdCrearOrdenEnt(suc){
 }
 
 async function pdVerOrdenEnt(ordenId,readonly=false){
-  const[{data:ord},{data:items}]=await Promise.all([
+  const[{data:ord},{data:items},{data:sabs}]=await Promise.all([
     sb.from('prod_ordenes_entrega').select('*').eq('id',ordenId).single(),
-    sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId)
+    sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId),
+    sb.from('prod_sabores').select('*').eq('activo',true).order('nombre')
   ]);
   const isConf=ord?.estado==='confirmada';
   const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
   const total=(items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
+  const dragCol=!isConf&&!readonly?`<th style="width:28px"></th><th style="width:28px"></th>`:'';
+  const dragHandle=(it)=>!isConf&&!readonly?`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none" title="Arrastrá para reordenar">⠿</td><td><button onclick="this.closest('tr').remove()" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1" title="Quitar de esta orden">✕</button></td>`:'';
+  const sabOpts=(sabs||[]).map(s=>`<option value="${s.id}" data-cod="${s.codigo}">${s.nombre}</option>`).join('');
   pdCt().innerHTML=`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
       <div><h3 style="font-size:15px;font-weight:700">Entrega — ${bLab[ord?.sucursal]||ord?.sucursal} — ${fmtD(ord?.fecha)}</h3>
@@ -3338,35 +3342,94 @@ async function pdVerOrdenEnt(ordenId,readonly=false){
       <div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="pdImprimir('${ordenId}','ent')">🖨️ Imprimir</button><button class="btn btn-sm btn-g" onclick="pdOrdenEnt()">← Volver</button></div>
     </div>
     ${ord?.notas?`<div class="al al-info" style="margin-bottom:12px">${ord.notas}</div>`:''}
-    <table><thead><tr><th>Pos.</th><th>Código</th><th>Sabor</th><th>Stock suc.</th><th>Sorbeteras a enviar</th></tr></thead>
+    <table><thead><tr>${dragCol}<th>Pos.</th><th>Código</th><th>Sabor</th><th>Stock suc.</th><th>Sorbeteras a enviar</th></tr></thead>
     <tbody id="pd-ve-items">
-    ${(items||[]).map(it=>`<tr>
-      <td><strong>${it.prod_posiciones?.numero||'?'}</strong></td>
+    ${(items||[]).map(it=>`<tr draggable="${!isConf&&!readonly}">
+      ${dragHandle(it)}
+      <td>${it.prod_posiciones?.numero?`<strong>${it.prod_posiciones.numero}</strong>`:'—'}</td>
       <td><span class="bd bd-gray">${it.prod_sabores?.codigo||'?'}</span></td>
       <td><strong>${it.prod_sabores?.nombre||'?'}</strong></td>
       <td>${it.stock_sucursal} sorb.</td>
       <td>${isConf||readonly?`<strong>${it.cantidad_confirmada}</strong> sorbeteras`:`<input type="number" min="0" value="${it.cantidad_confirmada}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${it.id}">`}</td>
     </tr>`).join('')}
     </tbody></table>
-    <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong>${total} sorbeteras</strong></div>
-    ${!isConf&&!readonly?`<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+    <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong id="pd-ve-total">${total} sorbeteras</strong></div>
+    ${!isConf&&!readonly?`
+    <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;padding:12px;background:var(--surface2);border-radius:var(--r);border:1px solid var(--border)">
+      <span style="font-size:12px;font-weight:600;color:var(--text-muted)">+ Agregar sabor:</span>
+      <select id="pd-add-sab" style="font-size:13px;padding:6px 10px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;flex:1;min-width:160px"><option value="">— Seleccioná —</option>${sabOpts}</select>
+      <input type="number" id="pd-add-cant" min="1" value="1" style="width:65px;padding:6px;font-size:13px;border:1px solid var(--border-md);border-radius:var(--r);text-align:center" placeholder="Cant.">
+      <button class="btn btn-sm btn-p" onclick="pdAddItemEnt('${ordenId}','${ord?.sucursal}')">Agregar</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
       <button class="btn" onclick="pdGuardarCants('${ordenId}','ent')">💾 Guardar cambios</button>
       <button class="btn btn-ok" onclick="pdConfirmarEnt('${ordenId}')">✅ Confirmar y despachar</button>
     </div>`:''}
   </div>`;
+  if(!isConf&&!readonly)pdInitDrag('pd-ve-items');
+}
+
+async function pdAddItemEnt(ordenId,sucursal){
+  const sabId=document.getElementById('pd-add-sab')?.value;
+  const cant=parseInt(document.getElementById('pd-add-cant')?.value)||0;
+  if(!sabId){alert('Seleccioná un sabor.');return}
+  if(cant<=0){alert('Ingresá una cantidad mayor a 0.');return}
+  // Get current depósito stock for this flavor
+  const{data:dep}=await sb.from('prod_stock_deposito').select('cantidad').eq('sabor_id',sabId).maybeSingle();
+  const depStock=dep?.cantidad||0;
+  // Get latest branch stock for this flavor
+  const{data:snaps}=await sb.from('prod_stock_sucursal').select('*').eq('sucursal',sucursal).order('fecha_snapshot',{ascending:false});
+  const latestUid=snaps?.length?snaps[0].upload_id:null;
+  const branchStock=latestUid?(snaps||[]).find(s=>s.upload_id===latestUid&&s.sabor_id===sabId)?.cantidad||0:0;
+  // Insert item
+  const{data:newItem,error}=await sb.from('prod_ord_entrega_items').insert({
+    orden_id:ordenId,posicion_id:null,sabor_id:sabId,
+    stock_sucursal:branchStock,stock_deposito:depStock,
+    cantidad_sugerida:cant,cantidad_confirmada:cant
+  }).select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').single();
+  if(error){alert('Error al agregar: '+error.message);return}
+  // Add row to table
+  const tbody=document.getElementById('pd-ve-items');if(!tbody)return;
+  const tr=document.createElement('tr');
+  tr.setAttribute('draggable','true');
+  tr.innerHTML=`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none">⠿</td>
+    <td><button onclick="this.closest('tr').remove()" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1">✕</button></td>
+    <td>—</td>
+    <td><span class="bd bd-gray">${newItem.prod_sabores?.codigo||'?'}</span></td>
+    <td><strong>${newItem.prod_sabores?.nombre||'?'}</strong></td>
+    <td>— sorb.</td>
+    <td><input type="number" min="0" value="${cant}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${newItem.id}"></td>`;
+  tbody.appendChild(tr);
+  pdInitDrag('pd-ve-items');
+  document.getElementById('pd-add-sab').value='';
+  document.getElementById('pd-add-cant').value='1';
 }
 
 async function pdConfirmarEnt(ordenId){
-  if(!confirm('¿Confirmar la entrega? Se descontará del stock del depósito.'))return;
+  if(!confirm('¿Confirmar la entrega? Se actualizará el stock del depósito y de la sucursal.'))return;
   await pdGuardarCants(ordenId,'ent');
+  const{data:ord}=await sb.from('prod_ordenes_entrega').select('sucursal').eq('id',ordenId).single();
+  const suc=ord?.sucursal;
   const{data:items}=await sb.from('prod_ord_entrega_items').select('*').eq('orden_id',ordenId);
+  // 1. Restar del depósito
   for(const it of(items||[])){
     if(!it.cantidad_confirmada)continue;
     const{data:curr}=await sb.from('prod_stock_deposito').select('cantidad').eq('sabor_id',it.sabor_id).maybeSingle();
     await sb.from('prod_stock_deposito').upsert({sabor_id:it.sabor_id,cantidad:Math.max(0,(curr?.cantidad||0)-it.cantidad_confirmada),ultima_actualizacion:new Date().toISOString()},{onConflict:'sabor_id'});
   }
+  // 2. Sumar al stock de la sucursal (nuevo snapshot completo)
+  if(suc){
+    const{data:snaps}=await sb.from('prod_stock_sucursal').select('*').eq('sucursal',suc).order('fecha_snapshot',{ascending:false});
+    const latestUid=snaps?.length?snaps[0].upload_id:null;
+    const branchMap={};
+    if(latestUid)(snaps||[]).filter(s=>s.upload_id===latestUid).forEach(s=>branchMap[s.sabor_id]=s.cantidad);
+    (items||[]).forEach(it=>{if(it.cantidad_confirmada)branchMap[it.sabor_id]=(branchMap[it.sabor_id]||0)+it.cantidad_confirmada;});
+    const newUid='entrega_'+Date.now();
+    const newSnap=Object.entries(branchMap).map(([sabor_id,cantidad])=>({sucursal:suc,fecha_snapshot:new Date().toISOString(),sabor_id,cantidad,upload_id:newUid}));
+    if(newSnap.length)await sb.from('prod_stock_sucursal').insert(newSnap);
+  }
   await sb.from('prod_ordenes_entrega').update({estado:'confirmada',confirmed_at:new Date().toISOString()}).eq('id',ordenId);
-  alert('✅ Entrega confirmada. Stock del depósito actualizado.');pdOrdenEnt();
+  alert('✅ Entrega confirmada. Stock del depósito actualizado y stock de la sucursal sumado.');pdOrdenEnt();
 }
 
 async function pdDelOrdenEnt(id){
