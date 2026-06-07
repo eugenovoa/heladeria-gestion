@@ -2626,6 +2626,7 @@ async function saveApiKey(){const k=document.getElementById('ca-ak').value.trim(
 // ==== MÓDULO PRODUCCIÓN ====
 let _prodSabs=[],_prodPos=[];
 window._prodEntItems=[];
+window._prodDepItems=[];
 
 async function produccionPage(){
   loading();setR('');
@@ -2989,11 +2990,14 @@ async function pdParseCsvDep(file){
   let html=`<div class="al al-ok">✓ ${matched.length} sabores reconocidos.</div>`;
   if(unmatched.length)html+=`<div class="al al-warn">No reconocidos (no están en catálogo): ${unmatched.join(', ')}</div>`;
   html+=`<table><thead><tr><th>Sabor</th><th>Sorbeteras</th></tr></thead><tbody>${matched.map(m=>`<tr><td>${m.s.nombre}</td><td><strong>${m.c}</strong></td></tr>`).join('')}</tbody></table>`;
-  html+=`<button class="btn btn-p" style="margin-top:12px" onclick="pdConfirmarStk(${JSON.stringify(matched.map(m=>({id:m.s.id,c:m.c})))})">✅ Confirmar y cargar stock</button>`;
+  window._prodDepItems=matched.map(m=>({id:m.s.id,c:m.c}));
+  html+=`<button class="btn btn-p" style="margin-top:12px" onclick="pdConfirmarStk()">✅ Confirmar y cargar stock</button>`;
   prev.innerHTML=html;
 }
 
-async function pdConfirmarStk(items){
+async function pdConfirmarStk(){
+  const items=window._prodDepItems||[];
+  if(!items.length){alert('Sin datos para cargar.');return}
   const ups=items.map(i=>({sabor_id:i.id,cantidad:i.c,ultima_actualizacion:new Date().toISOString()}));
   const{error}=await sb.from('prod_stock_deposito').upsert(ups,{onConflict:'sabor_id'});
   if(error){alert('Error: '+error.message);return}
