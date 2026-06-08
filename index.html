@@ -2835,14 +2835,25 @@ async function pdCfgLoadPos(){
 }
 
 async function pdConfigPos(posId,posNum){
-  const[{data:pos},{data:sabs}]=await Promise.all([
+  const[{data:pos},{data:sabs},{data:allAssigned}]=await Promise.all([
     sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').eq('id',posId).single(),
-    sb.from('prod_sabores').select('*').eq('activo',true).order('nombre')
+    sb.from('prod_sabores').select('*').eq('activo',true).order('nombre'),
+    sb.from('prod_posicion_sabores').select('sabor_id,prod_posiciones(numero)').neq('posicion_id',posId)
   ]);
+  // Mapa sabor_id → número de posición donde ya está asignado (en OTRA posición)
+  const otherMap={};
+  (allAssigned||[]).forEach(a=>{otherMap[a.sabor_id]=a.prod_posiciones?.numero;});
   const activoId=(pos?.prod_posicion_sabores||[]).find(ps=>ps.es_activo)?.sabor_id||'';
   const grupoIds=(pos?.prod_posicion_sabores||[]).map(ps=>ps.sabor_id);
-  const sabOpts=(sabs||[]).map(s=>`<option value="${s.id}" ${s.id===activoId?'selected':''}>${s.nombre}</option>`).join('');
-  const checks=(sabs||[]).map(s=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;cursor:pointer"><input type="checkbox" value="${s.id}" ${grupoIds.includes(s.id)?'checked':''}> ${s.nombre} <span class="bd bd-gray" style="font-size:10px">${s.codigo}</span></label>`).join('');
+  // Dropdown activo: solo sabores de este grupo o libres (no en otra posición)
+  const sabOpts=(sabs||[]).filter(s=>grupoIds.includes(s.id)||otherMap[s.id]===undefined).map(s=>`<option value="${s.id}" ${s.id===activoId?'selected':''}>${s.nombre}</option>`).join('');
+  // Checkboxes: sabores en otra posición → deshabilitados con badge
+  const checks=(sabs||[]).map(s=>{
+    const enOtra=otherMap[s.id]!==undefined;
+    const enEsta=grupoIds.includes(s.id);
+    if(enOtra)return`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;opacity:0.5;cursor:not-allowed" title="Ya asignado a Posición ${otherMap[s.id]}"><input type="checkbox" value="${s.id}" disabled> ${s.nombre} <span class="bd bd-gray" style="font-size:10px">${s.codigo}</span><span class="bd bd-warn" style="font-size:10px">Pos. ${otherMap[s.id]}</span></label>`;
+    return`<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;cursor:pointer"><input type="checkbox" value="${s.id}" ${enEsta?'checked':''}> ${s.nombre} <span class="bd bd-gray" style="font-size:10px">${s.codigo}</span><span class="bd bd-ok" style="font-size:10px;${enEsta?'':'display:none'}">✓ Esta pos.</span></label>`;
+  }).join('');
   openMo(`Configurar Posición ${posNum}`,`<div class="fg">
     <div class="f full"><label>Sabores del grupo (todos los que pueden ir en esta posición)</label>
       <input id="pd-pos-buscar" placeholder="Buscar sabor..." oninput="pdFiltrarSabores(this.value)" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%;margin-bottom:6px">
@@ -2850,7 +2861,7 @@ async function pdConfigPos(posId,posNum){
     </div>
     <div class="f full"><label>Sabor activo (el que se produce si hay déficit)</label><select id="pd-pos-act">${sabOpts}</select></div>
   </div>`,async()=>{
-    const chks=document.querySelectorAll('#pd-pos-chk input:checked');
+    const chks=document.querySelectorAll('#pd-pos-chk input:checked:not(:disabled)');
     let grpNew=Array.from(chks).map(c=>c.value);
     const actNew=document.getElementById('pd-pos-act').value;
     if(!actNew){alert('Seleccioná el sabor activo.');return}
