@@ -3284,7 +3284,7 @@ async function pdParseCsvSuc(file){
     if(totSuc<min){
       const def=min-totSuc;
       const depStock=depMap[act.sabor_id]||0;
-      const noAct=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(sucMap[ps.sabor_id]||0)>0);
+      const noAct=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(sucMap[ps.sabor_id]||0)>0&&(depMap[ps.sabor_id]||0)>0);
       let warn=null;
       if(noAct.length)warn=`Suc. tiene: ${noAct.map(ps=>ps.prod_sabores?.nombre+'('+sucMap[ps.sabor_id]+')').join(', ')}`;
       if(depStock<def)warn=(warn?warn+' · ':'')+`⚠️ Depósito solo tiene ${depStock}`;
