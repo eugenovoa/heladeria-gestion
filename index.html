@@ -3365,7 +3365,11 @@ async function pdParseCsvSuc(file){
       const noAct=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(sucMap[ps.sabor_id]||0)>0&&(depMap[ps.sabor_id]||0)>0);
       let warn=null;
       if(noAct.length)warn=`Suc. tiene: ${noAct.map(ps=>ps.prod_sabores?.nombre+'('+sucMap[ps.sabor_id]+')').join(', ')}`;
-      if(depStock<def)warn=(warn?warn+' · ':'')+`⚠️ Depósito solo tiene ${depStock}`;
+      if(depStock<def){
+        const altDep=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(depMap[ps.sabor_id]||0)>0).map(ps=>`${ps.prod_sabores?.nombre}(${depMap[ps.sabor_id]})`);
+        const altMsg=altDep.length?` — Alternativa en depósito: ${altDep.join(', ')}`:'';
+        warn=(warn?warn+' · ':'')+`⚠️ Depósito solo tiene ${depStock} ${act.prod_sabores?.nombre||''}${altMsg}`;
+      }
       items.push({posId:p.id,sabId:act.sabor_id,sabNom:act.prod_sabores?.nombre||'?',posNum:p.numero,totSuc,depStock,min,def,warn});
     }
   });
