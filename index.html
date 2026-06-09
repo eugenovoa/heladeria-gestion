@@ -3069,9 +3069,18 @@ async function pdParseCsvDep(file){
 async function pdConfirmarStk(){
   const items=window._prodDepItems||[];
   if(!items.length){alert('Sin datos para cargar.');return}
-  const ups=items.map(i=>({sabor_id:i.id,cantidad:i.c,ultima_actualizacion:new Date().toISOString()}));
+  const now=new Date().toISOString();
+  const csvIds=items.map(i=>i.id);
+  // Upsert sabores del CSV con sus valores reales
+  const ups=items.map(i=>({sabor_id:i.id,cantidad:i.c,ultima_actualizacion:now}));
   const{error}=await sb.from('prod_stock_deposito').upsert(ups,{onConflict:'sabor_id'});
   if(error){alert('Error: '+error.message);return}
+  // Poner en 0 los sabores que estaban en la BD pero NO están en el CSV
+  const{data:enBD}=await sb.from('prod_stock_deposito').select('sabor_id').gt('cantidad',0);
+  const aZerar=(enBD||[]).map(r=>r.sabor_id).filter(id=>!csvIds.includes(id));
+  if(aZerar.length){
+    await sb.from('prod_stock_deposito').update({cantidad:0,ultima_actualizacion:now}).in('sabor_id',aZerar);
+  }
   alert('✅ Stock del depósito cargado correctamente.');pdCfgLoadStk();
 }
 
