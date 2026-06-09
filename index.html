@@ -2900,7 +2900,7 @@ async function pdCfgLoadStkSuc(suc){
           ${['eutingen','muhlacker','konigsbacj'].map(b=>`<option value="${b}" ${b===suc?'selected':''}>${bLab[b]}</option>`).join('')}
         </select>
       </div>
-      ${snapDate?`<div style="font-size:12px;color:var(--text-muted);padding-top:18px">Último snapshot: ${snapDate}</div>`:'<div style="font-size:12px;color:var(--amber);padding-top:18px">Sin datos previos</div>'}
+      ${snapDate?`<div id="pd-suc-snap-date" style="font-size:12px;color:var(--text-muted);padding-top:18px">Último snapshot: ${snapDate}</div>`:'<div id="pd-suc-snap-date" style="font-size:12px;color:var(--amber);padding-top:18px">Sin datos previos</div>'}
     </div>
     <table><thead><tr><th>Código</th><th>Sabor</th><th>Sorbeteras actuales</th></tr></thead><tbody>
     ${(sabs||[]).map(s=>`<tr>
@@ -2908,7 +2908,9 @@ async function pdCfgLoadStkSuc(suc){
       <td>${s.nombre}</td>
       <td><input type="number" min="0" value="${snapMap[s.id]||0}" style="width:70px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-sab="${s.id}"></td>
     </tr>`).join('')}
-    </tbody></table>
+    </tbody>
+    <tfoot><tr><td colspan="2" style="padding:10px 8px;font-weight:600;color:var(--text-muted);font-size:13px;border-top:2px solid var(--border)">Total sorbeteras</td><td style="padding:10px 8px;font-weight:700;font-size:14px;border-top:2px solid var(--border)">${Object.values(snapMap).reduce((s,v)=>s+v,0)}</td></tr></tfoot>
+    </table>
     <div style="display:flex;gap:8px;margin-top:16px;align-items:center">
       <button class="btn btn-p" onclick="pdSaveStockSuc('${suc}')">💾 Guardar stock de ${bLab[suc]}</button>
       <span id="pd-suc-ok"></span>
@@ -2924,7 +2926,7 @@ async function pdSaveStockSuc(suc){
   const{error}=await sb.from('prod_stock_sucursal').insert(items.map(i=>({sucursal:suc,fecha_snapshot:new Date().toISOString(),sabor_id:i.sabor_id,cantidad:i.cantidad,upload_id:uid})));
   const ok=document.getElementById('pd-suc-ok');
   if(error){ok.innerHTML='<span class="bd bd-err">Error: '+error.message+'</span>';}
-  else{ok.innerHTML='<span class="bd bd-ok">✓ Guardado</span>';setTimeout(()=>{if(ok)ok.innerHTML=''},3000);}
+  else{ok.innerHTML='<span class="bd bd-ok">✓ Guardado</span>';setTimeout(()=>{if(ok)ok.innerHTML=''},3000);const sd=document.getElementById('pd-suc-snap-date');if(sd){sd.style.color='var(--text-muted)';sd.textContent='Último snapshot: '+new Date().toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}}
 }
 
 async function pdCfgLoadMin(){
@@ -2981,7 +2983,9 @@ async function pdCfgLoadStk(){
       <td>${s.nombre}</td>
       <td><input type="number" min="0" value="${stkMap[s.id]||0}" style="width:70px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-sab="${s.id}" data-orig="${stkMap[s.id]??'new'}"></td>
     </tr>`).join('')}
-    </tbody></table>
+    </tbody>
+    <tfoot><tr><td colspan="2" style="padding:10px 8px;font-weight:600;color:var(--text-muted);font-size:13px;border-top:2px solid var(--border)">Total sorbeteras</td><td style="padding:10px 8px;font-weight:700;font-size:14px;border-top:2px solid var(--border)">${Object.values(stkMap).reduce((s,v)=>s+v,0)}</td></tr></tfoot>
+    </table>
     <div style="display:flex;gap:8px;margin-top:16px;align-items:center">
       <button class="btn btn-p" onclick="pdSaveStockDep()">💾 Guardar cambios</button>
       <span id="pd-stk-edit-ok"></span>
@@ -3053,7 +3057,8 @@ async function pdParseCsvDep(file){
   if(!rows.length){prev.innerHTML='<div class="al al-err">No se pudo leer el archivo. Verificá que sea el CSV totalizado de Facciobuono.</div>';return}
   const matched=[],unmatched=[];
   rows.forEach(r=>{const s=_prodSabs.find(x=>x.nombre_csv===r.producto);if(s)matched.push({s,c:r.cantidad});else unmatched.push(r.producto);});
-  let html=`<div class="al al-ok">✓ ${matched.length} sabores reconocidos.</div>`;
+  const totalSorb=matched.reduce((s,m)=>s+m.c,0);
+  let html=`<div class="al al-ok">✓ ${matched.length} sabores reconocidos — <strong>${totalSorb} sorbeteras</strong> en total.</div>`;
   if(unmatched.length)html+=`<div class="al al-warn">No reconocidos (no están en catálogo): ${unmatched.join(', ')}</div>`;
   html+=`<table><thead><tr><th>Sabor</th><th>Sorbeteras</th></tr></thead><tbody>${matched.map(m=>`<tr><td>${m.s.nombre}</td><td><strong>${m.c}</strong></td></tr>`).join('')}</tbody></table>`;
   window._prodDepItems=matched.map(m=>({id:m.s.id,c:m.c}));
@@ -3141,8 +3146,9 @@ async function pdVerOrdenProd(ordenId,readonly=false){
   ]);
   const isConf=ord?.estado==='confirmada';
   const total=(items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
+  const isEnt=typeof ordenId==='string'&&document.getElementById('pd-ve-items')!==null;
   const dragCol=!isConf&&!readonly?`<th style="width:28px"></th><th style="width:28px"></th>`:'';
-  const dragHandle=!isConf&&!readonly?`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none" title="Arrastrá para reordenar">⠿</td><td><button onclick="this.closest('tr').remove()" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1" title="Quitar de esta orden">✕</button></td>`:'';
+  const dragHandle=!isConf&&!readonly?`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none" title="Arrastrá para reordenar">⠿</td><td><button onclick="this.closest('tr').remove();pdUpdateTotal('pd-vp-items','pd-vp-total')" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1" title="Quitar de esta orden">✕</button></td>`:'';
   pdCt().innerHTML=`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
       <div><h3 style="font-size:15px;font-weight:700">Orden de Producción — ${fmtD(ord?.fecha)}</h3>
@@ -3162,13 +3168,13 @@ async function pdVerOrdenProd(ordenId,readonly=false){
       <td>${isConf||readonly?`<strong>${it.cantidad_confirmada}</strong> sorbeteras`:`<input type="number" min="0" value="${it.cantidad_confirmada}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${it.id}">`}</td>
     </tr>`).join('')}
     </tbody></table>
-    <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong>${total} sorbeteras</strong></div>
+    <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong id="pd-vp-total">${total} sorbeteras</strong></div>
     ${!isConf&&!readonly?`<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
       <button class="btn" onclick="pdGuardarCants('${ordenId}','prod')">💾 Guardar cambios</button>
       <button class="btn btn-ok" onclick="pdConfirmarProd('${ordenId}')">✅ Confirmar orden</button>
     </div>`:''}
   </div>`;
-  if(!isConf&&!readonly)pdInitDrag('pd-vp-items');
+  if(!isConf&&!readonly){pdInitDrag('pd-vp-items');pdInitTotal('pd-vp-items','pd-vp-total');}
 }
 
 function pdInitDrag(tbodyId){
@@ -3193,6 +3199,18 @@ function pdInitDrag(tbodyId){
       else tbody.insertBefore(dragging,row.nextSibling);
     });
   });
+}
+
+function pdInitTotal(tbodyId,totalId){
+  const tbody=document.getElementById(tbodyId);if(!tbody)return;
+  tbody.addEventListener('input',()=>pdUpdateTotal(tbodyId,totalId));
+}
+function pdUpdateTotal(tbodyId,totalId){
+  const tbody=document.getElementById(tbodyId);
+  const el=document.getElementById(totalId);
+  if(!tbody||!el)return;
+  const total=Array.from(tbody.querySelectorAll('input[type="number"]')).reduce((s,i)=>s+(parseInt(i.value)||0),0);
+  el.textContent=total+' sorbeteras';
 }
 
 async function pdGuardarCants(ordenId,tipo){
@@ -3344,7 +3362,7 @@ async function pdVerOrdenEnt(ordenId,readonly=false){
   const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
   const total=(items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
   const dragCol=!isConf&&!readonly?`<th style="width:28px"></th><th style="width:28px"></th>`:'';
-  const dragHandle=(it)=>!isConf&&!readonly?`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none" title="Arrastrá para reordenar">⠿</td><td><button onclick="this.closest('tr').remove()" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1" title="Quitar de esta orden">✕</button></td>`:'';
+  const dragHandle=(it)=>!isConf&&!readonly?`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none" title="Arrastrá para reordenar">⠿</td><td><button onclick="this.closest('tr').remove();pdUpdateTotal('pd-ve-items','pd-ve-total')" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1" title="Quitar de esta orden">✕</button></td>`:'';
   const sabOpts=(sabs||[]).map(s=>`<option value="${s.id}" data-cod="${s.codigo}">${s.nombre}</option>`).join('');
   pdCt().innerHTML=`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
@@ -3377,7 +3395,7 @@ async function pdVerOrdenEnt(ordenId,readonly=false){
       <button class="btn btn-ok" onclick="pdConfirmarEnt('${ordenId}')">✅ Confirmar y despachar</button>
     </div>`:''}
   </div>`;
-  if(!isConf&&!readonly)pdInitDrag('pd-ve-items');
+  if(!isConf&&!readonly){pdInitDrag('pd-ve-items');pdInitTotal('pd-ve-items','pd-ve-total');}
 }
 
 async function pdAddItemEnt(ordenId,sucursal){
@@ -3404,7 +3422,7 @@ async function pdAddItemEnt(ordenId,sucursal){
   const tr=document.createElement('tr');
   tr.setAttribute('draggable','true');
   tr.innerHTML=`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none">⠿</td>
-    <td><button onclick="this.closest('tr').remove()" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1">✕</button></td>
+    <td><button onclick="this.closest('tr').remove();pdUpdateTotal('pd-ve-items','pd-ve-total')" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1">✕</button></td>
     <td>—</td>
     <td><span class="bd bd-gray">${newItem.prod_sabores?.codigo||'?'}</span></td>
     <td><strong>${newItem.prod_sabores?.nombre||'?'}</strong></td>
