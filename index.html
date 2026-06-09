@@ -2892,15 +2892,23 @@ async function pdCfgLoadStkSuc(suc){
   if(latestUid)(snaps||[]).filter(s=>s.upload_id===latestUid).forEach(s=>snapMap[s.sabor_id]=s.cantidad);
   const snapDate=latestUid&&snaps?.length?new Date(snaps[0].fecha_snapshot).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):null;
   const{data:sabs}=await sb.from('prod_sabores').select('*').eq('activo',true).order('nombre');
-  el.innerHTML=`<div class="card"><div class="card-t">Stock Manual de Sucursal</div>
-    <div class="al al-info" style="margin-bottom:14px">Corregí el stock de una sucursal sin subir CSV. Se guarda como nuevo snapshot y el dashboard lo toma inmediatamente.</div>
+  el.innerHTML=`
+  <div class="card"><div class="card-t">Cargar desde CSV (Facciobuono)</div>
+    <div class="al al-info" style="margin-bottom:12px">Subí el XLS exportado desde Facciobuono para sobreescribir el stock de la sucursal. Los sabores que no aparezcan en el CSV quedan en 0.</div>
+    <div class="f" style="margin-bottom:14px"><label>Sucursal</label>
+      <select id="pd-suc-csv-sel" onchange="pdCfgLoadStkSuc(this.value)" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+        ${['eutingen','muhlacker','konigsbacj'].map(b=>`<option value="${b}" ${b===suc?'selected':''}>${bLab[b]}</option>`).join('')}
+      </select>
+    </div>
+    <div class="upz" onclick="document.getElementById('pd-suc-csv-inp').click()" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="this.classList.remove('over');pdParseCsvSucCfg(event.dataTransfer.files[0],'${suc}')">
+      <div class="ui">📂</div><div class="ut">Subir XLS de ${bLab[suc]}</div><div class="us">Exportá el inventario totalizado desde Facciobuono</div>
+    </div>
+    <input type="file" id="pd-suc-csv-inp" style="display:none" accept=".xls,.xlsx,.csv,.html" onchange="pdParseCsvSucCfg(this.files[0],'${suc}')">
+    <div id="pd-suc-cfg-prev" style="margin-top:16px"></div>
+  </div>
+  <div class="card"><div class="card-t">Stock Actual — ${bLab[suc]} — edición manual</div>
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-      <div class="f"><label>Sucursal</label>
-        <select onchange="pdCfgLoadStkSuc(this.value)" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
-          ${['eutingen','muhlacker','konigsbacj'].map(b=>`<option value="${b}" ${b===suc?'selected':''}>${bLab[b]}</option>`).join('')}
-        </select>
-      </div>
-      ${snapDate?`<div id="pd-suc-snap-date" style="font-size:12px;color:var(--text-muted);padding-top:18px">Último snapshot: ${snapDate}</div>`:'<div id="pd-suc-snap-date" style="font-size:12px;color:var(--amber);padding-top:18px">Sin datos previos</div>'}
+      ${snapDate?`<div id="pd-suc-snap-date" style="font-size:12px;color:var(--text-muted)">Último snapshot: ${snapDate}</div>`:'<div id="pd-suc-snap-date" style="font-size:12px;color:var(--amber)">Sin datos previos</div>'}
     </div>
     <table><thead><tr><th>Código</th><th>Sabor</th><th>Sorbeteras actuales</th></tr></thead><tbody>
     ${(sabs||[]).map(s=>`<tr>
@@ -2912,10 +2920,42 @@ async function pdCfgLoadStkSuc(suc){
     <tfoot><tr><td colspan="2" style="padding:10px 8px;font-weight:600;color:var(--text-muted);font-size:13px;border-top:2px solid var(--border)">Total sorbeteras</td><td style="padding:10px 8px;font-weight:700;font-size:14px;border-top:2px solid var(--border)">${Object.values(snapMap).reduce((s,v)=>s+v,0)}</td></tr></tfoot>
     </table>
     <div style="display:flex;gap:8px;margin-top:16px;align-items:center">
-      <button class="btn btn-p" onclick="pdSaveStockSuc('${suc}')">💾 Guardar stock de ${bLab[suc]}</button>
+      <button class="btn btn-p" onclick="pdSaveStockSuc('${suc}')">💾 Guardar cambios manuales</button>
       <span id="pd-suc-ok"></span>
     </div>
   </div>`;
+}
+
+async function pdParseCsvSucCfg(file,suc){
+  if(!file)return;
+  const prev=document.getElementById('pd-suc-cfg-prev');
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  prev.innerHTML='<div class="ld">Procesando...</div>';
+  const rows=await pdReadXls(file);
+  if(!rows.length){prev.innerHTML='<div class="al al-err">No se pudo leer el archivo.</div>';return}
+  const matched=[],unmatched=[];
+  rows.forEach(r=>{const s=_prodSabs.find(x=>x.nombre_csv===r.producto);if(s)matched.push({s,c:r.cantidad});else unmatched.push(r.producto);});
+  if(!matched.length){prev.innerHTML='<div class="al al-err">No se reconocieron sabores.</div>';return}
+  const totalSorb=matched.reduce((s,m)=>s+m.c,0);
+  window._prodSucCfgItems={suc,items:matched.map(m=>({id:m.s.id,c:m.c}))};
+  let html=`<div class="al al-ok">✓ ${matched.length} sabores reconocidos — <strong>${totalSorb} sorbeteras</strong> en total.</div>`;
+  if(unmatched.length)html+=`<div class="al al-warn">No reconocidos: ${unmatched.join(', ')}</div>`;
+  html+=`<table><thead><tr><th>Sabor</th><th>Sorbeteras</th></tr></thead><tbody>${matched.map(m=>`<tr><td>${m.s.nombre}</td><td><strong>${m.c}</strong></td></tr>`).join('')}</tbody></table>`;
+  html+=`<button class="btn btn-p" style="margin-top:12px" onclick="pdConfirmarStkSucCfg()">✅ Confirmar y cargar stock de ${bLab[suc]}</button>`;
+  prev.innerHTML=html;
+}
+
+async function pdConfirmarStkSucCfg(){
+  const{suc,items}=window._prodSucCfgItems||{};
+  if(!suc||!items?.length){alert('Sin datos para cargar.');return}
+  const now=new Date().toISOString();
+  const uid='csv_'+Date.now();
+  const csvIds=items.map(i=>i.id);
+  // Insertar nuevo snapshot con los datos del CSV
+  const{error}=await sb.from('prod_stock_sucursal').insert(items.map(i=>({sucursal:suc,fecha_snapshot:now,sabor_id:i.id,cantidad:i.c,upload_id:uid})));
+  if(error){alert('Error: '+error.message);return}
+  alert('✅ Stock de la sucursal cargado correctamente.');
+  pdCfgLoadStkSuc(suc);
 }
 
 async function pdSaveStockSuc(suc){
@@ -3444,16 +3484,41 @@ async function pdAddItemEnt(ordenId,sucursal){
 }
 
 async function pdConfirmarEnt(ordenId){
-  if(!confirm('¿Confirmar la entrega? Se actualizará el stock del depósito y de la sucursal.'))return;
+  // Guardar cantidades primero
   await pdGuardarCants(ordenId,'ent');
   const{data:ord}=await sb.from('prod_ordenes_entrega').select('sucursal').eq('id',ordenId).single();
   const suc=ord?.sucursal;
-  const{data:items}=await sb.from('prod_ord_entrega_items').select('*').eq('orden_id',ordenId);
+  const{data:items}=await sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre)').eq('orden_id',ordenId);
+  // Verificar stock en depósito para cada ítem
+  const sinStock=[];
+  for(const it of(items||[])){
+    if(!it.cantidad_confirmada)continue;
+    const{data:dep}=await sb.from('prod_stock_deposito').select('cantidad').eq('sabor_id',it.sabor_id).maybeSingle();
+    const depStock=dep?.cantidad||0;
+    if(it.cantidad_confirmada>depStock)sinStock.push({nombre:it.prod_sabores?.nombre||'?',pedido:it.cantidad_confirmada,disponible:depStock});
+  }
+  if(sinStock.length){
+    // Mostrar aviso con lista de ítems sin stock suficiente
+    const lista=sinStock.map(s=>`<tr><td>${s.nombre}</td><td style="text-align:center">${s.pedido}</td><td style="text-align:center;color:var(--red);font-weight:600">${s.disponible}</td></tr>`).join('');
+    openMo('⚠️ Stock insuficiente en depósito',`
+      <div class="al al-warn" style="margin-bottom:14px">Los siguientes sabores no tienen stock suficiente en el depósito. Si confirmás, el depósito quedará en 0 para esos sabores.</div>
+      <table><thead><tr><th>Sabor</th><th style="text-align:center">A enviar</th><th style="text-align:center">En depósito</th></tr></thead><tbody>${lista}</tbody></table>
+      <div class="al al-info" style="margin-top:14px">Podés confirmar igual o cancelar para ajustar las cantidades.</div>
+    `,async()=>{closeMo();await pdEjecutarConfirmarEnt(ordenId,suc,items);});
+    document.getElementById('mo-save').textContent='Confirmar igual →';
+  }else{
+    if(!confirm('¿Confirmar la entrega? Se actualizará el stock del depósito y de la sucursal.'))return;
+    await pdEjecutarConfirmarEnt(ordenId,suc,items);
+  }
+}
+
+async function pdEjecutarConfirmarEnt(ordenId,suc,items){
+  const now=new Date().toISOString();
   // 1. Restar del depósito
   for(const it of(items||[])){
     if(!it.cantidad_confirmada)continue;
     const{data:curr}=await sb.from('prod_stock_deposito').select('cantidad').eq('sabor_id',it.sabor_id).maybeSingle();
-    await sb.from('prod_stock_deposito').upsert({sabor_id:it.sabor_id,cantidad:Math.max(0,(curr?.cantidad||0)-it.cantidad_confirmada),ultima_actualizacion:new Date().toISOString()},{onConflict:'sabor_id'});
+    await sb.from('prod_stock_deposito').upsert({sabor_id:it.sabor_id,cantidad:Math.max(0,(curr?.cantidad||0)-it.cantidad_confirmada),ultima_actualizacion:now},{onConflict:'sabor_id'});
   }
   // 2. Sumar al stock de la sucursal (nuevo snapshot completo)
   if(suc){
@@ -3463,7 +3528,7 @@ async function pdConfirmarEnt(ordenId){
     if(latestUid)(snaps||[]).filter(s=>s.upload_id===latestUid).forEach(s=>branchMap[s.sabor_id]=s.cantidad);
     (items||[]).forEach(it=>{if(it.cantidad_confirmada)branchMap[it.sabor_id]=(branchMap[it.sabor_id]||0)+it.cantidad_confirmada;});
     const newUid='entrega_'+Date.now();
-    const newSnap=Object.entries(branchMap).map(([sabor_id,cantidad])=>({sucursal:suc,fecha_snapshot:new Date().toISOString(),sabor_id,cantidad,upload_id:newUid}));
+    const newSnap=Object.entries(branchMap).map(([sabor_id,cantidad])=>({sucursal:suc,fecha_snapshot:now,sabor_id,cantidad,upload_id:newUid}));
     if(newSnap.length)await sb.from('prod_stock_sucursal').insert(newSnap);
   }
   await sb.from('prod_ordenes_entrega').update({estado:'confirmada',confirmed_at:new Date().toISOString()}).eq('id',ordenId);
