@@ -2634,6 +2634,7 @@ async function produccionPage(){
     <div class="tabs">
       <div class="tab active" data-pt="pd" onclick="prodNav('pd',this)">📊 Dashboard</div>
       <div class="tab" data-pt="pc" onclick="prodNav('pc',this)">⚙️ Configuración</div>
+      <div class="tab" data-pt="ps" onclick="prodNav('ps',this)">📦 Stock</div>
       <div class="tab" data-pt="pp" onclick="prodNav('pp',this)">🏭 Producción</div>
       <div class="tab" data-pt="pe" onclick="prodNav('pe',this)">🚚 Entrega</div>
       <div class="tab" data-pt="ph" onclick="prodNav('ph',this)">📋 Historial</div>
@@ -2649,7 +2650,7 @@ async function produccionPage(){
 
 async function prodNav(tab,el){
   if(el){document.querySelectorAll('[data-pt]').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
-  const fns={'pd':pdDash,'pc':pdCfg,'pp':pdOrdenProd,'pe':pdOrdenEnt,'ph':pdHist};
+  const fns={'pd':pdDash,'pc':pdCfg,'ps':pdStock,'pp':pdOrdenProd,'pe':pdOrdenEnt,'ph':pdHist};
   if(fns[tab])await fns[tab]();
 }
 function pdCt(){return document.getElementById('pd-ct')}
@@ -2739,8 +2740,8 @@ function pdToggleRow(posId,locKey){
 
 function pdGoStockEdit(){
   document.querySelectorAll('[data-pt]').forEach(t=>t.classList.remove('active'));
-  const el=document.querySelector('[data-pt="pc"]');if(el)el.classList.add('active');
-  pdCfg().then(()=>setTimeout(()=>pdCfgShowTab('prod-cfg-stk'),200));
+  const el=document.querySelector('[data-pt="ps"]');if(el)el.classList.add('active');
+  pdStock().then(()=>setTimeout(()=>{const e=document.querySelector('[data-pst="dep"]');if(e)pdStkTab('dep',e);},200));
 }
 
 // --- CONFIGURACIÓN ---
@@ -2749,24 +2750,47 @@ async function pdCfg(){
     <div class="tabs" style="margin-bottom:0">
       <div class="tab active" data-pct="prod-cfg-sabs" onclick="pdCfgTab('prod-cfg-sabs',this)">Sabores</div>
       <div class="tab" data-pct="prod-cfg-pos" onclick="pdCfgTab('prod-cfg-pos',this)">Posiciones</div>
-      <div class="tab" data-pct="prod-cfg-min" onclick="pdCfgTab('prod-cfg-min',this)">Stock Mínimos</div>
-      <div class="tab" data-pct="prod-cfg-stk" onclick="pdCfgTab('prod-cfg-stk',this)">Stock Depósito</div>
-      <div class="tab" data-pct="prod-cfg-suc" onclick="pdCfgTab('prod-cfg-suc',this)">Stock Sucursales</div>
     </div>
     <div id="prod-cfg-sabs"></div>
-    <div id="prod-cfg-pos" style="display:none"></div>
-    <div id="prod-cfg-min" style="display:none"></div>
-    <div id="prod-cfg-stk" style="display:none"></div>
-    <div id="prod-cfg-suc" style="display:none"></div>`;
-  await Promise.all([pdCfgLoadSabs(),pdCfgLoadPos(),pdCfgLoadMin(),pdCfgLoadStk(),pdCfgLoadStkSuc()]);
+    <div id="prod-cfg-pos" style="display:none"></div>`;
+  await Promise.all([pdCfgLoadSabs(),pdCfgLoadPos()]);
 }
 
 function pdCfgTab(id,el){
   document.querySelectorAll('[data-pct]').forEach(t=>t.classList.remove('active'));
   if(el)el.classList.add('active');
-  ['prod-cfg-sabs','prod-cfg-pos','prod-cfg-min','prod-cfg-stk','prod-cfg-suc'].forEach(t=>{const e=document.getElementById(t);if(e)e.style.display=t===id?'':'none';});
+  ['prod-cfg-sabs','prod-cfg-pos'].forEach(t=>{const e=document.getElementById(t);if(e)e.style.display=t===id?'':'none';});
 }
 function pdCfgShowTab(id){const el=document.querySelector(`[data-pct="${id}"]`);if(el)pdCfgTab(id,el);}
+
+// --- STOCK TAB ---
+async function pdStock(){
+  pdCt().innerHTML=`
+    <div class="tabs" style="margin-bottom:0">
+      <div class="tab active" data-pst="min" onclick="pdStkTab('min',this)">Stock Mínimos</div>
+      <div class="tab" data-pst="dep" onclick="pdStkTab('dep',this)">Depósito</div>
+      <div class="tab" data-pst="eutingen" onclick="pdStkTab('eutingen',this)">Eutingen</div>
+      <div class="tab" data-pst="muhlacker" onclick="pdStkTab('muhlacker',this)">Mühlacker</div>
+      <div class="tab" data-pst="konigsbacj" onclick="pdStkTab('konigsbacj',this)">Königsbach</div>
+    </div>
+    <div id="prod-stk-ct"></div>`;
+  await pdStkTab('min');
+}
+
+async function pdStkTab(tab,el){
+  if(el){document.querySelectorAll('[data-pst]').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
+  const ct=document.getElementById('prod-stk-ct');if(!ct)return;
+  if(tab==='min'){
+    ct.innerHTML='<div id="prod-cfg-min"></div>';
+    await pdCfgLoadMin();
+  }else if(tab==='dep'){
+    ct.innerHTML='<div id="prod-cfg-stk"></div>';
+    await pdCfgLoadStk();
+  }else{
+    ct.innerHTML='<div id="prod-cfg-suc"></div>';
+    await pdCfgLoadStkSuc(tab,true);
+  }
+}
 
 async function pdCfgLoadSabs(){
   const{data}=await sb.from('prod_sabores').select('*').order('nombre');
@@ -2882,7 +2906,7 @@ function pdFiltrarSabores(q){
 }
 
 // --- STOCK SUCURSALES (edición manual) ---
-async function pdCfgLoadStkSuc(suc){
+async function pdCfgLoadStkSuc(suc,hideSel=false){
   const el=document.getElementById('prod-cfg-suc');if(!el)return;
   suc=suc||'eutingen';
   const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
@@ -2895,11 +2919,11 @@ async function pdCfgLoadStkSuc(suc){
   el.innerHTML=`
   <div class="card"><div class="card-t">Cargar desde CSV (Facciobuono)</div>
     <div class="al al-info" style="margin-bottom:12px">Subí el XLS exportado desde Facciobuono para sobreescribir el stock de la sucursal. Los sabores que no aparezcan en el CSV quedan en 0.</div>
-    <div class="f" style="margin-bottom:14px"><label>Sucursal</label>
+    ${!hideSel?`<div class="f" style="margin-bottom:14px"><label>Sucursal</label>
       <select id="pd-suc-csv-sel" onchange="pdCfgLoadStkSuc(this.value)" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
         ${['eutingen','muhlacker','konigsbacj'].map(b=>`<option value="${b}" ${b===suc?'selected':''}>${bLab[b]}</option>`).join('')}
       </select>
-    </div>
+    </div>`:''}
     <div class="upz" onclick="document.getElementById('pd-suc-csv-inp').click()" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="this.classList.remove('over');pdParseCsvSucCfg(event.dataTransfer.files[0],'${suc}')">
       <div class="ui">📂</div><div class="ut">Subir XLS de ${bLab[suc]}</div><div class="us">Exportá el inventario totalizado desde Facciobuono</div>
     </div>
