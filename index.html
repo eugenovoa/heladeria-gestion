@@ -2750,16 +2750,18 @@ async function pdCfg(){
     <div class="tabs" style="margin-bottom:0">
       <div class="tab active" data-pct="prod-cfg-sabs" onclick="pdCfgTab('prod-cfg-sabs',this)">Sabores</div>
       <div class="tab" data-pct="prod-cfg-pos" onclick="pdCfgTab('prod-cfg-pos',this)">Posiciones</div>
+      <div class="tab" data-pct="prod-cfg-min" onclick="pdCfgTab('prod-cfg-min',this)">Stock Mínimos</div>
     </div>
     <div id="prod-cfg-sabs"></div>
-    <div id="prod-cfg-pos" style="display:none"></div>`;
-  await Promise.all([pdCfgLoadSabs(),pdCfgLoadPos()]);
+    <div id="prod-cfg-pos" style="display:none"></div>
+    <div id="prod-cfg-min" style="display:none"></div>`;
+  await Promise.all([pdCfgLoadSabs(),pdCfgLoadPos(),pdCfgLoadMin()]);
 }
 
 function pdCfgTab(id,el){
   document.querySelectorAll('[data-pct]').forEach(t=>t.classList.remove('active'));
   if(el)el.classList.add('active');
-  ['prod-cfg-sabs','prod-cfg-pos'].forEach(t=>{const e=document.getElementById(t);if(e)e.style.display=t===id?'':'none';});
+  ['prod-cfg-sabs','prod-cfg-pos','prod-cfg-min'].forEach(t=>{const e=document.getElementById(t);if(e)e.style.display=t===id?'':'none';});
 }
 function pdCfgShowTab(id){const el=document.querySelector(`[data-pct="${id}"]`);if(el)pdCfgTab(id,el);}
 
@@ -2767,23 +2769,19 @@ function pdCfgShowTab(id){const el=document.querySelector(`[data-pct="${id}"]`);
 async function pdStock(){
   pdCt().innerHTML=`
     <div class="tabs" style="margin-bottom:0">
-      <div class="tab active" data-pst="min" onclick="pdStkTab('min',this)">Stock Mínimos</div>
-      <div class="tab" data-pst="dep" onclick="pdStkTab('dep',this)">Depósito</div>
+      <div class="tab active" data-pst="dep" onclick="pdStkTab('dep',this)">Depósito</div>
       <div class="tab" data-pst="eutingen" onclick="pdStkTab('eutingen',this)">Eutingen</div>
       <div class="tab" data-pst="muhlacker" onclick="pdStkTab('muhlacker',this)">Mühlacker</div>
       <div class="tab" data-pst="konigsbacj" onclick="pdStkTab('konigsbacj',this)">Königsbach</div>
     </div>
     <div id="prod-stk-ct"></div>`;
-  await pdStkTab('min');
+  await pdStkTab('dep');
 }
 
 async function pdStkTab(tab,el){
   if(el){document.querySelectorAll('[data-pst]').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
   const ct=document.getElementById('prod-stk-ct');if(!ct)return;
-  if(tab==='min'){
-    ct.innerHTML='<div id="prod-cfg-min"></div>';
-    await pdCfgLoadMin();
-  }else if(tab==='dep'){
+  if(tab==='dep'){
     ct.innerHTML='<div id="prod-cfg-stk"></div>';
     await pdCfgLoadStk();
   }else{
@@ -3031,16 +3029,21 @@ async function pdCfgLoadMin(){
   const el=document.getElementById('prod-cfg-min');if(!el)return;
   const minMap={};(mins||[]).forEach(m=>{if(!minMap[m.posicion_id])minMap[m.posicion_id]={};minMap[m.posicion_id][m.ubicacion]=m.cantidad_minima;});
   const locs=[{k:'deposito',l:'Depósito'},{k:'eutingen',l:'Eutingen'},{k:'muhlacker',l:'Mühlacker'},{k:'konigsbacj',l:'Königsbach'}];
-  el.innerHTML=`<div class="card"><div class="card-t">Stock Mínimo por Posición</div>
-    <div class="al al-info" style="margin-bottom:12px">Sorbeteras mínimas que debe haber en cada posición por ubicación.</div>
+  const ro='width:55px;padding:5px 2px;font-size:13px;border:none;background:transparent;font-weight:700;text-align:center;pointer-events:none;color:var(--text)';
+  el.innerHTML=`<div class="card" id="pd-min-wrap"><div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+    Stock Mínimo por Posición
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-sm pd-edit-btn" onclick="pdStkEdit('pd-min-wrap')">✏️ Editar</button>
+      <button class="btn btn-sm btn-p pd-save-btn" style="display:none" onclick="pdSaveMinimos()">💾 Guardar</button>
+      <button class="btn btn-sm pd-cancel-btn" style="display:none" onclick="pdStkCancel('pd-min-wrap')">✕ Cancelar</button>
+    </div>
+  </div>
     <div style="overflow-x:auto"><table><thead><tr><th>Pos.</th><th>Sabor activo</th>${locs.map(l=>`<th style="text-align:center">${l.l}</th>`).join('')}</tr></thead><tbody>
     ${(pos||[]).map(p=>{
       const act=(p.prod_posicion_sabores||[]).find(ps=>ps.es_activo)?.prod_sabores?.nombre||'—';
-      return`<tr><td><strong>${p.numero}</strong></td><td style="font-size:12px">${act}</td>${locs.map(l=>`<td style="text-align:center"><input type="number" min="0" value="${minMap[p.id]?.[l.k]||0}" style="width:55px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-pos="${p.id}" data-loc="${l.k}"></td>`).join('')}</tr>`;
+      return`<tr><td><strong>${p.numero}</strong></td><td style="font-size:12px">${act}</td>${locs.map(l=>`<td style="text-align:center"><input type="number" min="0" value="${minMap[p.id]?.[l.k]||0}" style="${ro}" data-pos="${p.id}" data-loc="${l.k}" data-orig="${minMap[p.id]?.[l.k]||0}"></td>`).join('')}</tr>`;
     }).join('')}
     </tbody></table></div>
-    <button class="btn btn-p" style="margin-top:14px" onclick="pdSaveMinimos()">💾 Guardar mínimos</button>
-    <div id="pd-min-ok"></div>
   </div>`;
 }
 
@@ -3048,9 +3051,9 @@ async function pdSaveMinimos(){
   const ins=document.querySelectorAll('#prod-cfg-min [data-pos][data-loc]');
   const ups=Array.from(ins).map(i=>({posicion_id:i.dataset.pos,ubicacion:i.dataset.loc,cantidad_minima:parseInt(i.value)||0}));
   const{error}=await sb.from('prod_stock_minimos').upsert(ups,{onConflict:'posicion_id,ubicacion'});
-  const el=document.getElementById('pd-min-ok');
-  el.innerHTML=error?`<div class="al al-err" style="margin-top:10px">Error: ${error.message}</div>`:'<div class="al al-ok" style="margin-top:10px">✓ Guardado</div>';
-  setTimeout(()=>{if(el)el.innerHTML=''},3000);
+  if(error){alert('Error: '+error.message);return}
+  alert('✅ Mínimos guardados.');
+  pdCfgLoadMin();
 }
 
 async function pdCfgLoadStk(){
