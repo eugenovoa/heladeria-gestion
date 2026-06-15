@@ -3360,7 +3360,24 @@ async function pdDelOrdenProd(id){
 
 // --- ORDEN DE ENTREGA ---
 async function pdOrdenEnt(){
-  const ct=pdCt();ct.innerHTML='<div class="ld">Cargando...</div>';
+  pdCt().innerHTML=`
+    <div class="tabs" style="margin-bottom:0">
+      <div class="tab active" data-pet="hel" onclick="pdEntTab('hel',this)">🍦 Helados</div>
+      <div class="tab" data-pet="ins" onclick="pdEntTab('ins',this)">📦 Insumos</div>
+    </div>
+    <div id="pd-ent-ct"></div>`;
+  await pdEntTab('hel');
+}
+
+async function pdEntTab(tab,el){
+  if(el){document.querySelectorAll('[data-pet]').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
+  if(tab==='hel')await pdEntHelados();
+  else await pdEntInsumos();
+}
+
+async function pdEntHelados(){
+  const ct=document.getElementById('pd-ent-ct');if(!ct)return;
+  ct.innerHTML='<div class="ld">Cargando...</div>';
   const[{data:bors},{data:conf}]=await Promise.all([
     sb.from('prod_ordenes_entrega').select('*').eq('estado','borrador').order('created_at',{ascending:false}),
     sb.from('prod_ordenes_entrega').select('*').eq('estado','confirmada').order('confirmed_at',{ascending:false}).limit(10)
@@ -3397,6 +3414,112 @@ async function pdOrdenEnt(){
   }
   ct.innerHTML=html;
 }
+
+// --- INSUMOS ---
+window._remitoItems=[];
+window._allInsumos=null;
+
+async function pdEntInsumos(){
+  const ct=document.getElementById('pd-ent-ct');if(!ct)return;
+  ct.innerHTML='<div class="ld">Cargando insumos...</div>';
+  if(!window._allInsumos){
+    const{data}=await sb.from('insumos').select('*').eq('activo',true).order('nombre');
+    window._allInsumos=data||[];
+  }
+  window._remitoItems=[];
+  const sel=(v,l)=>`<option value="${v}">${l}</option>`;
+  ct.innerHTML=`
+  <div class="card"><div class="card-t">Nuevo Remito de Insumos</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="f" style="min-width:150px"><label>Sucursal</label>
+        <select id="rem-suc" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%">
+          ${sel('eutingen','Eutingen')}${sel('muhlacker','Mühlacker')}${sel('konigsbacj','Königsbach')}
+        </select>
+      </div>
+      <div class="f" style="min-width:140px"><label>Fecha</label>
+        <input type="date" id="rem-fecha" value="${today()}" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%">
+      </div>
+    </div>
+    <div class="f"><label>Buscar producto</label>
+      <input id="rem-buscar" placeholder="Ej: cono, frutilla, sorbetes..." oninput="pdFiltrarInsumos(this.value)"
+        style="font-size:14px;padding:10px 14px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%">
+    </div>
+    <div id="rem-lista" style="margin-top:8px;max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r)"></div>
+  </div>
+  <div class="card" id="rem-items-card">
+    <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+      Items del remito
+      <span id="rem-count" style="font-size:12px;color:var(--text-muted);font-weight:400">0 productos</span>
+    </div>
+    <div id="rem-items-list"><div class="empty" style="padding:20px">Agregá productos desde el buscador</div></div>
+    <div class="f" style="margin-top:14px"><label>Notas (opcional)</label>
+      <textarea id="rem-notas" style="height:50px;font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);width:100%" placeholder="Observaciones..."></textarea>
+    </div>
+    <button class="btn btn-p" style="width:100%;margin-top:12px;padding:12px" onclick="pdRegistrarRemito()" id="rem-btn-save">✅ Registrar remito</button>
+  </div>`;
+  pdFiltrarInsumos('');
+}
+
+function pdFiltrarInsumos(q){
+  const lista=document.getElementById('rem-lista');if(!lista)return;
+  const term=q.toLowerCase().trim();
+  const items=(window._allInsumos||[]).filter(i=>!term||i.nombre.toLowerCase().includes(term));
+  if(!items.length){lista.innerHTML='<div class="empty" style="padding:16px">Sin resultados</div>';return}
+  lista.innerHTML=items.map(i=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <div><div style="font-size:13px;font-weight:600">${i.nombre}</div><div style="font-size:11px;color:var(--text-muted)">${i.unidad}</div></div>
+      <button class="btn btn-sm btn-p" onclick="pdAgregarInsumo('${i.id}')">+ Agregar</button>
+    </div>`).join('');
+}
+
+function pdAgregarInsumo(id){
+  const ins=(window._allInsumos||[]).find(i=>i.id===id);if(!ins)return;
+  const ex=window._remitoItems.find(i=>i.id===id);
+  if(ex)ex.cantidad++;
+  else window._remitoItems.push({id,nombre:ins.nombre,unidad:ins.unidad,cantidad:1});
+  pdRenderRemitoItems();
+  const b=document.getElementById('rem-buscar');if(b){b.value='';pdFiltrarInsumos('');}
+}
+function pdRenderRemitoItems(){
+  const lista=document.getElementById('rem-items-list');
+  const count=document.getElementById('rem-count');
+  if(!lista)return;
+  if(count)count.textContent=window._remitoItems.length+' producto'+(window._remitoItems.length!==1?'s':'');
+  if(!window._remitoItems.length){lista.innerHTML='<div class="empty" style="padding:20px">Agregá productos desde el buscador</div>';return}
+  const btnS='width:32px;height:32px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;line-height:1';
+  lista.innerHTML=window._remitoItems.map((it,i)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+      <div style="flex:1;min-width:120px"><div style="font-size:13px;font-weight:600">${it.nombre}</div><div style="font-size:11px;color:var(--text-muted)">${it.unidad}</div></div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button onclick="pdCambiarCant(${i},-1)" style="${btnS}">−</button>
+        <input type="number" min="1" value="${it.cantidad}" onchange="pdSetCant(${i},this.value)" style="width:55px;padding:5px;font-size:14px;border:1px solid var(--border-md);border-radius:var(--r);text-align:center">
+        <button onclick="pdCambiarCant(${i},1)" style="${btnS}">+</button>
+        <button onclick="pdQuitarInsumo(${i})" style="width:32px;height:32px;border:none;background:none;cursor:pointer;color:var(--text-faint);font-size:18px">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+function pdCambiarCant(idx,delta){const it=window._remitoItems[idx];if(!it)return;it.cantidad=Math.max(1,it.cantidad+delta);pdRenderRemitoItems();}
+function pdSetCant(idx,val){const it=window._remitoItems[idx];if(!it)return;it.cantidad=Math.max(1,parseInt(val)||1);}
+function pdQuitarInsumo(idx){window._remitoItems.splice(idx,1);pdRenderRemitoItems();}
+
+async function pdRegistrarRemito(){
+  const suc=document.getElementById('rem-suc')?.value;
+  const fecha=document.getElementById('rem-fecha')?.value;
+  const notas=document.getElementById('rem-notas')?.value||'';
+  if(!suc||!fecha){alert('Completá sucursal y fecha.');return}
+  if(!window._remitoItems.length){alert('Agregá al menos un producto.');return}
+  const btn=document.getElementById('rem-btn-save');
+  if(btn){btn.disabled=true;btn.textContent='Guardando...';}
+  const{data:rem,error}=await sb.from('remitos').insert({sucursal:suc,fecha,notas}).select().single();
+  if(error){alert('Error: '+error.message);if(btn){btn.disabled=false;btn.textContent='✅ Registrar remito';}return}
+  const{error:e2}=await sb.from('remito_items').insert(window._remitoItems.map(i=>({remito_id:rem.id,insumo_id:i.id,cantidad:i.cantidad,unidad:i.unidad})));
+  if(e2){alert('Error al guardar items: '+e2.message);if(btn){btn.disabled=false;btn.textContent='✅ Registrar remito';}return}
+  alert('✅ Remito registrado.');
+  window._remitoItems=[];
+  pdEntInsumos();
+}
+
 
 async function pdParseCsvSuc(file){
   if(!file)return;
@@ -3671,7 +3794,26 @@ async function pdDelOrdenEnt(id){
 
 // --- HISTORIAL ---
 async function pdHist(){
-  const ct=pdCt();ct.innerHTML='<div class="ld">Cargando...</div>';
+  pdCt().innerHTML=`
+    <div class="tabs" style="margin-bottom:0">
+      <div class="tab active" data-pht="prod" onclick="pdHistTab('prod',this)">🏭 Producción</div>
+      <div class="tab" data-pht="ent" onclick="pdHistTab('ent',this)">🚚 Entregas</div>
+      <div class="tab" data-pht="rem" onclick="pdHistTab('rem',this)">📦 Remitos</div>
+    </div>
+    <div id="pd-hist-ct"></div>`;
+  await pdHistTab('prod');
+}
+
+async function pdHistTab(tab,el){
+  if(el){document.querySelectorAll('[data-pht]').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
+  const ct=document.getElementById('pd-hist-ct');if(!ct)return;
+  if(tab==='prod')await pdHistProd(ct);
+  else if(tab==='ent')await pdHistEnt(ct);
+  else await pdHistRem(ct);
+}
+
+async function pdHistProd(ct){
+  ct.innerHTML='<div class="ld">Cargando...</div>';
   const[{data:prod},{data:ent}]=await Promise.all([
     sb.from('prod_ordenes_produccion').select('*,prod_ord_prod_items(*,prod_sabores(nombre,codigo))').eq('estado','confirmada').order('confirmed_at',{ascending:false}).limit(50),
     sb.from('prod_ordenes_entrega').select('*,prod_ord_entrega_items(*,prod_sabores(nombre,codigo))').eq('estado','confirmada').order('confirmed_at',{ascending:false}).limit(50)
@@ -3690,17 +3832,129 @@ async function pdHist(){
       ${(prod||[]).map(o=>{const t=(o.prod_ord_prod_items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);return`<tr><td>${fmtD(o.fecha)}</td><td>${t}</td><td style="font-size:11px">${o.confirmed_at?new Date(o.confirmed_at).toLocaleDateString('es-AR'):'-'}</td><td><button class="btn btn-sm" onclick="pdVerOrdenProd('${o.id}',true)">Ver</button></td></tr>`;}).join('')||'<tr><td colspan="4" class="empty">Sin datos</td></tr>'}
       </tbody></table>
     </div>
-  </div>
-  <div class="card"><div class="card-t">Historial de entregas</div>
-    <table><thead><tr><th>Sucursal</th><th>Fecha</th><th>Sabores</th><th>Total sorb.</th><th></th></tr></thead><tbody>
-    ${(ent||[]).map(o=>{
-      const t=(o.prod_ord_entrega_items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
-      const ns=(o.prod_ord_entrega_items||[]).map(it=>it.prod_sabores?.nombre).filter(Boolean).join(', ');
-      return`<tr><td><strong>${bLab[o.sucursal]||o.sucursal}</strong></td><td>${fmtD(o.fecha)}</td><td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ns}</td><td><strong>${t}</strong></td><td><button class="btn btn-sm" onclick="pdVerOrdenEnt('${o.id}',true)">Ver</button></td></tr>`;
-    }).join('')||'<tr><td colspan="5" class="empty">Sin entregas</td></tr>'}
-    </tbody></table>
   </div>`;
 }
+
+async function pdHistEnt(ct){
+  const iSel='font-size:13px;padding:7px 10px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
+  ct.innerHTML=`<div class="card"><div class="card-t">Historial de Entregas de Helados</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:4px;align-items:flex-end">
+      <div class="f"><label>Sucursal</label><select id="hent-suc" style="${iSel}">
+        <option value="">Todas</option><option value="eutingen">Eutingen</option><option value="muhlacker">Mühlacker</option><option value="konigsbacj">Königsbach</option>
+      </select></div>
+      <div class="f"><label>Desde</label><input type="date" id="hent-desde" style="${iSel}"></div>
+      <div class="f"><label>Hasta</label><input type="date" id="hent-hasta" value="${today()}" style="${iSel}"></div>
+      <button class="btn btn-p" onclick="pdHistEntCargar()" style="margin-bottom:2px">Buscar</button>
+    </div>
+    <div id="hent-res"></div>
+  </div>`;
+  await pdHistEntCargar();
+}
+
+async function pdHistEntCargar(){
+  const suc=document.getElementById('hent-suc')?.value;
+  const desde=document.getElementById('hent-desde')?.value;
+  const hasta=document.getElementById('hent-hasta')?.value;
+  const res=document.getElementById('hent-res');
+  if(!res)return;
+  res.innerHTML='<div class="ld">Cargando...</div>';
+  let q=sb.from('prod_ordenes_entrega').select('*,prod_ord_entrega_items(*,prod_sabores(nombre,codigo))').eq('estado','confirmada').order('fecha',{ascending:false}).limit(200);
+  if(suc)q=q.eq('sucursal',suc);
+  if(desde)q=q.gte('fecha',desde);
+  if(hasta)q=q.lte('fecha',hasta);
+  const{data:ent}=await q;
+  if(!(ent||[]).length){res.innerHTML='<div class="empty" style="padding:20px">Sin entregas en el período</div>';return}
+  const bySab={};
+  (ent||[]).forEach(o=>(o.prod_ord_entrega_items||[]).forEach(it=>{const n=it.prod_sabores?.nombre||'?';bySab[n]=(bySab[n]||0)+(it.cantidad_confirmada||0);}));
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const totalSorb=Object.values(bySab).reduce((s,v)=>s+v,0);
+  res.innerHTML=`<div class="al al-ok" style="margin-bottom:12px">${ent.length} entregas — <strong>${totalSorb} sorbeteras</strong> en total</div>
+  <div class="g2">
+    <div class="card"><div class="card-t">Total por sabor</div>
+      <table><thead><tr><th>Sabor</th><th>Sorbeteras</th></tr></thead><tbody>
+      ${Object.entries(bySab).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`<tr><td>${n}</td><td><strong>${c}</strong></td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div class="card"><div class="card-t">Detalle de órdenes</div>
+      <table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Total</th><th></th></tr></thead><tbody>
+      ${ent.map(o=>{const t=(o.prod_ord_entrega_items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);return`<tr><td>${fmtD(o.fecha)}</td><td>${bLab[o.sucursal]||o.sucursal}</td><td>${t} sorb.</td><td><button class="btn btn-sm" onclick="pdVerOrdenEnt('${o.id}',true)">Ver</button></td></tr>`;}).join('')}
+      </tbody></table>
+    </div>
+  </div>`;
+}
+
+async function pdHistRem(ct){
+  const iSel='font-size:13px;padding:7px 10px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
+  ct.innerHTML=`<div class="card"><div class="card-t">Historial de Remitos de Insumos</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:4px;align-items:flex-end">
+      <div class="f"><label>Sucursal</label><select id="hrem-suc" style="${iSel}">
+        <option value="">Todas</option><option value="eutingen">Eutingen</option><option value="muhlacker">Mühlacker</option><option value="konigsbacj">Königsbach</option>
+      </select></div>
+      <div class="f"><label>Producto</label><input id="hrem-prod" placeholder="Buscar..." style="${iSel}"></div>
+      <div class="f"><label>Desde</label><input type="date" id="hrem-desde" style="${iSel}"></div>
+      <div class="f"><label>Hasta</label><input type="date" id="hrem-hasta" value="${today()}" style="${iSel}"></div>
+      <button class="btn btn-p" onclick="pdHistRemCargar()" style="margin-bottom:2px">Buscar</button>
+    </div>
+    <div id="hrem-res"></div>
+  </div>`;
+  await pdHistRemCargar();
+}
+
+async function pdHistRemCargar(){
+  const suc=document.getElementById('hrem-suc')?.value;
+  const prod=(document.getElementById('hrem-prod')?.value||'').toLowerCase().trim();
+  const desde=document.getElementById('hrem-desde')?.value;
+  const hasta=document.getElementById('hrem-hasta')?.value;
+  const res=document.getElementById('hrem-res');if(!res)return;
+  res.innerHTML='<div class="ld">Cargando...</div>';
+  let q=sb.from('remitos').select('*,remito_items(*,insumos(nombre,unidad))').order('fecha',{ascending:false}).limit(200);
+  if(suc)q=q.eq('sucursal',suc);
+  if(desde)q=q.gte('fecha',desde);
+  if(hasta)q=q.lte('fecha',hasta);
+  const{data:remitos}=await q;
+  let filtered=remitos||[];
+  if(prod)filtered=filtered.map(r=>({...r,remito_items:(r.remito_items||[]).filter(i=>i.insumos?.nombre?.toLowerCase().includes(prod))})).filter(r=>r.remito_items.length);
+  if(!filtered.length){res.innerHTML='<div class="empty" style="padding:20px">Sin remitos en el período</div>';return}
+  const byProd={};
+  filtered.forEach(r=>(r.remito_items||[]).forEach(it=>{
+    const n=it.insumos?.nombre||'?';
+    if(!byProd[n])byProd[n]={total:0,unidad:it.insumos?.unidad||'',ultima:r.fecha};
+    byProd[n].total+=Number(it.cantidad)||0;
+    if(r.fecha>byProd[n].ultima)byProd[n].ultima=r.fecha;
+  }));
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  res.innerHTML=`<div class="al al-ok" style="margin-bottom:12px">${filtered.length} remito(s) encontrado(s)</div>
+  <div class="g2">
+    <div class="card"><div class="card-t">Total por producto</div>
+      <table><thead><tr><th>Producto</th><th>Total</th><th>Unidad</th><th>Última entrega</th></tr></thead><tbody>
+      ${Object.entries(byProd).sort((a,b)=>a[0].localeCompare(b[0])).map(([n,d])=>`<tr><td>${n}</td><td><strong>${d.total}</strong></td><td style="font-size:12px">${d.unidad}</td><td style="font-size:11px">${fmtD(d.ultima)}</td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div class="card"><div class="card-t">Detalle de remitos</div>
+      <table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Productos</th><th></th></tr></thead><tbody>
+      ${filtered.map(r=>{const ns=(r.remito_items||[]).map(i=>i.insumos?.nombre).filter(Boolean).join(', ');return`<tr><td>${fmtD(r.fecha)}</td><td>${bLab[r.sucursal]||r.sucursal}</td><td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ns}</td><td><button class="btn btn-sm" onclick="pdVerRemito('${r.id}')">Ver</button></td></tr>`;}).join('')}
+      </tbody></table>
+    </div>
+  </div>`;
+}
+
+async function pdVerRemito(remitoId){
+  const{data:r}=await sb.from('remitos').select('*,remito_items(*,insumos(nombre,unidad))').eq('id',remitoId).single();
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const ct=document.getElementById('pd-hist-ct');if(!ct)return;
+  ct.innerHTML=`<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:16px">
+      <div><h3 style="font-size:15px;font-weight:700">Remito — ${bLab[r?.sucursal]||r?.sucursal} — ${fmtD(r?.fecha)}</h3></div>
+      <button class="btn btn-sm btn-g" onclick="pdHistTab('rem',null);document.querySelector('[data-pht=\'rem\']')?.classList.add('active')">← Volver</button>
+    </div>
+    ${r?.notas?`<div class="al al-info" style="margin-bottom:12px">${r.notas}</div>`:''}
+    <table><thead><tr><th>Producto</th><th>Cantidad</th><th>Unidad</th></tr></thead><tbody>
+    ${(r?.remito_items||[]).map(it=>`<tr><td>${it.insumos?.nombre||'?'}</td><td><strong>${it.cantidad}</strong></td><td>${it.insumos?.unidad||'?'}</td></tr>`).join('')}
+    </tbody></table>
+    <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong>${(r?.remito_items||[]).length} productos</strong></div>
+  </div>`;
+}
+
 
 // --- IMPRIMIR ---
 async function pdImprimir(ordenId,tipo){
