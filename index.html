@@ -3247,15 +3247,17 @@ async function pdGenerarOrden(){
 }
 
 async function pdVerOrdenProd(ordenId,readonly=false){
-  const[{data:ord},{data:items}]=await Promise.all([
+  const[{data:ord},{data:items},{data:sabs}]=await Promise.all([
     sb.from('prod_ordenes_produccion').select('*').eq('id',ordenId).single(),
-    sb.from('prod_ord_prod_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId)
+    sb.from('prod_ord_prod_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId),
+    sb.from('prod_sabores').select('*').eq('activo',true).order('nombre')
   ]);
   const isConf=ord?.estado==='confirmada';
   const total=(items||[]).reduce((s,it)=>s+(it.cantidad_confirmada||0),0);
   const isEnt=typeof ordenId==='string'&&document.getElementById('pd-ve-items')!==null;
   const dragCol=!isConf&&!readonly?`<th style="width:28px"></th><th style="width:28px"></th>`:'';
   const dragHandle=!isConf&&!readonly?`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none" title="Arrastrá para reordenar">⠿</td><td><button onclick="this.closest('tr').remove();pdUpdateTotal('pd-vp-items','pd-vp-total')" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1" title="Quitar de esta orden">✕</button></td>`:'';
+  const sabOpts=(sabs||[]).map(s=>`<option value="${s.id}">${s.nombre} (${s.codigo})</option>`).join('');
   pdCt().innerHTML=`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
       <div><h3 style="font-size:15px;font-weight:700">Orden de Producción — ${fmtD(ord?.fecha)}</h3>
@@ -3276,12 +3278,48 @@ async function pdVerOrdenProd(ordenId,readonly=false){
     </tr>`).join('')}
     </tbody></table>
     <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong id="pd-vp-total">${total} sorbeteras</strong></div>
-    ${!isConf&&!readonly?`<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+    ${!isConf&&!readonly?`
+    <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;padding:12px;background:var(--surface2);border-radius:var(--r);border:1px solid var(--border)">
+      <span style="font-size:12px;font-weight:600;color:var(--text-muted)">+ Agregar sabor:</span>
+      <select id="pd-add-prod-sab" style="font-size:13px;padding:6px 10px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;flex:1;min-width:160px"><option value="">— Seleccioná —</option>${sabOpts}</select>
+      <input type="number" id="pd-add-prod-cant" min="1" value="1" style="width:65px;padding:6px;font-size:13px;border:1px solid var(--border-md);border-radius:var(--r);text-align:center">
+      <button class="btn btn-sm btn-p" onclick="pdAddItemProd('${ordenId}')">Agregar</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
       <button class="btn" onclick="pdGuardarCants('${ordenId}','prod')">💾 Guardar cambios</button>
       <button class="btn btn-ok" onclick="pdConfirmarProd('${ordenId}')">✅ Confirmar orden</button>
     </div>`:''}
   </div>`;
   if(!isConf&&!readonly){pdInitDrag('pd-vp-items');pdInitTotal('pd-vp-items','pd-vp-total');}
+}
+
+async function pdAddItemProd(ordenId){
+  const sabId=document.getElementById('pd-add-prod-sab')?.value;
+  const cant=parseInt(document.getElementById('pd-add-prod-cant')?.value)||0;
+  if(!sabId){alert('Seleccioná un sabor.');return}
+  if(cant<=0){alert('Ingresá una cantidad mayor a 0.');return}
+  const{data:dep}=await sb.from('prod_stock_deposito').select('cantidad').eq('sabor_id',sabId).maybeSingle();
+  const{data:newItem,error}=await sb.from('prod_ord_prod_items').insert({
+    orden_id:ordenId,posicion_id:null,sabor_id:sabId,
+    stock_antes:dep?.cantidad||0,cantidad_sugerida:cant,cantidad_confirmada:cant
+  }).select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').single();
+  if(error){alert('Error al agregar: '+error.message);return}
+  const tbody=document.getElementById('pd-vp-items');if(!tbody)return;
+  const dragHandle=`<td style="cursor:grab;color:var(--text-faint);font-size:18px;text-align:center;user-select:none">⠿</td>
+    <td><button onclick="this.closest('tr').remove();pdUpdateTotal('pd-vp-items','pd-vp-total')" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;line-height:1">✕</button></td>`;
+  const tr=document.createElement('tr');
+  tr.setAttribute('draggable','true');
+  tr.innerHTML=`${dragHandle}
+    <td>—</td>
+    <td><span class="bd bd-gray">${newItem.prod_sabores?.codigo||'?'}</span></td>
+    <td><strong>${newItem.prod_sabores?.nombre||'?'}</strong></td>
+    <td>— sorb.</td>
+    <td><input type="number" min="0" value="${cant}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${newItem.id}"></td>`;
+  tbody.appendChild(tr);
+  pdInitDrag('pd-vp-items');
+  pdUpdateTotal('pd-vp-items','pd-vp-total');
+  document.getElementById('pd-add-prod-sab').value='';
+  document.getElementById('pd-add-prod-cant').value='1';
 }
 
 function pdInitDrag(tbodyId){
