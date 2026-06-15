@@ -3374,6 +3374,12 @@ async function pdOrdenEnt(){
       <div class="ui">📂</div><div class="ut">Subir CSV de la Sucursal</div><div class="us">Inventario totalizado exportado desde Facciobuono</div>
     </div>
     <input type="file" id="pd-ent-inp" style="display:none" accept=".xls,.xlsx,.csv,.html" onchange="pdParseCsvSuc(this.files[0])">
+    <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <span style="font-size:12px;color:var(--text-muted)">o</span>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    <button class="btn btn-g" style="width:100%;margin-top:12px" onclick="pdUsarStockActual()">📋 Usar último stock registrado</button>
     <div id="pd-ent-prev" style="margin-top:16px"></div>
   </div>`;
   if((bors||[]).length){
@@ -3436,6 +3442,65 @@ async function pdParseCsvSuc(file){
   let html=`<div class="al al-ok">✓ ${matched.length} sabores leídos.</div>`;
   if(unmatched.length)html+=`<div class="al al-warn">No reconocidos: ${unmatched.join(', ')}</div>`;
   if(!items.length){html+='<div class="al al-ok" style="margin-top:8px">✅ La sucursal tiene todo al día.</div>';prev.innerHTML=html;return}
+  window._prodEntItems=items;
+  html+=`<div class="card" style="margin-top:12px"><div class="card-t">Orden sugerida — ${bLab[suc]}</div>
+    <table><thead><tr><th>Pos.</th><th>Sabor (activo)</th><th>Stock suc.</th><th>Mínimo</th><th>Enviar</th><th>Alertas</th></tr></thead>
+    <tbody id="pd-ent-items">
+    ${items.map((it,i)=>`<tr>
+      <td><strong>${it.posNum}</strong></td><td>${it.sabNom}</td><td>${it.totSuc} sorb.</td><td>${it.min} sorb.</td>
+      <td><input type="number" min="0" value="${it.def}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-i="${i}"></td>
+      <td style="font-size:11px;color:${it.warn?.includes('⚠️')?'var(--amber)':'var(--text-muted)'}">${it.warn||'—'}</td>
+    </tr>`).join('')}
+    </tbody></table>
+    <div class="f" style="margin-top:12px"><label>Notas</label><textarea id="pd-ent-n" style="height:50px;font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);width:100%" placeholder="Observaciones..."></textarea></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn btn-p" onclick="pdCrearOrdenEnt('${suc}')">💾 Guardar orden borrador</button></div>
+  </div>`;
+  prev.innerHTML=html;
+}
+
+async function pdUsarStockActual(){
+  const prev=document.getElementById('pd-ent-prev');
+  const suc=document.getElementById('pd-ent-suc')?.value||'eutingen';
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  prev.innerHTML='<div class="ld">Cargando stock registrado...</div>';
+  // Último snapshot de la sucursal
+  const{data:snaps}=await sb.from('prod_stock_sucursal').select('*').eq('sucursal',suc).order('fecha_snapshot',{ascending:false});
+  const latestUid=snaps?.length?snaps[0].upload_id:null;
+  if(!latestUid){prev.innerHTML='<div class="al al-warn">No hay stock registrado para esta sucursal. Subí un CSV primero para inicializar el stock.</div>';return}
+  const latestSnap=(snaps||[]).filter(s=>s.upload_id===latestUid);
+  const snapDate=new Date(latestSnap[0].fecha_snapshot).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const sucMap={};latestSnap.forEach(s=>sucMap[s.sabor_id]=s.cantidad);
+  // Misma lógica de cálculo que pdParseCsvSuc
+  const[{data:stD},{data:mins},{data:pos}]=await Promise.all([
+    sb.from('prod_stock_deposito').select('*'),
+    sb.from('prod_stock_minimos').select('*').eq('ubicacion',suc),
+    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero')
+  ]);
+  const depMap={};(stD||[]).forEach(r=>depMap[r.sabor_id]=r.cantidad);
+  const minMap={};(mins||[]).forEach(m=>minMap[m.posicion_id]=m.cantidad_minima);
+  const items=[];
+  (pos||[]).forEach(p=>{
+    const ids=(p.prod_posicion_sabores||[]).map(ps=>ps.sabor_id);
+    const act=(p.prod_posicion_sabores||[]).find(ps=>ps.es_activo);
+    if(!act)return;
+    const totSuc=ids.reduce((s,id)=>(sucMap[id]||0)+s,0);
+    const min=minMap[p.id]||0;
+    if(totSuc<min){
+      const def=min-totSuc;
+      const depStock=depMap[act.sabor_id]||0;
+      const noAct=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(sucMap[ps.sabor_id]||0)>0&&(depMap[ps.sabor_id]||0)>0);
+      let warn=null;
+      if(noAct.length)warn=`Suc. tiene: ${noAct.map(ps=>ps.prod_sabores?.nombre+'('+sucMap[ps.sabor_id]+')').join(', ')}`;
+      if(depStock<def){
+        const altDep=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(depMap[ps.sabor_id]||0)>0).map(ps=>`${ps.prod_sabores?.nombre}(${depMap[ps.sabor_id]})`);
+        const altMsg=altDep.length?` — Alternativa en depósito: ${altDep.join(', ')}`:'';
+        warn=(warn?warn+' · ':'')+`⚠️ Depósito solo tiene ${depStock} ${act.prod_sabores?.nombre||''}${altMsg}`;
+      }
+      items.push({posId:p.id,sabId:act.sabor_id,sabNom:act.prod_sabores?.nombre||'?',posNum:p.numero,totSuc,depStock,min,def,warn});
+    }
+  });
+  let html=`<div class="al al-info">📋 Usando stock de ${bLab[suc]} registrado el ${snapDate}</div>`;
+  if(!items.length){html+='<div class="al al-ok" style="margin-top:8px">✅ La sucursal tiene todo al día según el último stock registrado.</div>';prev.innerHTML=html;return}
   window._prodEntItems=items;
   html+=`<div class="card" style="margin-top:12px"><div class="card-t">Orden sugerida — ${bLab[suc]}</div>
     <table><thead><tr><th>Pos.</th><th>Sabor (activo)</th><th>Stock suc.</th><th>Mínimo</th><th>Enviar</th><th>Alertas</th></tr></thead>
@@ -3541,6 +3606,7 @@ async function pdAddItemEnt(ordenId,sucursal){
     <td><input type="number" min="0" value="${cant}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${newItem.id}"></td>`;
   tbody.appendChild(tr);
   pdInitDrag('pd-ve-items');
+  pdUpdateTotal('pd-ve-items','pd-ve-total');
   document.getElementById('pd-add-sab').value='';
   document.getElementById('pd-add-cant').value='1';
 }
