@@ -379,12 +379,10 @@ async function autoMarcarVencidas(){
 
 async function autoMarcarVencidosRec(){
   const hoy=today();
-  // Débitos automáticos: marcar directamente como pagado (no solo vencido)
   await sb.from('vencimientos_recurrentes')
     .update({estado:'pagado',fecha_pago:hoy})
     .eq('estado','pendiente')
     .lte('fecha_vencimiento',hoy);
-  // También los que quedaron en vencido de antes
   await sb.from('vencimientos_recurrentes')
     .update({estado:'pagado',fecha_pago:hoy})
     .eq('estado','vencido');
@@ -1300,9 +1298,8 @@ async function vencimientos(){
       <div class="wk-dn">${dias[i]} ${d.getDate()}</div>
       ${ff.map(f=>`<div class="chip ${f.estado==='vencida'?'venc':'fact'}" onclick="newPago('${f.id}',${Math.abs(f.monto_total)})"><div class="cp">${f.numero_factura||f.proveedores?.nombre||'—'}</div><div class="cm">${fmt(f.monto_total)}</div></div>`).join('')}
       ${rr.map(r=>r.estado==='pagado'
-        ?`<div class="chip rec" style="opacity:0.6;cursor:default"><div class="cp">✓ ${r.gasto_recurrente?.concepto||'—'}</div><div class="cm">${fmt(r.monto)} · ${sucNom(r.gasto_recurrente?.sucursal_id)}</div></div>`
-        :`<div class="chip ${r.estado==='vencido'?'rec-venc':'rec'}" onclick="pagarRec('${r.id}','${(r.gasto_recurrente?.concepto||'').replace(/'/g,"\\'")}',${r.monto})"><div class="cp">↻ ${r.gasto_recurrente?.concepto||'—'}</div><div class="cm">${fmt(r.monto)} · ${sucNom(r.gasto_recurrente?.sucursal_id)}</div></div>`
-      ).join('')}
+        ?`<div class="chip rec" style="opacity:0.6;cursor:default"><div class="cp">&#10003; ${r.gasto_recurrente?.concepto||'&#8212;'}</div><div class="cm">${fmt(r.monto)} &middot; ${sucNom(r.gasto_recurrente?.sucursal_id)}</div></div>`
+        :`<div class="chip ${r.estado==='vencido'?'rec-venc':'rec'}" onclick="pagarRec('${r.id}','${(r.gasto_recurrente?.concepto||'').replace(/'/g,"\\'")}',${r.monto})"><div class="cp">↻ ${r.gasto_recurrente?.concepto||'—'}</div><div class="cm">${fmt(r.monto)} · ${sucNom(r.gasto_recurrente?.sucursal_id)}</div></div>`).join('')}
     </div>`;
   }).join('');
   const semF=(facts||[]).filter(f=>f.fecha_vencimiento>=lS&&f.fecha_vencimiento<=dS).reduce((a,f)=>a+parseFloat(f.monto_total),0);
@@ -1312,10 +1309,9 @@ async function vencimientos(){
   document.getElementById('ct').innerHTML=`
     <div style="margin-bottom:10px;font-size:13px;color:var(--text-muted);font-weight:500">Semana del ${lun.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})} al ${dom.toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'})}</div>
     <div style="display:flex;gap:12px;margin-bottom:10px;font-size:12px;flex-wrap:wrap">
-      <span><span style="display:inline-block;width:10px;height:10px;background:var(--surface2);border:1px solid var(--border);border-radius:2px;margin-right:4px"></span>Factura pendiente</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--surface2);border:1px solid var(--border);border-radius:2px;margin-right:4px"></span>Factura (clic para ver)</span>
       <span><span style="display:inline-block;width:10px;height:10px;background:var(--purple-bg);border:1px solid #c4b5fd;border-radius:2px;margin-right:4px"></span>Recurrente pendiente</span>
       <span><span style="display:inline-block;width:10px;height:10px;background:#fff7ed;border:1px solid #fdba74;border-radius:2px;margin-right:4px"></span>Recurrente vencido</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:var(--purple-bg);border:1px solid #c4b5fd;border-radius:2px;margin-right:4px;opacity:0.5"></span>Recurrente ya debitado</span>
     </div>
     <div class="wk-grid">${cols}</div>
     <div class="card" style="padding:14px 20px"><div style="display:flex;gap:40px;flex-wrap:wrap">
@@ -1351,48 +1347,6 @@ async function pagarRec(id,concepto,monto){
 }
 
 // ---- GASTOS RECURRENTES CRUD ----
-// Helpers para vista previa de vencimientos
-function rcCalcFechasJs(fi,ff,frq,dia){
-  const hoy=new Date();
-  const fechaInicio=new Date(fi+'T00:00:00');
-  let fechaFin;
-  if(ff){fechaFin=new Date(ff+'T00:00:00');}
-  else{fechaFin=new Date(hoy.getFullYear(),11,31);}
-  const inc={mensual:1,bimestral:2,trimestral:3,anual:12}[frq]||1;
-  const fechas=[];
-  let cursor=new Date(fechaInicio.getFullYear(),fechaInicio.getMonth(),1);
-  while(cursor<=fechaFin){
-    const dim=new Date(cursor.getFullYear(),cursor.getMonth()+1,0).getDate();
-    const diaR=Math.min(dia,dim);
-    const fecha=new Date(cursor.getFullYear(),cursor.getMonth(),diaR);
-    if(fecha>=fechaInicio&&fecha<=fechaFin){
-      const y=fecha.getFullYear(),m=String(fecha.getMonth()+1).padStart(2,'0'),d=String(fecha.getDate()).padStart(2,'0');
-      fechas.push(`${y}-${m}-${d}`);
-    }
-    cursor=new Date(cursor.getFullYear(),cursor.getMonth()+inc,1);
-  }
-  return fechas;
-}
-
-function rcPreview(){
-  const fi=document.getElementById('rc-fi')?.value;
-  const ff=document.getElementById('rc-ff')?.value||null;
-  const frq=document.getElementById('rc-frq')?.value||'mensual';
-  const dia=parseInt(document.getElementById('rc-dia')?.value)||1;
-  const prev=document.getElementById('rc-preview');
-  if(!prev||!fi)return;
-  const fechas=rcCalcFechasJs(fi,ff,frq,dia);
-  if(!fechas.length){prev.innerHTML='<div style="color:var(--text-muted);font-size:12px">Sin fechas en el rango configurado.</div>';return}
-  const hoy=today();
-  const pasadas=fechas.filter(f=>f<hoy);
-  const futuras=fechas.filter(f=>f>=hoy);
-  prev.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">${fechas.length} vencimiento(s) en total${!ff?' — hasta fin de '+new Date().getFullYear():''}</div>
-  ${pasadas.length?`<div style="font-size:11px;color:var(--text-faint);margin-bottom:6px">📋 ${pasadas.length} pasado(s) — se marcarán como pagados automáticamente</div>
-  <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">${pasadas.map(f=>`<span style="font-size:11px;padding:2px 8px;border-radius:var(--r);background:var(--surface2);color:var(--text-faint)">${fmtD(f)}</span>`).join('')}</div>`:''}
-  ${futuras.length?`<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">🔜 ${futuras.length} futuro(s) — quedarán pendientes</div>
-  <div style="display:flex;flex-wrap:wrap;gap:4px">${futuras.map(f=>`<span style="font-size:11px;padding:2px 8px;border-radius:var(--r);background:var(--surface2);border:1px solid var(--border)">${fmtD(f)}</span>`).join('')}</div>`:''}`;
-}
-
 async function newRec(){
   const{data:cats}=await sb.from('categorias_gasto_recurrente').select('*').order('nombre');
   const ss='font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
@@ -1447,28 +1401,26 @@ async function editRec(id){
     sb.from('categorias_gasto_recurrente').select('*').order('nombre')
   ]);
   if(!r)return;
-  const ss='font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
   openMo('Editar gasto recurrente',`<div class="fg">
     <div class="f full"><label>Concepto *</label><input id="rc-con" value="${r.concepto||''}"></div>
     <div class="f"><label>Monto (€) *</label><input id="rc-mon" type="number" step="0.01" value="${r.monto||0}"></div>
-    <div class="f"><label>Frecuencia</label><select id="rc-frq" style="${ss}" oninput="rcPreview()"><option value="mensual" ${r.frecuencia==='mensual'?'selected':''}>Mensual</option><option value="bimestral" ${r.frecuencia==='bimestral'?'selected':''}>Bimestral</option><option value="trimestral" ${r.frecuencia==='trimestral'?'selected':''}>Trimestral</option><option value="anual" ${r.frecuencia==='anual'?'selected':''}>Anual</option></select></div>
-    <div class="f"><label>Día del mes *</label><input id="rc-dia" type="number" min="1" max="31" value="${r.dia_del_mes||1}" oninput="rcPreview()"></div>
-    <div class="f"><label>Categoría</label><select id="rc-cat" style="${ss}"><option value="">— Sin categoría —</option>${(cats||[]).map(c=>`<option value="${c.id}" ${c.id===r.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
-    <div class="f"><label>Sucursal</label><select id="rc-suc" style="${ss}"><option value="">General</option>${sucOpts()}</select></div>
-    <div class="f"><label>Fecha inicio *</label><input id="rc-fi" type="date" value="${r.fecha_inicio||''}" oninput="rcPreview()"></div>
-    <div class="f"><label>Fecha fin (opcional)</label><input id="rc-ff" type="date" value="${r.fecha_fin||''}" oninput="rcPreview()"></div>
-    <div class="f"><label>Activo</label><select id="rc-act" style="${ss}"><option value="true" ${r.activo?'selected':''}>Sí</option><option value="false" ${!r.activo?'selected':''}>No</option></select></div>
+    <div class="f"><label>Frecuencia</label><select id="rc-frq" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="mensual" ${r.frecuencia==='mensual'?'selected':''}>Mensual</option><option value="bimestral" ${r.frecuencia==='bimestral'?'selected':''}>Bimestral</option><option value="trimestral" ${r.frecuencia==='trimestral'?'selected':''}>Trimestral</option><option value="anual" ${r.frecuencia==='anual'?'selected':''}>Anual</option></select></div>
+    <div class="f"><label>Día del mes *</label><input id="rc-dia" type="number" min="1" max="31" value="${r.dia_del_mes||1}"></div>
+    <div class="f"><label>Categoría</label><select id="rc-cat"><option value="">— Sin categoría —</option>${(cats||[]).map(c=>`<option value="${c.id}" ${c.id===r.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
+    <div class="f"><label>Sucursal</label><select id="rc-suc"><option value="">General</option>${sucOpts()}</select></div>
+    <div class="f"><label>Fecha inicio *</label><input id="rc-fi" type="date" value="${r.fecha_inicio||''}"></div>
+    <div class="f"><label>Fecha fin (opcional)</label><input id="rc-ff" type="date" value="${r.fecha_fin||''}"></div>
+    <div class="f"><label>Activo</label><select id="rc-act" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="true" ${r.activo?'selected':''}>Sí</option><option value="false" ${!r.activo?'selected':''}>No</option></select></div>
     <div class="f full"><label>Notas</label><input id="rc-not" value="${r.notas||''}"></div>
-    <div class="f full"><label style="color:var(--text-muted)">Vista previa de vencimientos</label>
-      <div id="rc-preview" style="padding:12px;background:var(--surface2);border-radius:var(--r);border:1px solid var(--border);min-height:40px"></div>
-    </div>
+    <div class="f full"><label style="color:var(--text-muted)">Vista previa de vencimientos</label><div id="rc-preview" style="padding:12px;background:var(--surface2);border-radius:var(--r);border:1px solid var(--border);min-height:40px"></div></div>
   </div>`,
   async()=>{
     const concepto=document.getElementById('rc-con').value.trim();
     if(!concepto){alert('Ingresá el concepto.');return}
     const nuevoMonto=parseFloat(document.getElementById('rc-mon').value)||0;
     const{error}=await sb.from('gastos_recurrentes').update({
-      concepto,monto:nuevoMonto,
+      concepto,
+      monto:nuevoMonto,
       frecuencia:document.getElementById('rc-frq').value,
       dia_del_mes:parseInt(document.getElementById('rc-dia').value)||1,
       categoria_id:document.getElementById('rc-cat').value||null,
@@ -1479,7 +1431,9 @@ async function editRec(id){
       notas:document.getElementById('rc-not').value||null
     }).eq('id',id);
     if(error){alert(error.message);return}
-    if(nuevoMonto!==r.monto)await sb.from('vencimientos_recurrentes').update({monto:nuevoMonto}).eq('gasto_recurrente_id',id).in('estado',['pendiente','vencido']);
+    if(nuevoMonto!==r.monto){
+      await sb.from('vencimientos_recurrentes').update({monto:nuevoMonto}).eq('gasto_recurrente_id',id).in('estado',['pendiente','vencido']);
+    }
     closeMo();recurrentes();
   });
   setTimeout(()=>{const s=document.getElementById('rc-suc');if(s&&r.sucursal_id)s.value=r.sucursal_id;rcPreview();},100);
@@ -1493,24 +1447,813 @@ async function delRec(id){
   recurrentes();
 }
 
+function rcCalcFechasJs(fi,ff,frq,dia){
+  const hoy=new Date();
+  const fechaInicio=new Date(fi+'T00:00:00');
+  const fechaFin=ff?new Date(ff+'T00:00:00'):new Date(hoy.getFullYear(),11,31);
+  const inc={mensual:1,bimestral:2,trimestral:3,anual:12}[frq]||1;
+  const fechas=[];
+  let cursor=new Date(fechaInicio.getFullYear(),fechaInicio.getMonth(),1);
+  while(cursor<=fechaFin){
+    const dim=new Date(cursor.getFullYear(),cursor.getMonth()+1,0).getDate();
+    const diaR=Math.min(dia,dim);
+    const fecha=new Date(cursor.getFullYear(),cursor.getMonth(),diaR);
+    if(fecha>=fechaInicio&&fecha<=fechaFin){
+      const y=fecha.getFullYear(),m=String(fecha.getMonth()+1).padStart(2,'0'),d=String(fecha.getDate()).padStart(2,'0');
+      fechas.push(`${y}-${m}-${d}`);
+    }
+    cursor=new Date(cursor.getFullYear(),cursor.getMonth()+inc,1);
+  }
+  return fechas;
+}
+
+function rcPreview(){
+  const fi=document.getElementById('rc-fi')?.value;
+  const ff=document.getElementById('rc-ff')?.value||null;
+  const frq=document.getElementById('rc-frq')?.value||'mensual';
+  const dia=parseInt(document.getElementById('rc-dia')?.value)||1;
+  const prev=document.getElementById('rc-preview');
+  if(!prev||!fi)return;
+  const fechas=rcCalcFechasJs(fi,ff,frq,dia);
+  if(!fechas.length){prev.innerHTML='<div style="color:var(--text-muted);font-size:12px">Sin fechas en el rango.</div>';return}
+  const hoy=today();
+  const pasadas=fechas.filter(f=>f<hoy),futuras=fechas.filter(f=>f>=hoy);
+  const chip=(f,dim)=>`<span style="font-size:11px;padding:2px 8px;border-radius:var(--r);background:var(--surface2);${dim?'color:var(--text-faint)':'border:1px solid var(--border)'}">${fmtD(f)}</span>`;
+  prev.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">${fechas.length} vencimiento(s)${!ff?' — hasta fin de '+new Date().getFullYear():''}</div>`
+    +(pasadas.length?`<div style="font-size:11px;color:var(--text-faint);margin-bottom:6px">${pasadas.length} pasado(s) → auto-pagados</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">${pasadas.map(f=>chip(f,true)).join('')}</div>`:'')
+    +(futuras.length?`<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">${futuras.length} futuro(s) → pendientes</div><div style="display:flex;flex-wrap:wrap;gap:4px">${futuras.map(f=>chip(f,false)).join('')}</div>`:'');
+}
+
+async function genVencs(id,showAlert=true){
+  const{data:r}=await sb.from('gastos_recurrentes').select('*').eq('id',id).single();
+  if(!r){if(showAlert)alert('No se encontró el gasto recurrente.');return}
+  if(r.fecha_fin){if(showAlert)alert('Este recurrente tiene fecha fin — los vencimientos ya están generados.');return}
+  const hoy=today();
+  const fechas=rcCalcFechasJs(r.fecha_inicio,null,r.frecuencia,r.dia_del_mes);
+  const futuras=fechas.filter(f=>f>=hoy);
+  if(!futuras.length){if(showAlert)alert('No hay vencimientos futuros para generar.');return}
+  const{data:exist}=await sb.from('vencimientos_recurrentes').select('fecha_vencimiento').eq('gasto_recurrente_id',id).in('estado',['pendiente','vencido']);
+  const existSet=new Set((exist||[]).map(e=>e.fecha_vencimiento));
+  const nuevas=futuras.filter(f=>!existSet.has(f));
+  if(!nuevas.length){if(showAlert)alert('Los vencimientos ya estaban generados.');return}
+  const{error}=await sb.from('vencimientos_recurrentes').insert(nuevas.map(f=>({gasto_recurrente_id:id,fecha_vencimiento:f,monto:r.monto,estado:'pendiente'})));
+  if(error){alert('Error: '+error.message);return}
+  if(showAlert)alert(`Se generaron ${nuevas.length} vencimiento(s) hasta fin de año.`);
+}
+
+async function gstCats(tabla, callbackFn){
+  const{data:cats}=await sb.from(tabla).select('*').order('nombre');
+  const hasType = tabla==='categorias_gasto'||tabla==='categorias_factura'||tabla==='categorias_gasto_recurrente';
+  const tipos = hasType ? [
+    {v:'operativo',l:'Operativo'},
+    {v:'financiero',l:'Financiero'},
+    {v:'personal',l:'Personal'},
+    {v:'cmv',l:'CMV (Materias primas)'},
+    {v:'extraordinario',l:'Extraordinario'},
+    {v:'anticipo_impuesto',l:'Anticipo impuesto'},
+    {v:'impuesto',l:'Impuesto'}
+  ] : [];
+  
+  const renderCats=(list)=>list.length?list.map(c=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <span style="font-weight:600;font-size:13px">${c.nombre}</span>
+        ${hasType?`<span class="bd bd-gray" style="margin-left:6px;font-size:11px">${c.tipo||'operativo'}</span>`:''}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="editCat('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}','${c.tipo||''}',${hasType})">Editar</button>
+        <button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}')">✕</button>
+      </div>
+    </div>`).join(''):'<div class="empty">Sin categorías.</div>';
+
+  openMo(`Categorías`,`
+    <div id="cats-list">${renderCats(cats||[])}</div>
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Nueva categoría</div>
+      <div class="fg">
+        <div class="f full"><label>Nombre *</label><input id="cat-nm" placeholder="Nombre de la categoría"></div>
+        ${hasType?`<div class="f full"><label>Tipo</label><select id="cat-tp" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="operativo">Operativo</option><option value="financiero">Financiero</option><option value="personal">Personal</option><option value="cmv">CMV (Materias primas)</option><option value="extraordinario">Extraordinario</option><option value="anticipo_impuesto">Anticipo impuesto</option><option value="impuesto">Impuesto</option></select></div>`:''}
+      </div>
+      <button class="btn btn-p" style="width:100%;margin-top:8px" onclick="addCat('${tabla}',${hasType})">+ Agregar</button>
+    </div>`,()=>{},true);
+  window._catCallback=callbackFn;
+}
+
+async function addCat(tabla, hasType){
+  const nm=document.getElementById('cat-nm').value.trim();
+  if(!nm){alert('Ingresá un nombre.');return}
+  const obj={nombre:nm};
+  if(hasType)obj.tipo=document.getElementById('cat-tp')?.value||'operativo';
+  const{error}=await sb.from(tabla).insert(obj);
+  if(error){alert(error.message);return}
+  document.getElementById('cat-nm').value='';
+  const{data:cats}=await sb.from(tabla).select('*').order('nombre');
+  if(tabla==='categorias_factura')window._catsFact=cats||[];
+  const hasT=tabla==='categorias_gasto'||tabla==='categorias_factura'||tabla==='categorias_gasto_recurrente';
+  document.getElementById('cats-list').innerHTML=cats.length?cats.map(c=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><span style="font-weight:600;font-size:13px">${c.nombre}</span>${hasT?`<span class="bd bd-gray" style="margin-left:6px;font-size:11px">${c.tipo||'operativo'}</span>`:''}</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="editCat('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}','${c.tipo||''}',${hasT})">Editar</button>
+        <button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}')">✕</button>
+      </div>
+    </div>`).join(''):'<div class="empty">Sin categorías.</div>';
+}
+
+async function editCat(tabla, id, nombre, tipo, hasType){
+  openMo('Editar categoría',`<div class="fg">
+    <div class="f full"><label>Nombre</label><input id="ecat-nm" value="${nombre}"></div>
+    ${hasType?`<div class="f full"><label>Tipo</label><select id="ecat-tp" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="operativo" ${tipo==='operativo'?'selected':''}>Operativo</option><option value="financiero" ${tipo==='financiero'?'selected':''}>Financiero</option><option value="personal" ${tipo==='personal'?'selected':''}>Personal</option><option value="cmv" ${tipo==='cmv'?'selected':''}>CMV (Materias primas)</option><option value="extraordinario" ${tipo==='extraordinario'?'selected':''}>Extraordinario</option><option value="anticipo_impuesto" ${tipo==='anticipo_impuesto'?'selected':''}>Anticipo impuesto</option><option value="impuesto" ${tipo==='impuesto'?'selected':''}>Impuesto</option></select></div>`:''}
+  </div>`,async()=>{
+    const obj={nombre:document.getElementById('ecat-nm').value};
+    if(hasType)obj.tipo=document.getElementById('ecat-tp')?.value||'operativo';
+    await sb.from(tabla).update(obj).eq('id',id);
+    closeMo();
+    if(window._catCallback)gstCats(tabla,window._catCallback);
+  });
+}
+
+async function delCat(tabla, id){
+  // Contar registros asociados
+  const tablaAsoc={categorias_gasto:'gastos',categorias_factura:'facturas',categorias_gasto_recurrente:'gastos_recurrentes'}[tabla];
+  let count=0;
+  if(tablaAsoc){
+    const{count:c}=await sb.from(tablaAsoc).select('*',{count:'exact',head:true}).eq('categoria_id',id);
+    count=c||0;
+  }
+  const msg=count>0
+    ?`¿Eliminar esta categoría? Tiene ${count} registro${count>1?'s':''} asociado${count>1?'s':''}. Esos registros quedarán sin categoría.`
+    :'¿Eliminar esta categoría?';
+  if(!confirm(msg))return;
+  const{error}=await sb.from(tabla).delete().eq('id',id);
+  if(error){alert('No se puede eliminar: puede estar en uso.');return}
+  const{data:cats}=await sb.from(tabla).select('*').order('nombre');
+  if(tabla==='categorias_factura')window._catsFact=cats||[];
+  const hasT=tabla==='categorias_gasto'||tabla==='categorias_factura'||tabla==='categorias_gasto_recurrente';
+  document.getElementById('cats-list').innerHTML=cats.length?cats.map(c=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><span style="font-weight:600;font-size:13px">${c.nombre}</span>${hasT?`<span class="bd bd-gray" style="margin-left:6px;font-size:11px">${c.tipo||'operativo'}</span>`:''}</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="editCat('${tabla}','${c.id}','${c.nombre.replace(/'/g,"\\'")}','${c.tipo||''}',${hasT})">Editar</button>
+        <button class="btn btn-sm btn-d" onclick="delCat('${tabla}','${c.id}')">✕</button>
+      </div>
+    </div>`).join(''):'<div class="empty">Sin categorías.</div>';
+}
+
+// ---- GASTOS AL CONTADO ----
+let _gastosData=[];let _gastosSortCol='fecha';let _gastosSortAsc=false;
+
+async function gastos(){
+  loading();setR(`<button class="btn" onclick="gstCats('categorias_gasto',gastos)">Categorías</button><button class="btn" onclick="newGastoIA()">✦ IA</button><button class="btn btn-p" onclick="newGastoMan()">+ Manual</button>`);
+  const[{data},{data:cats},{data:sucs}]=await Promise.all([
+    sb.from('gastos').select('*,cierre_caja_id,categorias_gasto(nombre),sucursales(nombre)').order('fecha',{ascending:false}),
+    sb.from('categorias_gasto').select('*').order('nombre'),
+    Promise.resolve({data:_sucs})
+  ]);
+  _gastosData=data||[];
+  document.getElementById('ct').innerHTML=`<div class="card">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <input id="gst-q" placeholder="Buscar concepto..." style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;flex:1;min-width:150px" oninput="renderGastos()">
+      <select id="gst-cat" onchange="renderGastos()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+        <option value="">Todas las categorías</option>
+        ${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}
+      </select>
+      <select id="gst-suc" onchange="renderGastos()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+        <option value="">Todas las sucursales</option>
+        ${(_sucs||[]).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}
+      </select>
+      <input id="gst-mes" type="month" onchange="renderGastos()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+      <select id="gst-mp" onchange="renderGastos()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+        <option value="">Todos los medios</option>
+        <option value="efectivo">Efectivo</option>
+        <option value="tarjeta_debito">Tarjeta de débito</option>
+        <option value="transferencia">Transferencia</option>
+        <option value="debito_automatico">Débito automático</option>
+      </select>
+      <button class="btn btn-sm" onclick="document.getElementById('gst-q').value='';document.getElementById('gst-cat').value='';document.getElementById('gst-suc').value='';document.getElementById('gst-mes').value='';document.getElementById('gst-mp').value='';renderGastos()">✕ Limpiar</button>
+    </div>
+    <div id="gst-tabla"></div>
+  </div>`;
+  renderGastos();
+}
+
+function gastosSortBy(col){
+  if(_gastosSortCol===col)_gastosSortAsc=!_gastosSortAsc;
+  else{_gastosSortCol=col;_gastosSortAsc=col!=='fecha';}
+  renderGastos();
+}
+
+function renderGastos(){
+  const q=(document.getElementById('gst-q')?.value||'').toLowerCase();
+  const cat=document.getElementById('gst-cat')?.value||'';
+  const suc=document.getElementById('gst-suc')?.value||'';
+  const mes=document.getElementById('gst-mes')?.value||'';
+  const mp=document.getElementById('gst-mp')?.value||'';
+  let data=_gastosData.filter(g=>{
+    if(q&&!(g.concepto||'').toLowerCase().includes(q)&&!(g.numero_documento||'').toLowerCase().includes(q))return false;
+    if(cat&&g.categoria_id!==cat)return false;
+    if(suc&&g.sucursal_id!==suc)return false;
+    if(mes&&!(g.fecha||'').startsWith(mes))return false;
+    if(mp&&(g.medio_pago||'efectivo')!==mp)return false;
+    return true;
+  });
+  const col=_gastosSortCol;const asc=_gastosSortAsc;
+  data.sort((a,b)=>{
+    let va=a[col]||'',vb=b[col]||'';
+    if(col==='monto'||col==='monto_neto'){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}
+    if(va<vb)return asc?-1:1;if(va>vb)return asc?1:-1;return 0;
+  });
+  const arr=['fecha','concepto','categorias_gasto','sucursales','monto_neto'];
+  const lbl=['Fecha','Concepto','Categoría','Sucursal','Neto'];
+  const th=arr.map((c,i)=>`<th style="cursor:pointer;user-select:none" onclick="gastosSortBy('${c==='categorias_gasto'?'categoria_id':c==='sucursales'?'sucursal_id':c}')">${lbl[i]}${_gastosSortCol===(c==='categorias_gasto'?'categoria_id':c==='sucursales'?'sucursal_id':c)?(_gastosSortAsc?' ↑':' ↓'):''}</th>`).join('');
+  const el=document.getElementById('gst-tabla');if(!el)return;
+  const mpLabel={efectivo:'Efectivo',tarjeta_debito:'T. Débito',transferencia:'Transf.',debito_automatico:'Déb. Auto.'};
+  const ndFmt=nd=>!nd?'—':nd.length>14?`<span style="cursor:pointer;font-family:monospace;font-size:11px;color:var(--text-muted)" onclick="navigator.clipboard.writeText('${nd.replace(/'/g,"\\'")}');this.textContent='¡Copiado!';setTimeout(()=>this.textContent='${nd.substring(0,14).replace(/'/g,"\\'")}...',1500)">${nd.substring(0,14)}...</span>`:`<span style="font-family:monospace;font-size:11px;color:var(--text-muted)">${nd}</span>`;
+  el.innerHTML=`<div style="overflow-x:auto">${!data.length?'<div class="empty">Sin gastos.</div>':`
+    <table><thead><tr><th style="cursor:pointer;user-select:none" onclick="gastosSortBy('fecha')">Fecha${_gastosSortCol==='fecha'?(_gastosSortAsc?' ↑':' ↓'):''}</th><th>N° Doc.</th><th>Concepto</th><th>Categoría</th><th>Sucursal</th><th>Neto</th><th>MwSt</th><th style="cursor:pointer;user-select:none" onclick="gastosSortBy('monto')">Total${_gastosSortCol==='monto'?(_gastosSortAsc?' ↑':' ↓'):''}</th><th>Medio</th><th style="width:32px"></th><th></th></tr></thead><tbody>
+    ${data.map(g=>`<tr>
+      <td style="white-space:nowrap">${fmtD(g.fecha)}</td>
+      <td>${ndFmt(g.numero_documento)}</td>
+      <td>${g.concepto||'—'}</td>
+      <td><span class="bd bd-gray" style="white-space:nowrap">${g.categorias_gasto?.nombre||'—'}</span></td>
+      <td><span class="bd bd-gray" style="font-size:10px;white-space:nowrap">${g.sucursales?.nombre||'General'}</span></td>
+      <td style="white-space:nowrap">${fmt(g.monto_neto||g.monto)}</td>
+      <td style="white-space:nowrap">${(g.mwst_monto||0)>0?fmt(g.mwst_monto):'—'}</td>
+      <td style="font-weight:600;color:var(--red);white-space:nowrap">${fmt(g.monto)}</td>
+      <td><span class="bd ${g.medio_pago==='tarjeta_debito'?'bd-info':g.medio_pago==='transferencia'?'bd-pur':g.medio_pago==='debito_automatico'?'bd-warn':'bd-ok'}" style="font-size:11px;white-space:nowrap">${mpLabel[g.medio_pago||'efectivo']||g.medio_pago||'Efectivo'}</span></td>
+      <td style="width:32px;text-align:center">${g.adjunto_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${g.adjunto_url}','${((g.concepto||'gasto')+' - '+(g.fecha||'')).replace(/'/g,"\\'")}')">📎</button>`:''}</td>
+      <td style="white-space:nowrap"><div style="display:flex;gap:5px"><button class="btn btn-sm" onclick="verGasto('${g.id}')">Ver</button>${!g.cierre_caja_id?`<button class="btn btn-sm" onclick="editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="delGasto('${g.id}')">✕</button>`:''}</div></td>
+    </tr>`).join('')}
+    </tbody></table>`}</div>`;
+}
+
+function updS(pfx){
+  const neto=parseFloat(document.getElementById(pfx+'-neto')?.value||document.getElementById(pfx+'-n')?.value)||0;
+  const mwst=parseFloat(document.getElementById(pfx+'-mwst')?.value||document.getElementById(pfx+'-m')?.value)||0;
+  const total=neto+mwst;
+  // Actualizar campo Total Bruto (IDs inconsistentes según formulario)
+  const totField=document.getElementById(pfx+'-tot')||document.getElementById(pfx+'-t')||(pfx==='fm'?document.getElementById('fmt'):null);
+  if(totField&&document.activeElement!==totField)totField.value=total.toFixed(2);
+  // Actualizar resumen visual
+  const s=document.getElementById(pfx+'-summary');if(!s)return;
+  const displayTotal=totField?parseFloat(totField.value)||total:total;
+  document.getElementById(pfx+'-s-neto').textContent='€'+neto.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById(pfx+'-s-mwst').textContent='€'+mwst.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById(pfx+'-s-total').textContent='€'+displayTotal.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function addLiInfo(cid){
+  const c=document.getElementById(cid);if(!c)return;
+  const d=document.createElement('div');
+  d.className='li-info';
+  d.style.cssText='display:grid;grid-template-columns:1fr 70px 75px 90px 32px;gap:6px;margin-bottom:6px;align-items:center';
+  d.innerHTML='<input placeholder="Descripci\u00f3n" style="font-size:13px;padding:8px 10px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit"><input type="number" value="1" style="font-size:13px;padding:8px 6px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit;text-align:center"><select style="font-size:13px;padding:8px 4px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7">7%</option><option value="19">19%</option><option value="0">0%</option></select><input type="number" value="0" step="0.01" style="font-size:13px;padding:8px 6px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit;text-align:right"><button class="btn btn-sm btn-d" onclick="this.parentElement.remove()">\u2715</button>';
+  c.appendChild(d);
+}
+function getInfoLis(cid){
+  const rows=document.getElementById(cid)?.querySelectorAll('.li-info')||[];
+  return[...rows].map(r=>{const i=r.querySelectorAll('input'),s=r.querySelector('select');return{desc:i[0]?.value||'',qty:parseFloat(i[1]?.value)||1,mwst:parseInt(s?.value)||7,monto:parseFloat(i[2]?.value)||0};}).filter(l=>l.desc||l.monto>0);
+}
+
+async function newGastoIA(){
+  const{data:cats}=await sb.from('categorias_gasto').select('*').order('nombre');
+  openMo('Cargar gasto con IA',`
+    <div class="upz" onclick="document.getElementById('fi-g').click()" ondragover="this.classList.add('over');event.preventDefault()" ondragleave="this.classList.remove('over')" ondrop="handleGDrop(event)">
+      <div class="ui">🧾</div><div class="ut">Arrastrá el archivo o hacé clic</div><div class="us">PDF multipágina, o varias fotos JPG/PNG del mismo documento</div>
+    </div>
+    <input type="file" id="fi-g" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="procGastoIA(this.files)">
+    <div id="g-ias" style="margin-top:10px"></div>
+    <div id="g-iaf" style="display:none;margin-top:14px">
+      <div class="fg">
+        <div class="f"><label>N° Documento</label><input id="gi-nd" placeholder="Ej: 0010590..."></div>
+        <div class="f full"><label>Proveedor / Concepto *</label><input id="gi-c" placeholder="Ej: BAUHAUS"></div>
+        <div class="f"><label>Fecha *</label><input id="gi-d" type="date"></div>
+        <div class="f"><label>Neto (sin MwSt)</label><input id="gi-neto" type="number" step="0.01" value="0" oninput="updS('gi')"></div>
+        <div class="f"><label>MwSt %</label><select id="gi-mp" onchange="updS('gi')" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7">7%</option><option value="19">19%</option><option value="0">0%</option></select></div>
+        <div class="f"><label>MwSt Monto</label><input id="gi-mwst" type="number" step="0.01" value="0" oninput="updS('gi')"></div>
+        <div class="f"><label>Total Bruto</label><input id="gi-t" type="number" step="0.01" value="0" oninput="updS('gi')"></div>
+        <div class="f"><label>Categoría</label><select id="gi-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
+        <div class="f"><label>Sucursal</label><select id="gi-s"><option value="">General</option>${sucOpts()}</select></div>
+        <div class="f"><label>Medio de pago</label><select id="gi-mp2" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo">Efectivo</option><option value="tarjeta_debito">Tarjeta de débito</option><option value="transferencia">Transferencia</option><option value="debito_automatico">Débito automático</option></select></div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
+      <div style="display:grid;grid-template-columns:1fr 70px 75px 90px 32px;gap:6px;padding:0 4px;margin-bottom:4px">
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Detalle</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Cant.</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">MwSt</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Monto</div>
+  <div></div>
+</div>
+      <div id="gi-lis"></div>
+      <button class="btn btn-sm" style="margin-top:6px" onclick="addLiInfo('gi-lis')">+ Línea</button>
+      <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="gi-summary">
+  <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="gi-s-neto">€0,00</div></div>
+  <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="gi-s-mwst">€0,00</div></div>
+  <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="gi-s-total">€0,00</div></div>
+</div>
+      <div style="margin-top:12px">${adjuntoField('gi-adj')}</div>
+    </div>`,
+  async()=>{
+    const fecha=document.getElementById('gi-d').value;if(!fecha){alert('Completá la fecha.');return}
+    await getOrCreateTmp(fecha);
+    const giNeto=parseFloat(document.getElementById('gi-neto').value)||0;
+    const giMwst=parseFloat(document.getElementById('gi-mwst').value)||0;
+    const giTot=parseFloat(document.getElementById('gi-t').value)||giNeto+giMwst;
+    const giMp=parseInt(document.getElementById('gi-mp').value)||7;
+    const giLineas=getInfoLis('gi-lis');
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:giTot,monto_neto:giNeto,mwst_porcentaje:giMp,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,medio_pago:document.getElementById('gi-mp2').value||'efectivo',lineas_json:JSON.stringify(giLineas),numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
+    if(error){alert(error.message);return}
+    const file=document.getElementById('gi-adj').files[0];
+    if(file&&row?.id){const concepto=document.getElementById('gi-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,nombreArch,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
+    closeMo();gastos();
+  });
+  document.getElementById('mo-save').style.display='none';
+  window._moIsIA=true;
+}
+
+async function procGastoIA(files){
+  const fileList=Array.from(files||[]);
+  if(!fileList.length)return;
+  document.getElementById('g-ias').innerHTML=`<div class="al al-info">⏳ Analizando ${fileList.length>1?fileList.length+' archivos':'archivo'} con IA...</div>`;
+  const archivos=await Promise.all(fileList.map(async f=>({b64:await fileToB64(f),mime:f.type||'image/jpeg'})));
+  const r=await iaTicket(archivos);
+  if(!r){document.getElementById('g-ias').innerHTML='<div class="al al-err">No se pudo leer. Intentá manualmente.</div>';return}
+  document.getElementById('g-ias').innerHTML=`<div class="al al-ok">✓ Leído (${fileList.length} archivo${fileList.length>1?'s':''}) — verificá y guardá.</div>`;
+  document.getElementById('g-iaf').style.display='';
+  document.getElementById('gi-d').value=r.fecha||today();
+  document.getElementById('gi-nd').value=r.numero_documento||'';
+  document.getElementById('gi-c').value=r.proveedor||'';
+  document.getElementById('gi-neto').value=(r.neto_total||0).toFixed(2);
+  document.getElementById('gi-mwst').value=(r.mwst_total||0).toFixed(2);
+  document.getElementById('gi-t').value=(r.total_bruto||0).toFixed(2);
+  document.getElementById('gi-mp').value=r.mwst_pct||7;
+  const lisHtml=(r.lineas||[]).map(l=>`<div class="li-info" style="display:grid;grid-template-columns:1fr 70px 75px 90px 32px;gap:6px;margin-bottom:6px;align-items:center"><input value="${l.descripcion||l.desc||''}" style="font-size:13px;padding:8px 10px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit"><input type="number" value="${l.cantidad||l.qty||1}" style="font-size:13px;padding:8px 6px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit;text-align:center"><select style="font-size:13px;padding:8px 4px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7" ${(l.mwst_pct||7)===7?'selected':''}>7%</option><option value="19" ${l.mwst_pct===19?'selected':''}>19%</option></select><input type="number" value="${(l.importe_bruto||l.monto||0).toFixed(2)}" step="0.01" style="font-size:13px;padding:8px 6px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit;text-align:right"><button class="btn btn-sm btn-d" onclick="this.parentElement.remove()">✕</button></div>`).join('');
+  document.getElementById('gi-lis').innerHTML=lisHtml;
+  document.getElementById('mo-save').style.display='';
+  setTimeout(()=>updS('gi'),100);
+}
+async function newGastoMan(){
+  const{data:cats}=await sb.from('categorias_gasto').select('*').order('nombre');
+  openMo('Nuevo gasto al contado',`<div class="fg">
+    <div class="f"><label>N° Documento</label><input id="gm-nd" placeholder="Opcional"></div>
+    <div class="f full"><label>Concepto *</label><input id="gm-c"></div>
+    <div class="f"><label>Fecha *</label><input id="gm-d" type="date" value="${today()}"></div>
+    <div class="f"><label>Neto (sin MwSt)</label><input id="gm-n" type="number" step="0.01" value="0" oninput="updS('gm')"></div>
+    <div class="f"><label>MwSt %</label><select id="gm-p" onchange="updS('gm')" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7">7%</option><option value="19">19%</option><option value="0">0%</option></select></div>
+    <div class="f"><label>MwSt Monto</label><input id="gm-m" type="number" step="0.01" value="0" oninput="updS('gm')"></div>
+    <div class="f"><label>Total Bruto</label><input id="gm-t" type="number" step="0.01" value="0" oninput="updS('gm')"></div>
+    <div class="f"><label>Categoría</label><select id="gm-cat"><option value="">— Seleccionar —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
+    <div class="f"><label>Sucursal</label><select id="gm-s"><option value="">General</option>${sucOpts()}</select></div>
+    <div class="f"><label>Medio de pago</label><select id="gm-mp" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo">Efectivo</option><option value="tarjeta_debito">Tarjeta de débito</option><option value="transferencia">Transferencia</option><option value="debito_automatico">Débito automático</option></select></div>
+    <div class="f full"><label>Notas</label><input id="gm-no"></div>
+  </div>
+  <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
+  <div style="display:grid;grid-template-columns:1fr 70px 75px 90px 32px;gap:6px;padding:0 4px;margin-bottom:4px">
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Detalle</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Cant.</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">MwSt</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Monto</div>
+  <div></div>
+</div>
+  <div id="gm-lis"></div>
+  <button class="btn btn-sm" style="margin-top:6px" onclick="addLiInfo('gm-lis')">+ Línea</button>
+  <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="gm-summary">
+  <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="gm-s-neto">€0,00</div></div>
+  <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="gm-s-mwst">€0,00</div></div>
+  <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="gm-s-total">€0,00</div></div>
+</div>
+  <div style="margin-top:14px">${adjuntoField('gm-adj')}</div>`,
+  async()=>{
+    const fecha=document.getElementById('gm-d').value;if(!fecha){alert('Completá la fecha.');return}
+    await getOrCreateTmp(fecha);
+    const gmNeto=parseFloat(document.getElementById('gm-n').value)||0;
+    const gmMwst=parseFloat(document.getElementById('gm-m').value)||0;
+    const gmTot=parseFloat(document.getElementById('gm-t').value)||gmNeto+gmMwst;
+    const gmMp=parseInt(document.getElementById('gm-p').value)||7;
+    const gmLineas=getInfoLis('gm-lis');
+    const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,numero_documento:document.getElementById('gm-nd')?.value||null,categoria_id:document.getElementById('gm-cat').value||null,monto:gmTot,monto_neto:gmNeto,mwst_porcentaje:gmMp,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,medio_pago:document.getElementById('gm-mp').value||'efectivo',notas:document.getElementById('gm-no').value,lineas_json:JSON.stringify(gmLineas)}).select('id').single();
+    if(error){alert(error.message);return}
+    const file=document.getElementById('gm-adj').files[0];
+    if(file&&row?.id){const concepto=document.getElementById('gm-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,nombreArch,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
+    closeMo();gastos();
+  });
+  setTimeout(()=>updS('gm'),50);
+}
+async function editGasto(id){
+  const[{data:g},{data:cats}]=await Promise.all([
+    sb.from('gastos').select('*').eq('id',id).single(),
+    sb.from('categorias_gasto').select('*').order('nombre')
+  ]);
+  const lineas=g.lineas_json?JSON.parse(g.lineas_json):[];
+  const lisHtml=lineas.map(l=>`<div class="li-info" style="display:grid;grid-template-columns:1fr 70px 75px 90px 32px;gap:6px;margin-bottom:6px;align-items:center">
+    <input value="${l.desc||l.descripcion||''}" style="font-size:13px;padding:8px 10px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit">
+    <input type="number" value="${l.qty||l.cantidad||1}" style="font-size:13px;padding:8px 6px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit;text-align:center">
+    <select style="font-size:13px;padding:8px 4px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7" ${(l.mwst||l.mwst_pct||7)==7?'selected':''}>7%</option><option value="19" ${(l.mwst||l.mwst_pct)==19?'selected':''}>19%</option><option value="0" ${(l.mwst||l.mwst_pct)==0?'selected':''}>0%</option></select>
+    <input type="number" value="${(l.monto||l.importe_bruto||l.neto||0).toFixed(2)}" step="0.01" style="font-size:13px;padding:8px 6px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit;text-align:right">
+    <button class="btn btn-sm btn-d" onclick="this.parentElement.remove()">✕</button>
+  </div>`).join('');
+  openMo('Editar gasto',`<div class="fg">
+    <div class="f"><label>N° Documento</label><input id="eg-nd" value="${g.numero_documento||''}"></div>
+    <div class="f full"><label>Concepto *</label><input id="eg-c" value="${g.concepto||''}"></div>
+    <div class="f"><label>Fecha *</label><input id="eg-d" type="date" value="${g.fecha}"></div>
+    <div class="f"><label>Neto (sin MwSt)</label><input id="eg-n" type="number" step="0.01" value="${g.monto_neto||0}" oninput="updS('eg')"></div>
+    <div class="f"><label>MwSt %</label><select id="eg-mp" onchange="updS('eg')" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="7" ${(g.mwst_porcentaje||7)==7?'selected':''}>7%</option><option value="19" ${g.mwst_porcentaje==19?'selected':''}>19%</option><option value="0" ${g.mwst_porcentaje==0?'selected':''}>0%</option></select></div>
+    <div class="f"><label>MwSt Monto</label><input id="eg-m" type="number" step="0.01" value="${g.mwst_monto||0}" oninput="updS('eg')"></div>
+    <div class="f"><label>Total Bruto</label><input id="eg-t" type="number" step="0.01" value="${g.monto||0}" oninput="updS('eg')"></div>
+    <div class="f"><label>Categoría</label><select id="eg-cat"><option value="">— Seleccionar —</option>${cats.map(c=>`<option value="${c.id}" ${c.id===g.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
+    <div class="f"><label>Sucursal</label><select id="eg-s"><option value="">General</option>${sucOpts()}</select></div>
+    <div class="f"><label>Medio de pago</label><select id="eg-mpago" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="efectivo" ${(g.medio_pago||'efectivo')==='efectivo'?'selected':''}>Efectivo</option><option value="tarjeta_debito" ${g.medio_pago==='tarjeta_debito'?'selected':''}>Tarjeta de débito</option><option value="transferencia" ${g.medio_pago==='transferencia'?'selected':''}>Transferencia</option><option value="debito_automatico" ${g.medio_pago==='debito_automatico'?'selected':''}>Débito automático</option></select></div>
+    <div class="f full"><label>Notas</label><input id="eg-no" value="${g.notas||''}"></div>
+  </div>
+  <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px">Líneas (informativo)</div>
+  <div style="display:grid;grid-template-columns:1fr 70px 75px 90px 32px;gap:6px;padding:0 4px;margin-bottom:4px">
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Detalle</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Cant.</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">MwSt</div>
+  <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Monto</div>
+  <div></div>
+</div>
+  <div id="eg-lis">${lisHtml}</div>
+  <button class="btn btn-sm" style="margin-top:6px" onclick="addLiInfo('eg-lis')">+ Línea</button>
+  <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px" id="eg-summary">
+  <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Neto sin MwSt</div><div style="font-weight:600;font-size:15px" id="eg-s-neto">€0,00</div></div>
+  <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">MwSt</div><div style="font-weight:600;font-size:15px" id="eg-s-mwst">€0,00</div></div>
+  <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:3px">Total bruto</div><div style="font-weight:700;font-size:17px;color:var(--amber)" id="eg-s-total">€0,00</div></div>
+</div>
+  <div class="fg" style="margin-top:14px">
+    <div class="f full">
+      <label>${g.adjunto_url?'Reemplazar adjunto':'Subir adjunto (opcional)'}</label>
+      ${g.adjunto_url?`<div style="margin-bottom:6px"><button class="btn btn-sm" onclick="verAdjunto('${g.adjunto_url}','${((g.concepto||'gasto')+' - '+(g.fecha||'')).replace(/'/g,"\\'")}')">📎 Ver adjunto actual</button></div>`:''}
+      <input type="file" id="eg-adj" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;width:100%">
+    </div>
+  </div>`,
+  async()=>{
+    const egNeto=parseFloat(document.getElementById('eg-n').value)||0;
+    const egMwst=parseFloat(document.getElementById('eg-m').value)||0;
+    const egTot=parseFloat(document.getElementById('eg-t').value)||egNeto+egMwst;
+    const egMp=parseInt(document.getElementById('eg-mp').value)||7;
+    const egLineas=getInfoLis('eg-lis');
+    const{error}=await sb.from('gastos').update({
+      fecha:document.getElementById('eg-d').value,
+      numero_documento:document.getElementById('eg-nd')?.value||null,
+      concepto:document.getElementById('eg-c').value,
+      categoria_id:document.getElementById('eg-cat').value||null,
+      monto:egTot,monto_neto:egNeto,mwst_porcentaje:egMp,mwst_monto:egMwst,
+      sucursal_id:document.getElementById('eg-s').value||null,
+      medio_pago:document.getElementById('eg-mpago').value||'efectivo',
+      notas:document.getElementById('eg-no').value,
+      lineas_json:JSON.stringify(egLineas)
+    }).eq('id',id);
+    if(error){alert(error.message);return}
+    const egFile=document.getElementById('eg-adj')?.files[0];
+    const egFecha=document.getElementById('eg-d').value;
+    if(egFile){const egConcepto=document.getElementById('eg-c').value||'gasto';const fd=egFecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${egConcepto} - ${fechaFmt}`;const url=await uploadAdjunto(egFile,`gastos/${egFecha.substring(0,4)}`,nombreArch,egFecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
+    closeMo();gastos();
+  });
+  setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id;updS('eg');},50);
+}
+
+async function delGasto(id){
+  if(!confirm('Eliminar gasto?'))return;
+  const{data:g}=await sb.from('gastos').select('adjunto_url').eq('id',id).maybeSingle();
+  await sb.from('gastos').delete().eq('id',id);
+  if(g?.adjunto_url){try{const pm=g.adjunto_url.match(/object\/(?:sign|public)\/adjuntos\/([^?]+)/);if(pm)await sb.storage.from('adjuntos').remove([pm[1].split('?')[0]]);}catch(e){}}
+  gastos();
+}
+
+async function verGasto(id){
+  const{data:g}=await sb.from('gastos').select('*,categorias_gasto(nombre),sucursales(nombre)').eq('id',id).single();
+  if(!g)return;
+  const lineas=g.lineas_json?JSON.parse(g.lineas_json):[];
+  openMo('Gasto al contado',`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Fecha</div><div style="font-weight:600">${fmtD(g.fecha)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">N° Doc.</div><div style="font-family:monospace;font-size:12px">${g.numero_documento||'—'}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Concepto</div><div style="font-weight:600">${g.concepto||'—'}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Categoría / Sucursal</div><div>${g.categorias_gasto?.nombre||'—'} / ${g.sucursales?.nombre||'General'}</div></div>
+      <div style="grid-column:span 2"><div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;margin-bottom:3px">Neto / MwSt / Total</div>
+        <div>${fmt(g.monto_neto||0)} / ${fmt(g.mwst_monto||0)} / <strong style="font-size:16px">${fmt(g.monto)}</strong></div>
+      </div>
+    </div>
+    ${lineas.length?`<table style="font-size:12px;width:100%"><thead><tr><th>Detalle</th><th>Cant.</th><th>MwSt</th><th>Monto</th></tr></thead><tbody>${lineas.map(l=>`<tr><td>${l.desc||l.descripcion||'—'}</td><td>${l.qty||l.cantidad||1}</td><td>${l.mwst||0}%</td><td>${fmt(l.monto||l.importe_bruto||0)}</td></tr>`).join('')}</tbody></table>`:''}
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+      ${g.adjunto_url?`<button class="btn btn-sm" onclick="verAdjunto('${g.adjunto_url}','${((g.concepto||'gasto')+' - '+(g.fecha||'')).replace(/'/g,"\\'")}')">📎 Adjunto</button>`:''}
+      ${!g.cierre_caja_id?`<button class="btn btn-sm" onclick="closeMo();editGasto('${g.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="closeMo();delGasto('${g.id}')">Eliminar</button>`:''}
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">${g.adjunto_url?'Reemplazar':'Subir adjunto'}</div>
+      <div style="display:flex;gap:8px">
+        <input type="file" id="gasto-adj-up" accept=".pdf,.jpg,.jpeg,.png" style="font-size:13px;padding:6px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);font-family:inherit;flex:1">
+        <button class="btn btn-sm btn-p" onclick="subirAdjGasto('${g.id}','${g.fecha||today()}')">Subir</button>
+      </div>
+    </div>`,()=>{},true);
+}
+
+async function subirAdjGasto(gastoId,fecha){
+  const file=document.getElementById('gasto-adj-up')?.files[0];
+  if(!file){alert('Seleccioná un archivo primero.');return}
+  const btn=event.target;btn.textContent='Subiendo...';btn.disabled=true;
+  const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`gasto-${gastoId}`,fecha);
+  if(url){await sb.from('gastos').update({adjunto_url:url}).eq('id',gastoId);btn.textContent='✓ Subido';}
+  else{btn.textContent='Error';alert('No se pudo subir.');}btn.disabled=false;
+}
+
+
+
+async function nuevoCierre(){
+  openMo('Registrar cierre de caja',`<div class="fg">
+    <div class="f"><label>Fecha *</label><input id="nc-f" type="date" value="${today()}"></div>
+    <div class="f"><label>Sucursal *</label><select id="nc-s"><option value="">General</option>${sucOpts()}</select></div>
+    <div class="f"><label>Efectivo inicial</label><input id="nc-ei" type="number" step="0.01" value="0"></div>
+    <div class="f"><label>Ingresos del día (efectivo)</label><input id="nc-ing" type="number" step="0.01" value="0" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Ventas tarjeta</label><input id="nc-tar" type="number" step="0.01" value="0" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Egresos efectivo</label><input id="nc-eg" type="number" step="0.01" value="0" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Efectivo final contado</label><input id="nc-ef" type="number" step="0.01" value="0" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Diferencia</label><input id="nc-dif" type="number" step="0.01" value="0" readonly style="background:var(--surface2)"></div>
+    <div class="f full"><label>Observaciones</label><input id="nc-obs"></div>
+  </div>
+  <div style="display:flex;background:var(--surface2);border-radius:var(--r);padding:14px 20px;gap:24px;margin-top:8px">
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Efectivo</div><div id="nc-sv-ef" style="font-size:16px;font-weight:700;color:var(--green)">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Tarjeta</div><div id="nc-sv-tar" style="font-size:16px;font-weight:700;color:var(--blue)">€0,00</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Total ventas</div><div id="nc-sv-tot" style="font-size:16px;font-weight:700;color:var(--amber)">€0,00</div></div>
+  </div>`,
+  async()=>{
+    const f=document.getElementById('nc-f').value;if(!f){alert('Completá la fecha.');return}
+    await getOrCreateTmp(f);
+    const ei=parseFloat(document.getElementById('nc-ei').value)||0;
+    const ing=parseFloat(document.getElementById('nc-ing').value)||0;
+    const tar=parseFloat(document.getElementById('nc-tar').value)||0;
+    const eg=parseFloat(document.getElementById('nc-eg').value)||0;
+    const ef=parseFloat(document.getElementById('nc-ef').value)||0;
+    const dif=ef-(ei+ing-eg);
+    const{data:cierre,error}=await sb.from('cierres_caja').insert({fecha:f,sucursal_id:document.getElementById('nc-s').value||null,efectivo_inicial:ei,ingresos_dia:ing,ventas_tarjeta:tar,egresos_efectivo:eg,efectivo_final_contado:ef,diferencia_caja:dif,observaciones:document.getElementById('nc-obs').value||null}).select('id').single();
+    if(error){alert(error.message);return}
+    if(tar>0&&cierre?.id){
+      const comision=parseFloat((tar*0.0079).toFixed(2));
+      const fd=f.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
+      await sb.from('gastos').insert({fecha:f,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:document.getElementById('nc-s').value||null,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a',cierre_caja_id:cierre.id,medio_pago:'debito_automatico'});
+    }
+    closeMo();caja();
+  });
+}
+
+function calcDifCierre(){
+  const pfx=document.getElementById('nc-ei')?'nc':'ec';
+  const ei=parseFloat(document.getElementById(`${pfx}-ei`)?.value)||0;
+  const ing=parseFloat(document.getElementById(`${pfx}-ing`)?.value)||0;
+  const tar=parseFloat(document.getElementById(`${pfx}-tar`)?.value)||0;
+  const eg=parseFloat(document.getElementById(`${pfx}-eg`)?.value)||0;
+  const ef=parseFloat(document.getElementById(`${pfx}-ef`)?.value)||0;
+  const dif=document.getElementById(`${pfx}-dif`);
+  if(dif)dif.value=(ef-(ei+ing-eg)).toFixed(2);
+  // Actualizar resumen ventas
+  const svEf=document.getElementById(`${pfx}-sv-ef`);
+  const svTar=document.getElementById(`${pfx}-sv-tar`);
+  const svTot=document.getElementById(`${pfx}-sv-tot`);
+  if(svEf)svEf.textContent=fmt(ing);
+  if(svTar)svTar.textContent=fmt(tar);
+  if(svTot)svTot.textContent=fmt(ing+tar);
+}
+
+async function editCierre(id){
+  const{data:c}=await sb.from('cierres_caja').select('*').eq('id',id).single();
+  if(!c){alert('No se encontró el cierre.');return}
+  openMo('Editar cierre',`<div class="fg">
+    <div class="f"><label>Fecha</label><input id="ec-f" type="date" value="${c.fecha}"></div>
+    <div class="f"><label>Sucursal</label><select id="ec-s"><option value="">General</option>${sucOpts()}</select></div>
+    <div class="f"><label>Efectivo inicial</label><input id="ec-ei" type="number" step="0.01" value="${c.efectivo_inicial||0}" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Ingresos del día (efectivo)</label><input id="ec-ing" type="number" step="0.01" value="${c.ingresos_dia||0}" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Ventas tarjeta</label><input id="ec-tar" type="number" step="0.01" value="${c.ventas_tarjeta||0}" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Egresos efectivo</label><input id="ec-eg" type="number" step="0.01" value="${c.egresos_efectivo||0}" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Efectivo final contado</label><input id="ec-ef" type="number" step="0.01" value="${c.efectivo_final_contado||0}" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Diferencia</label><input id="ec-dif" type="number" step="0.01" value="${c.diferencia_caja||0}"></div>
+    <div class="f full"><label>Observaciones</label><input id="ec-obs" value="${c.observaciones||''}"></div>
+  </div>
+  <div style="display:flex;background:var(--surface2);border-radius:var(--r);padding:14px 20px;gap:24px;margin-top:8px">
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Efectivo</div><div id="ec-sv-ef" style="font-size:16px;font-weight:700;color:var(--green)">${fmt(c.ingresos_dia||0)}</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Tarjeta</div><div id="ec-sv-tar" style="font-size:16px;font-weight:700;color:var(--blue)">${fmt(c.ventas_tarjeta||0)}</div></div>
+    <div><div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Total ventas</div><div id="ec-sv-tot" style="font-size:16px;font-weight:700;color:var(--amber)">${fmt((c.ingresos_dia||0)+(c.ventas_tarjeta||0))}</div></div>
+  </div>`,
+  async()=>{
+    const tar=parseFloat(document.getElementById('ec-tar').value)||0;
+    const nuevaFecha=document.getElementById('ec-f').value;
+    const nuevaSuc=document.getElementById('ec-s').value||null;
+    const{error}=await sb.from('cierres_caja').update({
+      fecha:nuevaFecha,
+      sucursal_id:nuevaSuc,
+      efectivo_inicial:parseFloat(document.getElementById('ec-ei').value)||0,
+      ingresos_dia:parseFloat(document.getElementById('ec-ing').value)||0,
+      ventas_tarjeta:tar,
+      egresos_efectivo:parseFloat(document.getElementById('ec-eg').value)||0,
+      efectivo_final_contado:parseFloat(document.getElementById('ec-ef').value)||0,
+      diferencia_caja:parseFloat(document.getElementById('ec-dif').value)||0,
+      observaciones:document.getElementById('ec-obs').value||null
+    }).eq('id',id);
+    if(error){alert(error.message);return}
+    const fd=nuevaFecha.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
+    const comision=parseFloat((tar*0.0079).toFixed(2));
+    const{data:gastoEx}=await sb.from('gastos').select('id').eq('cierre_caja_id',id).maybeSingle();
+    if(gastoEx&&tar>0){
+      await sb.from('gastos').update({fecha:nuevaFecha,sucursal_id:nuevaSuc,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision}).eq('cierre_caja_id',id);
+    }else if(gastoEx&&tar===0){
+      await sb.from('gastos').delete().eq('cierre_caja_id',id);
+    }else if(!gastoEx&&tar>0){
+      await sb.from('gastos').insert({fecha:nuevaFecha,concepto:`Comisiones Tarjeta Deb/Cred - ${fechaFmt}`,monto:comision,monto_neto:comision,mwst_monto:0,sucursal_id:nuevaSuc,categoria_id:'aeb93f83-064b-4e4f-b6e1-2ef156bbe76a',cierre_caja_id:id,medio_pago:'debito_automatico'});
+    }
+    closeMo();caja();
+  });
+  setTimeout(()=>{const s=document.getElementById('ec-s');if(s&&c.sucursal_id)s.value=c.sucursal_id;},50);
+}
+
+async function eliminarCierre(id){
+  if(!confirm('¿Eliminar cierre?'))return;
+  await sb.from('gastos').delete().eq('cierre_caja_id',id);
+  const{error}=await sb.from('cierres_caja').delete().eq('id',id);
+  if(error){alert('Error al eliminar: '+error.message);return}
+  caja();
+}
+
+async function nuevoStock(){
+  const{data:prods}=await sb.from('productos').select('id,nombre,unidad_medida').eq('activo',true).order('nombre');
+  const temps=await getTmps();
+  openMo('Registrar stock',`<div class="fg">
+    <div class="f"><label>Tipo *</label><select id="ns-tp"><option value="inicial">Stock inicial</option><option value="final">Stock final</option></select></div>
+    <div class="f"><label>Temporada *</label><select id="ns-tmp">${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <div class="f"><label>Producto *</label><select id="ns-pr"><option value="">— Seleccionar —</option>${(prods||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.unidad_medida||'u'})</option>`).join('')}</select></div>
+    <div class="f"><label>Cantidad *</label><input id="ns-qty" type="number" step="0.001" value="0"></div>
+    <div class="f"><label>Precio unitario</label><input id="ns-pu" type="number" step="0.01" value="0"></div>
+  </div>`,
+  async()=>{
+    const pr=document.getElementById('ns-pr').value;if(!pr){alert('Seleccioná un producto.');return}
+    const qty=parseFloat(document.getElementById('ns-qty').value)||0;
+    const pu=parseFloat(document.getElementById('ns-pu').value)||0;
+    const{error}=await sb.from('stock').insert({tipo:document.getElementById('ns-tp').value,temporada_id:document.getElementById('ns-tmp').value,producto_id:pr,cantidad:qty,precio_unitario:pu,valor_total:qty*pu});
+    if(error){alert(error.message);return}
+    closeMo();stock();
+  });
+}
+
+async function eliminarStock(id){
+  if(!confirm('¿Eliminar registro?'))return;
+  await sb.from('stock').delete().eq('id',id);
+  stock();
+}
+
+let _cajaData=[];
+
+async function caja() {
+  loading();
+  setR(`<button class="btn btn-p" onclick="nuevoCierre()">+ Registrar cierre</button>`);
+  const{data}=await sb.from('cierres_caja').select('*').order('fecha',{ascending:false});
+  _cajaData=data||[];
+  document.getElementById('ct').innerHTML=`<div class="card">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <select id="caja-suc" onchange="renderCaja()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+        <option value="">Todas las sucursales</option>
+        ${(_sucs||[]).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}
+      </select>
+      <input id="caja-mes" type="month" onchange="renderCaja()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+      <button class="btn btn-sm" onclick="document.getElementById('caja-suc').value='';document.getElementById('caja-mes').value='';renderCaja()">✕ Limpiar</button>
+    </div>
+    <div id="caja-tabla"></div>
+  </div>`;
+  renderCaja();
+}
+
+function renderCaja(){
+  const suc=document.getElementById('caja-suc')?.value||'';
+  const mes=document.getElementById('caja-mes')?.value||'';
+  let data=_cajaData.filter(c=>{
+    if(suc&&c.sucursal_id!==suc)return false;
+    if(mes&&!(c.fecha||'').startsWith(mes))return false;
+    return true;
+  });
+  const totEf=data.reduce((a,c)=>a+parseFloat(c.ingresos_dia||0),0);
+  const totTar=data.reduce((a,c)=>a+parseFloat(c.ventas_tarjeta||0),0);
+  const totFac=totEf+totTar;
+  const totDif=data.reduce((a,c)=>a+parseFloat(c.diferencia_caja||0),0);
+  const el=document.getElementById('caja-tabla');if(!el)return;
+  el.innerHTML=!data.length?'<div class="empty">Sin cierres registrados.</div>':`
+    <div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Diferencia</th><th>Ingresos Efectivo</th><th>Tarjetas</th><th>Total Facturación</th><th>Observaciones</th><th></th></tr></thead><tbody>
+    ${data.map(c=>{const tot=(parseFloat(c.ingresos_dia)||0)+(parseFloat(c.ventas_tarjeta)||0);return`<tr>
+      <td>${fmtD(c.fecha)}</td>
+      <td style="font-size:12px">${_sucs.find(s=>s.id===c.sucursal_id)?.nombre||'General'}</td>
+      <td style="color:${(c.diferencia_caja||0)>=0?'var(--green)':'var(--red)'};font-weight:600">${fmt(c.diferencia_caja||0)}</td>
+      <td style="color:var(--green);font-weight:700">${fmt(c.ingresos_dia||0)}</td>
+      <td style="color:var(--blue);font-weight:700">${fmt(c.ventas_tarjeta||0)}</td>
+      <td style="color:var(--amber);font-weight:700">${fmt(tot)}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${c.observaciones||'—'}</td>
+      <td style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editCierre('${c.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="eliminarCierre('${c.id}')">✕</button></td>
+    </tr>`}).join('')}
+    </tbody>
+    <tfoot><tr style="border-top:2px solid var(--border-md);background:var(--surface2)">
+      <td colspan="2" style="font-weight:700;font-size:12px;text-transform:uppercase;color:var(--text-muted);padding:10px">TOTAL</td>
+      <td style="color:${totDif>=0?'var(--green)':'var(--red)'};font-weight:700">${fmt(totDif)}</td>
+      <td style="color:var(--green);font-weight:700">${fmt(totEf)}</td>
+      <td style="color:var(--blue);font-weight:700">${fmt(totTar)}</td>
+      <td style="color:var(--amber);font-weight:700">${fmt(totFac)}</td>
+      <td colspan="2"></td>
+    </tr></tfoot>
+    </table></div>`;
+}
+
+async function stock() {
+  loading();
+  setR(`<button class="btn btn-p" onclick="nuevoStock()">+ Registrar stock</button>`);
+  const [{ data },{ data:factsData }] = await Promise.all([
+    sb.from('stock').select('*, productos(nombre,unidad_medida,categorias_producto(nombre)), temporadas(nombre)').order('tipo').order('created_at'),
+    sb.from('facturas').select('monto_neto')
+  ]);
+  const inicial=(data||[]).filter(s=>s.tipo==='inicial');
+  const final=(data||[]).filter(s=>s.tipo==='final');
+  const totalCompras=(factsData||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
+  const totIni=inicial.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const totFin=final.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const cmv=totIni+totalCompras-totFin;
+  const renderTable=(rows,label)=>rows.length===0?`<div class="empty">Sin registros de stock ${label}.</div>`:
+    `<div style="overflow-x:auto"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Cantidad</th><th>Precio unit.</th><th>Valor total</th><th></th></tr></thead><tbody>
+    ${rows.map(s=>`<tr><td>${s.productos?.nombre||'—'}</td><td><span class="bd bd-gray">${s.productos?.categorias_producto?.nombre||'—'}</span></td><td>${s.productos?.unidad_medida||'—'}</td><td>${s.cantidad}</td><td>${fmt(s.precio_unitario)}</td><td style="font-weight:600">${fmt(s.valor_total)}</td><td><button class="btn btn-sm btn-d" onclick="eliminarStock('${s.id}')">✕</button></td></tr>`).join('')}
+    <tr class="trow-t"><td colspan="5">Total</td><td>${fmt(rows.reduce((a,s)=>a+parseFloat(s.valor_total||0),0))}</td><td></td></tr>
+    </tbody></table></div>`;
+  document.getElementById('ct').innerHTML=`
+    <div class="card" style="padding:18px 20px;margin-bottom:16px;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-color:#bae6fd">
+      <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">Cálculo de CMV</div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;font-size:13px">
+        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Stock inicial</div><div style="font-weight:700;font-size:16px">${fmt(totIni)}</div></div>
+        <div style="font-size:20px;color:var(--text-faint)">+</div>
+        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Compras netas</div><div style="font-weight:700;font-size:16px">${fmt(totalCompras)}</div></div>
+        <div style="font-size:20px;color:var(--text-faint)">−</div>
+        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Stock final</div><div style="font-weight:700;font-size:16px">${fmt(totFin)}</div></div>
+        <div style="font-size:20px;color:var(--text-faint)">=</div>
+        <div style="background:white;border-radius:10px;padding:10px 16px;border:1px solid #bae6fd"><div style="color:#0369a1;margin-bottom:3px;font-size:11px;font-weight:700">CMV</div><div style="font-weight:800;font-size:22px;color:#0c4a6e">${fmt(cmv)}</div></div>
+      </div>
+      ${totFin===0?'<div style="margin-top:10px;font-size:12px;color:var(--amber);font-weight:600">⚠ Stock final aún no registrado — CMV provisorio.</div>':''}
+    </div>
+    <div class="card"><div class="card-title">Stock inicial</div>${renderTable(inicial,'inicial')}</div>
+    <div class="card"><div class="card-title">Stock final</div>${renderTable(final,'final')}</div>`;
+}
+
+async function repCompras() {
+  loading();
+  const temps=await getTmps();
+  const activeTemp=temps.find(t=>t.activa)||temps[0];
+  let filtroHTML=`<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+    <div class="f"><label>Temporada</label><select id="f-temp-filter" onchange="repComprasCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+      ${tempsOpciones(temps,activeTemp?.id)}
+    </select></div>
+  </div><div id="rep-compras-body"></div>`;
+  document.getElementById('ct').innerHTML=filtroHTML;
+  repComprasCargar();
+}
+
+async function repFlujo() {
+  loading();
+  const temps=await getTmps();
+  document.getElementById('ct').innerHTML=`
+    <div style="margin-bottom:16px">
+      <div class="f" style="display:inline-block"><label>Temporada</label><select id="f-temp-flujo" onchange="repFlujoCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+        ${tempsOpciones(temps,temps.find(t=>t.activa)?.id)}
+      </select></div>
+    </div>
+    <div id="flujo-body"></div>`;
+  repFlujoCargar();
+}
+
+
+async function repErr(){
+  loading();const temps=await getTmps();
+  if(!temps.length){document.getElementById('ct').innerHTML='<div class="empty">Sin temporadas.</div>';return}
+  document.getElementById('ct').innerHTML=`<div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end;flex-wrap:wrap"><div class="f"><label>Temporada</label><select id="err-tmp" onchange="loadErr()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${tmOpts(temps)}</select></div><button class="btn" onclick="exportPDF('Estado de resultados')">\u2b07 Exportar PDF</button></div><div id="err-body"></div>`;
+  loadErr();
+}
+
+async function repComp(){
+  loading();const temps=await getTmps();
+  if(temps.length<2){document.getElementById('ct').innerHTML='<div class="empty">Se necesitan al menos 2 temporadas.</div>';return}
+  document.getElementById('ct').innerHTML=`<div style="display:flex;gap:12px;margin-bottom:16px;align-items:flex-end;flex-wrap:wrap">
+    <div class="f"><label>Temporada A</label><select id="ca" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${temps.map((t,i)=>`<option value="${t.id}" ${i===1?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <div class="f"><label>Temporada B</label><select id="cb" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">${temps.map((t,i)=>`<option value="${t.id}" ${i===0?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <button class="btn btn-p" onclick="loadComp()">Comparar</button>
+    <button class="btn" onclick="exportPDF('Comparativo de temporadas')">\u2b07 Exportar PDF</button>
+  </div><div id="comp-body"></div>`;
+}
+
 async function recurrentes(){
   loading();setR(`<button class="btn btn-p" onclick="newRec()">+ Nuevo</button>`);
   const[{data},{data:vencs}]=await Promise.all([
     sb.from('gastos_recurrentes').select('*,categorias_gasto_recurrente(nombre),sucursales(nombre)').order('concepto'),
     sb.from('vencimientos_recurrentes').select('gasto_recurrente_id,estado').in('estado',['pendiente','vencido'])
   ]);
-  const pendMap={};
-  (vencs||[]).forEach(v=>{pendMap[v.gasto_recurrente_id]=(pendMap[v.gasto_recurrente_id]||0)+1;});
+  const pendMap={};(vencs||[]).forEach(v=>{pendMap[v.gasto_recurrente_id]=(pendMap[v.gasto_recurrente_id]||0)+1;});
   document.getElementById('ct').innerHTML=`
-    <div class="al al-info" style="margin-bottom:16px">Los vencimientos se marcan como pagados automáticamente al llegar la fecha. Aparecen en ERR y reportes sin necesidad de acción manual.</div>
+    <div class="al al-info" style="margin-bottom:16px">Los vencimientos se marcan como pagados automáticamente al llegar la fecha. Los importes aparecen en ERR y reportes sin acción manual.</div>
     ${!(data||[]).length?'<div class="empty">Sin gastos recurrentes.</div>':
     data.map(r=>{
       const pend=pendMap[r.id]||0;
-      const sinFechaFin=!r.fecha_fin;
-      const alerta=sinFechaFin&&pend<=2;
+      const alerta=!r.fecha_fin&&pend<=2;
+      const btnGen=alerta?`<button class="btn btn-sm btn-p" onclick="genVencs('${r.id}',true)">&#x21BA; Generar</button>`:'';
       return`<div class="ri">
         <div>
-          <div class="ri-n">${r.concepto}${alerta?`<span class="bd bd-err" style="margin-left:8px;font-size:10px">⚠️ Quedan ${pend} venc.</span>`:''}</div>
+          <div class="ri-n">${r.concepto}${alerta?`<span class="bd bd-err" style="margin-left:8px;font-size:10px">&#9888; Quedan ${pend} venc.</span>`:''}</div>
           <div class="ri-s">
             <span class="bd bd-gray">${r.categorias_gasto_recurrente?.nombre||'—'}</span>
             <span class="bd bd-gray">${r.sucursales?.nombre||'General'}</span>
@@ -1522,14 +2265,12 @@ async function recurrentes(){
         <div style="display:flex;align-items:center;gap:10px">
           <div style="font-size:16px;font-weight:700">${fmt(r.monto)}</div>
           <button class="btn btn-sm" onclick="editRec('${r.id}')">Editar</button>
-          ${alerta?`<button class="btn btn-sm btn-p" onclick="genVencs('${r.id}',true)">↺ Generar</button>`:''}
-          <button class="btn btn-sm btn-d" onclick="delRec('${r.id}')">✕</button>
+          ${btnGen}
+          <button class="btn btn-sm btn-d" onclick="delRec('${r.id}')">&#x2715;</button>
         </div>
       </div>`;
     }).join('')}`;
 }
-
-
 
 async function repFlujoCargar() {
   const tempId=document.getElementById('f-temp-flujo')?.value;
