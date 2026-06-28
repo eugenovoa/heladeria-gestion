@@ -3778,7 +3778,11 @@ async function pdVerOrdenEnt(ordenId,readonly=false){
     <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
       <div><h3 style="font-size:15px;font-weight:700">Entrega — ${bLab[ord?.sucursal]||ord?.sucursal} — ${fmtD(ord?.fecha)}</h3>
       <div style="margin-top:4px">${isConf?'<span class="bd bd-ok">✅ Confirmada</span>':'<span class="bd bd-warn">📝 Borrador</span>'}</div></div>
-      <div style="display:flex;gap:8px"><button class="btn btn-sm" onclick="pdImprimir('${ordenId}','ent')">🖨️ Imprimir</button><button class="btn btn-sm btn-g" onclick="pdOrdenEnt()">← Volver</button></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="pdImprimir('${ordenId}','ent')">🖨️ Imprimir</button>
+        ${isConf?`<button class="btn btn-sm btn-d" onclick="pdRevertirEntrega('${ordenId}')">↩ Revertir</button>`:''}
+        <button class="btn btn-sm btn-g" onclick="pdOrdenEnt()">← Volver</button>
+      </div>
     </div>
     ${ord?.notas?`<div class="al al-info" style="margin-bottom:12px">${ord.notas}</div>`:''}
     <table><thead><tr>${dragCol}<th>Pos.</th><th>Código</th><th>Sabor</th><th>Stock suc.</th><th>Sorbeteras a enviar</th></tr></thead>
@@ -3889,7 +3893,7 @@ async function pdEjecutarConfirmarEnt(ordenId,suc,items){
     const branchMap={};
     if(latestUid)(snaps||[]).filter(s=>s.upload_id===latestUid).forEach(s=>branchMap[s.sabor_id]=s.cantidad);
     (items||[]).forEach(it=>{if(it.cantidad_confirmada)branchMap[it.sabor_id]=(branchMap[it.sabor_id]||0)+it.cantidad_confirmada;});
-    const newUid='entrega_'+Date.now();
+    const newUid='entrega_'+ordenId;
     const newSnap=Object.entries(branchMap).map(([sabor_id,cantidad])=>({sucursal:suc,fecha_snapshot:now,sabor_id,cantidad,upload_id:newUid}));
     if(newSnap.length)await sb.from('prod_stock_sucursal').insert(newSnap);
   }
@@ -3901,6 +3905,42 @@ async function pdDelOrdenEnt(id){
   if(!confirm('¿Eliminar este borrador?'))return;
   await sb.from('prod_ord_entrega_items').delete().eq('orden_id',id);
   await sb.from('prod_ordenes_entrega').delete().eq('id',id);pdOrdenEnt();
+}
+
+async function pdRevertirEntrega(ordenId){
+  if(!confirm('¿Revertir esta entrega?\n\nEsto:\n• Devuelve las sorbeteras al depósito\n• Revierte el stock de la sucursal\n• Anula la orden (no aparece en estadísticas)'))return;
+  const{data:ord}=await sb.from('prod_ordenes_entrega').select('*,prod_ord_entrega_items(*)').eq('id',ordenId).single();
+  if(!ord){alert('No se encontró la orden.');return}
+  const items=ord.prod_ord_entrega_items||[];
+  const suc=ord.sucursal;
+  const now=new Date().toISOString();
+  // 1. Devolver al depósito
+  for(const it of items){
+    if(!it.cantidad_confirmada)continue;
+    const{data:curr}=await sb.from('prod_stock_deposito').select('cantidad').eq('sabor_id',it.sabor_id).maybeSingle();
+    await sb.from('prod_stock_deposito').upsert({sabor_id:it.sabor_id,cantidad:(curr?.cantidad||0)+it.cantidad_confirmada,ultima_actualizacion:now},{onConflict:'sabor_id'});
+  }
+  // 2. Revertir stock sucursal
+  if(suc){
+    const uid='entrega_'+ordenId;
+    const{data:snaps}=await sb.from('prod_stock_sucursal').select('*').eq('sucursal',suc).order('fecha_snapshot',{ascending:false});
+    const latestUid=snaps?.length?snaps[0].upload_id:null;
+    if(latestUid===uid){
+      // Es el snapshot más reciente — eliminar directamente
+      await sb.from('prod_stock_sucursal').delete().eq('upload_id',uid);
+    } else {
+      // Hay snapshots posteriores — crear snapshot correctivo restando los ítems entregados
+      const latestMap={};
+      if(latestUid)(snaps||[]).filter(s=>s.upload_id===latestUid).forEach(s=>latestMap[s.sabor_id]=s.cantidad);
+      items.forEach(it=>{if(it.cantidad_confirmada)latestMap[it.sabor_id]=Math.max(0,(latestMap[it.sabor_id]||0)-it.cantidad_confirmada);});
+      const corrUid='revert_'+ordenId;
+      await sb.from('prod_stock_sucursal').insert(Object.entries(latestMap).map(([sabor_id,cantidad])=>({sucursal:suc,fecha_snapshot:now,sabor_id,cantidad,upload_id:corrUid})));
+    }
+  }
+  // 3. Marcar como anulada
+  await sb.from('prod_ordenes_entrega').update({estado:'anulada'}).eq('id',ordenId);
+  alert('✅ Entrega revertida. Stock del depósito restaurado y orden anulada.');
+  pdOrdenEnt();
 }
 
 // --- HISTORIAL ---
