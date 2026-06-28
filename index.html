@@ -2236,15 +2236,120 @@ async function repFlujo() {
   loading();
   const temps=await getTmps();
   document.getElementById('ct').innerHTML=`
-    <div style="margin-bottom:16px">
-      <div class="f" style="display:inline-block"><label>Temporada</label><select id="f-temp-flujo" onchange="repFlujoCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+    <div style="margin-bottom:16px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+      <div class="f"><label>Temporada</label><select id="f-temp-flujo" onchange="repFlujoCargar()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
         ${tempsOpciones(temps,temps.find(t=>t.activa)?.id)}
       </select></div>
+      <button class="btn" onclick="efePDF()">⬇ Exportar PDF</button>
     </div>
     <div id="flujo-body"></div>`;
   repFlujoCargar();
 }
 
+function efeToggle(id){
+  const el=document.getElementById(id);if(!el)return;
+  const show=el.style.display==='none';
+  el.style.display=show?'':'none';
+  const arr=document.getElementById('arr-'+id);
+  if(arr)arr.textContent=show?'▼':'▶';
+}
+
+function efeExpandAll(){
+  document.querySelectorAll('.efe-det').forEach(el=>{
+    el.style.display='';
+    const arr=document.getElementById('arr-'+el.id);
+    if(arr)arr.textContent='▼';
+  });
+}
+
+function efePDF(){efeExpandAll();setTimeout(()=>exportPDF('Flujo de caja'),300);}
+
+async function repFlujoCargar(){
+  const tempId=document.getElementById('f-temp-flujo')?.value;
+  document.getElementById('flujo-body').innerHTML='<div class="ld">Calculando...</div>';
+  const allTemps=await getTmps();
+  const{desde,hasta}=tmFechas(allTemps,tempId);
+  let qV=sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta');
+  let qP=sb.from('pagos').select('monto,facturas(proveedores(nombre))');
+  let qG=sb.from('gastos').select('monto,categorias_gasto(tipo,nombre)');
+  let qR=sb.from('vencimientos_recurrentes').select('monto,fecha_pago,gastos_recurrentes(concepto,categorias_gasto_recurrente(tipo,nombre))').eq('estado','pagado');
+  if(desde){qV=qV.gte('fecha',desde);qP=qP.gte('fecha_pago',desde);qG=qG.gte('fecha',desde);qR=qR.gte('fecha_pago',desde);}
+  if(hasta){qV=qV.lte('fecha',hasta);qP=qP.lte('fecha_pago',hasta);qG=qG.lte('fecha',hasta);qR=qR.lte('fecha_pago',hasta);}
+  const[{data:vD},{data:pD},{data:gD},{data:rD}]=await Promise.all([qV,qP,qG,qR]);
+  // Ventas
+  const totEfectivo=(vD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia||0),0);
+  const totTarjeta=(vD||[]).reduce((a,v)=>a+parseFloat(v.ventas_tarjeta||0),0);
+  const totVentas=totEfectivo+totTarjeta;
+  // Pagos proveedores
+  const byProv={};
+  (pD||[]).forEach(p=>{const n=p.facturas?.proveedores?.nombre||'Sin proveedor';byProv[n]=(byProv[n]||0)+parseFloat(p.monto);});
+  const totPagos=Object.values(byProv).reduce((a,v)=>a+v,0);
+  // Gastos al contado por tipo
+  const gByT={};
+  (gD||[]).forEach(g=>{
+    const t=g.categorias_gasto?.tipo||'sin_tipo';
+    const n=g.categorias_gasto?.nombre||'Sin categoría';
+    if(!gByT[t])gByT[t]={total:0,cats:{}};
+    gByT[t].total+=parseFloat(g.monto)||0;
+    gByT[t].cats[n]=(gByT[t].cats[n]||0)+(parseFloat(g.monto)||0);
+  });
+  // Recurrentes por tipo
+  const rByT={};
+  (rD||[]).forEach(v=>{
+    const t=v.gastos_recurrentes?.categorias_gasto_recurrente?.tipo||'sin_tipo';
+    const n=v.gastos_recurrentes?.concepto||'Sin concepto';
+    if(!rByT[t])rByT[t]={total:0,items:{}};
+    rByT[t].total+=parseFloat(v.monto)||0;
+    rByT[t].items[n]=(rByT[t].items[n]||0)+(parseFloat(v.monto)||0);
+  });
+  const tLabel={operativo:'Gastos operativos',financiero:'Gastos financieros',anticipo_impuesto:'Anticipos impuesto (Vorauszahlung)',impuesto:'Impuestos pagados',cmv:'CMV — materias primas',personal:'Personal / Sueldos',extraordinario:'Extraordinarios',sin_tipo:'Sin categoría'};
+  const tOrder=['operativo','personal','financiero','cmv','extraordinario','anticipo_impuesto','impuesto','sin_tipo'];
+  const allTipos=[...new Set([...Object.keys(gByT),...Object.keys(rByT)])].sort((a,b)=>(tOrder.indexOf(a)+99)-(tOrder.indexOf(b)+99));
+  let totSalidas=totPagos;
+  allTipos.forEach(t=>{totSalidas+=(gByT[t]?.total||0)+(rByT[t]?.total||0);});
+  const flujoNeto=totVentas-totSalidas;
+  const detRow=(label,monto,isRed=true)=>`<div style="display:flex;justify-content:space-between;padding:4px 8px 4px 40px;font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--border)"><span>${label}</span><span style="color:${isRed?'var(--red)':'inherit'}">${isRed&&monto>0?`(${fmt(monto)})`:fmt(monto)}</span></div>`;
+  const togRow=(id,label,monto,green=false)=>`<tr class="ind" style="cursor:pointer" onclick="efeToggle('${id}')"><td><span id="arr-${id}">▶</span> ${label}</td><td style="color:${green?'var(--green)':'var(--red)'}">${green?fmt(monto):`(${fmt(monto)})`}</td></tr>`;
+  let rows='';
+  // Entradas
+  rows+=`<tr class="hd"><td colspan="2">Entradas de efectivo</td></tr>`;
+  rows+=togRow('efe-ventas','Cobros por ventas',totVentas,true);
+  rows+=`<tr id="efe-ventas" class="efe-det" style="display:none"><td colspan="2" style="padding:0">${detRow('Efectivo',totEfectivo,false)}${detRow('Tarjeta',totTarjeta,false)}</td></tr>`;
+  rows+=`<tr class="st"><td>Total entradas</td><td style="color:var(--green);font-weight:700">${fmt(totVentas)}</td></tr>`;
+  // Salidas
+  rows+=`<tr class="hd"><td colspan="2">Salidas de efectivo</td></tr>`;
+  if(totPagos>0){
+    rows+=togRow('efe-pagos','Pagos a proveedores',totPagos);
+    rows+=`<tr id="efe-pagos" class="efe-det" style="display:none"><td colspan="2" style="padding:0">${Object.entries(byProv).sort((a,b)=>b[1]-a[1]).map(([n,m])=>detRow(n,m)).join('')}</td></tr>`;
+  }
+  allTipos.forEach(t=>{
+    const label=tLabel[t]||t;
+    const gc=gByT[t];
+    const gr=rByT[t];
+    if(gc&&gc.total>0){
+      const id='efe-gc-'+t;
+      rows+=togRow(id,label+' — al contado',gc.total);
+      rows+=`<tr id="${id}" class="efe-det" style="display:none"><td colspan="2" style="padding:0">${Object.entries(gc.cats).sort((a,b)=>b[1]-a[1]).map(([n,m])=>detRow(n,m)).join('')}</td></tr>`;
+    }
+    if(gr&&gr.total>0){
+      const id='efe-gr-'+t;
+      rows+=togRow(id,label+' — recurrentes',gr.total);
+      rows+=`<tr id="${id}" class="efe-det" style="display:none"><td colspan="2" style="padding:0">${Object.entries(gr.items).sort((a,b)=>b[1]-a[1]).map(([n,m])=>detRow(n,m)).join('')}</td></tr>`;
+    }
+  });
+  rows+=`<tr class="st"><td>Total salidas</td><td style="color:var(--red);font-weight:700">(${fmt(totSalidas)})</td></tr>`;
+  rows+=`<tr class="tt"><td>Flujo neto del período</td><td style="color:${flujoNeto>=0?'var(--green)':'var(--red)'};font-weight:700">${flujoNeto<0?'(':''}${fmt(Math.abs(flujoNeto))}${flujoNeto<0?')':''}</td></tr>`;
+  const temp=allTemps.find(t=>t.id===tempId);
+  document.getElementById('flujo-body').innerHTML=`<div class="card" style="max-width:660px">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">Estado de Flujo de Efectivo</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Método directo · ${temp?.nombre||''}</div>
+    <table class="stmt">${rows}</table>
+    <div style="text-align:right;margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-sm" onclick="efeExpandAll()">↕ Expandir todo</button>
+      <button class="btn btn-sm" onclick="efePDF()">⬇ PDF</button>
+    </div>
+  </div>`;
+}
 
 async function repErr(){
   loading();const temps=await getTmps();
@@ -2297,45 +2402,6 @@ async function recurrentes(){
         </div>
       </div>`;
     }).join('')}`;
-}
-
-async function repFlujoCargar() {
-  const tempId=document.getElementById('f-temp-flujo')?.value;
-  document.getElementById('flujo-body').innerHTML='<div class="loading">Calculando...</div>';
-  const allTemps = await getTmps();
-  const {desde, hasta} = tmFechas(allTemps, tempId);
-  let qVentas = sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta');
-  let qPagos = sb.from('pagos').select('monto,gasto_bancario');
-  let qGastos = sb.from('gastos').select('monto,categorias_gasto(tipo)');
-  if (desde) { qVentas=qVentas.gte('fecha',desde); qPagos=qPagos.gte('fecha_pago',desde); qGastos=qGastos.gte('fecha',desde); }
-  if (hasta) { qVentas=qVentas.lte('fecha',hasta); qPagos=qPagos.lte('fecha_pago',hasta); qGastos=qGastos.lte('fecha',hasta); }
-  const [{data:ventasD},{data:pagosD},{data:gastosD}]=await Promise.all([qVentas, qPagos, qGastos]);
-  const totVentas=(ventasD||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia||0)+parseFloat(v.ventas_tarjeta||0),0);
-  const totPagos=(pagosD||[]).reduce((a,p)=>a+parseFloat(p.monto),0);
-  const totGastosOp=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='operativo').reduce((a,g)=>a+parseFloat(g.monto),0);
-  const totGastosFinanc=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='financiero').reduce((a,g)=>a+parseFloat(g.monto),0);
-  const totAnticipos=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='anticipo_impuesto').reduce((a,g)=>a+parseFloat(g.monto),0);
-  const totImpPagados=(gastosD||[]).filter(g=>g.categorias_gasto?.tipo==='impuesto').reduce((a,g)=>a+parseFloat(g.monto),0);
-  const totSalidas=totPagos+totGastosOp+totGastosFinanc+totAnticipos+totImpPagados;
-  const flujoNeto=totVentas-totSalidas;
-  const c=n=>n>=0?'var(--green)':'var(--red)';
-  document.getElementById('flujo-body').innerHTML=`<div class="card" style="max-width:580px">
-    <div style="font-size:16px;font-weight:700;margin-bottom:4px">Flujo de caja</div>
-    <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">Método directo · datos reales</div>
-    <table class="stmt">
-      <tr class="hd"><td colspan="2">Entradas de efectivo</td></tr>
-      <tr class="ind"><td>Cobros por ventas</td><td>${fmt(totVentas)}</td></tr>
-      <tr class="st"><td>Total entradas</td><td style="color:var(--green);font-weight:700">${fmt(totVentas)}</td></tr>
-      <tr class="hd"><td colspan="2">Salidas de efectivo</td></tr>
-      <tr class="ind"><td>Pagos a proveedores</td><td style="color:var(--red)">(${fmt(totPagos)})</td></tr>
-      <tr class="ind"><td>Gastos operativos</td><td style="color:var(--red)">(${fmt(totGastosOp)})</td></tr>
-      <tr class="ind"><td>Gastos financieros</td><td style="color:var(--red)">(${fmt(totGastosFinanc)})</td></tr>
-      <tr class="ind"><td>Anticipos impuesto (Vorauszahlung)</td><td style="color:var(--red)">(${fmt(totAnticipos)})</td></tr>
-      <tr class="ind"><td>Pagos impuesto temporadas anteriores</td><td style="color:var(--red)">${totImpPagados>0?'('+fmt(totImpPagados)+')':'—'}</td></tr>
-      <tr class="st"><td>Total salidas</td><td style="color:var(--red);font-weight:700">(${fmt(totSalidas)})</td></tr>
-      <tr class="tt"><td>Flujo neto del período</td><td style="color:${c(flujoNeto)}">${flujoNeto<0?'(':''}${fmt(flujoNeto)}${flujoNeto<0?')':''}</td></tr>
-    </table>
-  </div>`;
 }
 
 async function loadComp(){
