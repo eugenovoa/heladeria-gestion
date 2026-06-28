@@ -1384,7 +1384,9 @@ async function newRec(){
     if(error){alert(error.message);return}
     if(rec?.id){
       const hoy=today();
-      const fechas=rcCalcFechasJs(fi,ff,frq,dia);
+      const pasadas=rcCalcFechasJs(fi,ff,frq,dia).filter(f=>f<hoy);
+      const futuras=rcGetFechasEditadas();
+      const fechas=[...pasadas,...futuras];
       if(fechas.length)await sb.from('vencimientos_recurrentes').insert(fechas.map(f=>({
         gasto_recurrente_id:rec.id,fecha_vencimiento:f,monto,
         estado:f<hoy?'pagado':'pendiente',fecha_pago:f<hoy?f:null
@@ -1479,9 +1481,34 @@ function rcPreview(){
   const hoy=today();
   const pasadas=fechas.filter(f=>f<hoy),futuras=fechas.filter(f=>f>=hoy);
   const chip=(f,dim)=>`<span style="font-size:11px;padding:2px 8px;border-radius:var(--r);background:var(--surface2);${dim?'color:var(--text-faint)':'border:1px solid var(--border)'}">${fmtD(f)}</span>`;
+  const iSty='font-size:12px;padding:3px 7px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
   prev.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px">${fechas.length} vencimiento(s)${!ff?' — hasta fin de '+new Date().getFullYear():''}</div>`
-    +(pasadas.length?`<div style="font-size:11px;color:var(--text-faint);margin-bottom:6px">${pasadas.length} pasado(s) → auto-pagados</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">${pasadas.map(f=>chip(f,true)).join('')}</div>`:'')
-    +(futuras.length?`<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">${futuras.length} futuro(s) → pendientes</div><div style="display:flex;flex-wrap:wrap;gap:4px">${futuras.map(f=>chip(f,false)).join('')}</div>`:'');
+    +(pasadas.length?`<div style="font-size:11px;color:var(--text-faint);margin-bottom:6px">${pasadas.length} pasado(s) → auto-pagados</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">${pasadas.map(f=>chip(f,true)).join('')}</div>`:'')
+    +(futuras.length?`<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-weight:600">${futuras.length} futuro(s) → editables:</div>
+      <div id="rc-fechas-ed" style="display:flex;flex-direction:column;gap:6px">
+        ${futuras.map((f,i)=>`<div style="display:flex;align-items:center;gap:6px">
+          <input type="date" value="${f}" style="${iSty}" data-fi="${i}" oninput="rcFechaEdit(this)">
+          <button onclick="rcFechaRemove(this.parentElement)" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;line-height:1;padding:2px 4px">✕</button>
+        </div>`).join('')}
+      </div>
+      <button onclick="rcFechaAdd()" style="margin-top:8px;font-size:12px;padding:4px 10px;border:1px dashed var(--border-md);border-radius:var(--r);background:none;cursor:pointer;color:var(--text-muted)">+ Agregar fecha</button>`:'');
+}
+
+function rcFechaEdit(input){}
+function rcFechaRemove(row){row.remove();}
+function rcFechaAdd(){
+  const ct=document.getElementById('rc-fechas-ed');if(!ct)return;
+  const iSty='font-size:12px;padding:3px 7px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
+  const div=document.createElement('div');
+  div.style.cssText='display:flex;align-items:center;gap:6px';
+  div.innerHTML=`<input type="date" value="${today()}" style="${iSty}"><button onclick="rcFechaRemove(this.parentElement)" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;line-height:1;padding:2px 4px">✕</button>`;
+  ct.appendChild(div);
+}
+
+function rcGetFechasEditadas(){
+  const ct=document.getElementById('rc-fechas-ed');
+  if(!ct)return[];
+  return Array.from(ct.querySelectorAll('input[type="date"]')).map(i=>i.value).filter(Boolean);
 }
 
 async function genVencs(id,showAlert=true){
