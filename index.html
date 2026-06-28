@@ -3670,7 +3670,7 @@ async function pdVerRemito(remitoId,from='hist'){
         ${!isBor?`<button class="btn btn-sm" onclick="pdImprimirRemito('${r?.id}')">🖨️ Imprimir</button>`:''}
         ${isBor?`<button class="btn btn-sm btn-ok" onclick="pdConfirmarRemito('${r?.id}','${from}')">✅ Confirmar</button>`:''}
         <button class="btn btn-sm btn-p" onclick="pdEditarRemito('${r?.id}','${from}')">✏️ Editar</button>
-        ${isBor?`<button class="btn btn-sm btn-d" onclick="pdEliminarRemito('${r?.id}','${from}')">✕ Eliminar</button>`:''}
+        ${isBor?`<button class="btn btn-sm btn-d" onclick="pdEliminarRemito('${r?.id}','${from}')">✕ Eliminar</button>`:`<button class="btn btn-sm btn-d" onclick="pdEliminarRemito('${r?.id}','${from}',true)">✕ Eliminar</button>`}
         <button class="btn btn-sm btn-g" onclick="${backFn}">← Volver</button>
       </div>
     </div>
@@ -3689,8 +3689,9 @@ async function pdConfirmarRemito(remitoId,from){
   pdVerRemito(remitoId,from);
 }
 
-async function pdEliminarRemito(remitoId,from){
-  if(!confirm('¿Eliminar este borrador?'))return;
+async function pdEliminarRemito(remitoId,from,confirmado=false){
+  const msg=confirmado?'¿Eliminar este remito confirmado? Esta acción no se puede deshacer.':'¿Eliminar este borrador?';
+  if(!confirm(msg))return;
   await sb.from('remito_items').delete().eq('remito_id',remitoId);
   const{error}=await sb.from('remitos').delete().eq('id',remitoId);
   if(error){alert('Error: '+error.message);return}
