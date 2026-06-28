@@ -3282,30 +3282,48 @@ async function pdOrdenProd(){
 }
 
 async function pdGenerarOrden(){
-  const[{data:stD},{data:mins},{data:pos}]=await Promise.all([
+  const[{data:stD},{data:mins},{data:pos},{data:borsEnt}]=await Promise.all([
     sb.from('prod_stock_deposito').select('*'),
     sb.from('prod_stock_minimos').select('*').eq('ubicacion','deposito'),
-    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero')
+    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero'),
+    sb.from('prod_ordenes_entrega').select('id,sucursal,prod_ord_entrega_items(sabor_id,cantidad_confirmada)').eq('estado','borrador')
   ]);
   const depMap={};(stD||[]).forEach(r=>depMap[r.sabor_id]=r.cantidad);
   const minMap={};(mins||[]).forEach(m=>minMap[m.posicion_id]=m.cantidad_minima);
+  // Sumar cantidades comprometidas en borradores de entrega
+  const borrMap={};
+  (borsEnt||[]).forEach(o=>(o.prod_ord_entrega_items||[]).forEach(it=>{
+    if(it.cantidad_confirmada)borrMap[it.sabor_id]=(borrMap[it.sabor_id]||0)+it.cantidad_confirmada;
+  }));
+  const hasBorrs=(borsEnt||[]).length>0;
   const items=[];
   (pos||[]).forEach(p=>{
     const ids=(p.prod_posicion_sabores||[]).map(ps=>ps.sabor_id);
     const act=(p.prod_posicion_sabores||[]).find(ps=>ps.es_activo);
     if(!act)return;
     const tot=ids.reduce((s,id)=>(depMap[id]||0)+s,0);
+    const comprometido=ids.reduce((s,id)=>(borrMap[id]||0)+s,0);
+    const totEfectivo=Math.max(0,tot-comprometido);
     const min=minMap[p.id]||0;
-    if(tot<min)items.push({pos:p,sab:act.prod_sabores,stock:tot,min,prod:min-tot});
+    if(totEfectivo<min)items.push({pos:p,sab:act.prod_sabores,stock:tot,comprometido,totEfectivo,min,prod:min-totEfectivo});
   });
   if(!items.length){alert('✅ Stock al día. No hay nada que producir.');return}
   const tod=today();
+  const borrInfo=hasBorrs?`<div class="al al-warn" style="margin-bottom:12px">⚠️ Se encontraron <strong>${(borsEnt||[]).length} borrador(es) de entrega</strong> pendientes. Las cantidades ya descuentan los helados comprometidos en esas entregas.</div>`:'';
+  const extraCols=hasBorrs?'<th>En entregas</th><th>Efectivo</th>':'';
   openMo('Nueva Orden de Producción',`
+    ${borrInfo}
     <div class="al al-info" style="margin-bottom:12px">Revisá las cantidades. Podés editar el campo "Producir" antes de guardar.</div>
-    <div style="overflow-x:auto"><table><thead><tr><th>Pos.</th><th>Sabor activo</th><th>Stock actual</th><th>Mínimo</th><th>Producir</th></tr></thead>
+    <div style="overflow-x:auto"><table><thead><tr><th>Pos.</th><th>Sabor activo</th><th>Stock</th>${extraCols}<th>Mínimo</th><th>Producir</th></tr></thead>
     <tbody id="pd-ord-items">
-    ${items.map((it,i)=>`<tr><td><strong>${it.pos.numero}</strong></td><td>${it.sab.nombre}</td><td>${it.stock} sorb.</td><td>${it.min} sorb.</td>
-      <td><input type="number" min="0" value="${it.prod}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-i="${i}"></td></tr>`).join('')}
+    ${items.map((it,i)=>`<tr>
+      <td><strong>${it.pos.numero}</strong></td>
+      <td>${it.sab.nombre}</td>
+      <td>${it.stock} sorb.</td>
+      ${hasBorrs?`<td style="color:var(--amber);font-size:12px">−${it.comprometido}</td><td style="font-weight:600">${it.totEfectivo} sorb.</td>`:''}
+      <td>${it.min} sorb.</td>
+      <td><input type="number" min="0" value="${it.prod}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-i="${i}"></td>
+    </tr>`).join('')}
     </tbody></table></div>
     <div class="f" style="margin-top:14px"><label>Notas (opcional)</label><textarea id="pd-ord-n" style="height:50px;font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);width:100%" placeholder="Observaciones..."></textarea></div>`,
   async()=>{
