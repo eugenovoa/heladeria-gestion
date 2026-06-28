@@ -30,7 +30,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .auth-icon{text-align:center;font-size:40px;margin-bottom:16px}
 #app{display:none;height:100vh;overflow:hidden}
 .shell{display:flex;height:100%}
-.sidebar{width:240px;min-width:240px;background:var(--sb);display:flex;flex-direction:column;overflow-y:auto;transition:transform .25s}
+.sidebar{width:240px;min-width:240px;background:var(--sb);display:flex;flex-direction:column;overflow-y:auto;transition:width .25s ease,min-width .25s ease,transform .25s ease}.sidebar.sb-collapsed{width:0!important;min-width:0!important;overflow:hidden!important}
 .sb-brand{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;background:#fff;border-radius:0}
 .sb-brand:hover{background:#f1f5f9}
 .sb-icon{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#3b82f6,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;color:#fff}
@@ -38,7 +38,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .sb-brand-t{font-size:13px;font-weight:600;color:#1e293b}
 .sb-brand-s{font-size:10px;color:#64748b;margin-top:1px}
 .nav-sec{padding:10px 0 4px}
-.nav-lbl{font-size:10px;font-weight:600;color:var(--sb-m);text-transform:uppercase;letter-spacing:.08em;padding:0 16px 5px}
+.nav-lbl{font-size:10px;font-weight:600;color:var(--sb-m);text-transform:uppercase;letter-spacing:.08em;padding:0 16px 5px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding-right:12px}
 .nav-item{display:flex;align-items:center;gap:9px;padding:8px 12px;margin:1px 8px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--sb-t);transition:all .15s;user-select:none}
 .nav-item:hover{background:var(--sb-h);color:#f1f5f9}
 .nav-item.active{background:#3b82f6;color:#fff;font-weight:500}
@@ -52,7 +52,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 .topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:13px 24px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--sh)}
 .topbar-l{display:flex;align-items:center;gap:12px}
-.menu-btn{display:none;background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:20px;padding:4px}
+.menu-btn{display:block;background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:20px;padding:4px}.nav-arr{font-size:9px;opacity:.6;transition:transform .2s;flex-shrink:0}.nav-group-items{overflow:hidden}
 .page-title{font-size:16px;font-weight:600}
 .topbar-r{display:flex;gap:8px;align-items:center}
 .content{flex:1;overflow-y:auto;padding:24px}
@@ -161,9 +161,9 @@ tbody tr:hover td{background:var(--surface2)}
 .sb-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:49}
 .sb-ov.open{display:block}
 @media(max-width:768px){
-  .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:50;transform:translateX(-100%);width:260px}
+  .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:50;transform:translateX(-100%);width:260px!important;min-width:260px!important;overflow-y:auto!important}
   .sidebar.open{transform:translateX(0)}
-  .menu-btn{display:block}
+  .sidebar.sb-collapsed{width:260px!important;min-width:260px!important;overflow-y:auto!important}
   .kpi-grid{grid-template-columns:1fr 1fr;gap:10px}
   .g2{grid-template-columns:1fr}
   .wk-grid{grid-template-columns:repeat(3,1fr)}
@@ -218,52 +218,62 @@ tbody tr:hover td{background:var(--surface2)}
         <div id="brand-txt"><div class="sb-brand-t" id="brand-n">Gestión</div><div class="sb-brand-s" id="brand-s">Sistema de gestión</div></div>
       </div>
       <div class="nav-sec">
-        <div class="nav-lbl">General</div>
-        <div class="nav-item active" data-p="dashboard"><span class="nav-ico">⊞</span>Dashboard</div>
+        <div class="nav-lbl" onclick="navGroupToggle('grp-general')">General<span class="nav-arr" id="arr-grp-general">▼</span></div>
+        <div class="nav-group-items" id="grp-general">
+          <div class="nav-item active" data-p="dashboard"><span class="nav-ico">⊞</span>Dashboard</div>
+          <div class="nav-item" data-p="vencimientos"><span class="nav-ico">◷</span>Vencimientos</div>
+        </div>
       </div>
       <div class="nav-sec">
-        <div class="nav-lbl">Maestros</div>
-        <div class="nav-item" data-p="proveedores"><span class="nav-ico">◎</span>Proveedores</div>
-        <div class="nav-item" data-p="productos"><span class="nav-ico">◉</span>Productos / MP</div>
+        <div class="nav-lbl" onclick="navGroupToggle('grp-ventas')">Ventas<span class="nav-arr" id="arr-grp-ventas">▼</span></div>
+        <div class="nav-group-items" id="grp-ventas">
+          <div class="nav-item" data-p="caja"><span class="nav-ico">▧</span>Cierre de caja</div>
+          <div class="nav-item" data-p="contable"><span class="nav-ico">🗂️</span>Descarga de facturas</div>
+        </div>
       </div>
       <div class="nav-sec">
-        <div class="nav-lbl">Compras</div>
-        <div class="nav-item" data-p="facturas"><span class="nav-ico">▤</span>Facturas</div>
-        <div class="nav-item" data-p="pagos"><span class="nav-ico">✦</span>Pagos a Proveedores</div>
-        <div class="nav-item" data-p="pagos-rec"><span class="nav-ico">↺</span>Pagos Recurrentes</div>
-        <div class="nav-item" data-p="vencimientos"><span class="nav-ico">◷</span>Vencimientos</div>
+        <div class="nav-lbl" onclick="navGroupToggle('grp-compras')">Compras<span class="nav-arr" id="arr-grp-compras">▼</span></div>
+        <div class="nav-group-items" id="grp-compras">
+          <div class="nav-item" data-p="facturas"><span class="nav-ico">▤</span>Facturas</div>
+          <div class="nav-item" data-p="gastos"><span class="nav-ico">▣</span>Gastos al contado</div>
+          <div class="nav-item" data-p="recurrentes"><span class="nav-ico">↻</span>Gastos recurrentes</div>
+          <div class="nav-item" data-p="stock"><span class="nav-ico">▦</span>CMV</div>
+        </div>
       </div>
       <div class="nav-sec">
-        <div class="nav-lbl">Gastos</div>
-        <div class="nav-item" data-p="gastos"><span class="nav-ico">▣</span>Gastos al contado</div>
-        <div class="nav-item" data-p="recurrentes"><span class="nav-ico">↻</span>Gastos recurrentes</div>
+        <div class="nav-lbl" onclick="navGroupToggle('grp-pagos')">Pagos<span class="nav-arr" id="arr-grp-pagos">▼</span></div>
+        <div class="nav-group-items" id="grp-pagos">
+          <div class="nav-item" data-p="pagos"><span class="nav-ico">✦</span>Pago a Proveedores</div>
+          <div class="nav-item" data-p="pagos-rec"><span class="nav-ico">↺</span>Pagos Recurrentes</div>
+        </div>
       </div>
       <div class="nav-sec">
-        <div class="nav-lbl">Ventas</div>
-        <div class="nav-item" data-p="caja"><span class="nav-ico">▧</span>Cierre de caja</div>
+        <div class="nav-lbl" onclick="navGroupToggle('grp-prod')">Producción<span class="nav-arr" id="arr-grp-prod">▼</span></div>
+        <div class="nav-group-items" id="grp-prod">
+          <div class="nav-item" data-p="produccion-pd"><span class="nav-ico">📊</span>Dashboard</div>
+          <div class="nav-item" data-p="produccion-pc"><span class="nav-ico">⚙️</span>Configuración</div>
+          <div class="nav-item" data-p="produccion-ps"><span class="nav-ico">📦</span>Stock</div>
+          <div class="nav-item" data-p="produccion-pp"><span class="nav-ico">🏭</span>Producción</div>
+          <div class="nav-item" data-p="produccion-pe"><span class="nav-ico">🚚</span>Entrega</div>
+          <div class="nav-item" data-p="produccion-ph"><span class="nav-ico">📋</span>Historial</div>
+        </div>
       </div>
       <div class="nav-sec">
-        <div class="nav-lbl">Inventario</div>
-        <div class="nav-item" data-p="stock"><span class="nav-ico">▦</span>Stock</div>
+        <div class="nav-lbl" onclick="navGroupToggle('grp-rep')">Reportes<span class="nav-arr" id="arr-grp-rep">▼</span></div>
+        <div class="nav-group-items" id="grp-rep">
+          <div class="nav-item" data-p="rep-err"><span class="nav-ico">▶</span>Estado de Resultados</div>
+          <div class="nav-item" data-p="rep-flujo"><span class="nav-ico">▶</span>Flujo de Caja</div>
+          <div class="nav-item" data-p="rep-compras"><span class="nav-ico">▶</span>Compras</div>
+          <div class="nav-item" data-p="rep-comp"><span class="nav-ico">▶</span>Comparativo</div>
+        </div>
       </div>
       <div class="nav-sec">
-        <div class="nav-lbl">Reportes</div>
-        <div class="nav-item" data-p="rep-compras"><span class="nav-ico">▶</span>Compras</div>
-        <div class="nav-item" data-p="rep-err"><span class="nav-ico">▶</span>Estado resultados</div>
-        <div class="nav-item" data-p="rep-flujo"><span class="nav-ico">▶</span>Flujo de caja</div>
-        <div class="nav-item" data-p="rep-comp"><span class="nav-ico">▶</span>Comparativo</div>
-      </div>
-      <div class="nav-sec">
-        <div class="nav-lbl">Contable</div>
-        <div class="nav-item" data-p="contable"><span class="nav-ico">🗂️</span>Descarga de facturas</div>
-      </div>
-      <div class="nav-sec">
-        <div class="nav-lbl">Producción</div>
-        <div class="nav-item" data-p="produccion"><span class="nav-ico">🧊</span>Producción</div>
-      </div>
-      <div class="nav-sec">
-        <div class="nav-lbl">Sistema</div>
-      <div class="nav-item" data-p="config"><span class="nav-ico">⚙</span>Configuración</div>
+        <div class="nav-lbl" onclick="navGroupToggle('grp-cfg')">Configuración<span class="nav-arr" id="arr-grp-cfg">▼</span></div>
+        <div class="nav-group-items" id="grp-cfg">
+          <div class="nav-item" data-p="config"><span class="nav-ico">⚙</span>General</div>
+          <div class="nav-item" data-p="proveedores"><span class="nav-ico">◎</span>Proveedores</div>
+          <div class="nav-item" data-p="productos"><span class="nav-ico">◉</span>Productos / MP</div>
+        </div>
       </div>
       <div class="sb-foot">
         <div class="u-badge">
@@ -305,8 +315,32 @@ const sb=supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefr
 let _page='dashboard',_moFn=null,_cfg={},_user=null,_rol='admin',_sucId=null,_sucs=[],_init=false,_rt=null,_semOff=0;
 
 // ---- SIDEBAR ----
-function toggleSB(){document.getElementById('sb').classList.toggle('open');document.getElementById('sb-ov').classList.toggle('open')}
-function closeSB(){document.getElementById('sb').classList.remove('open');document.getElementById('sb-ov').classList.remove('open')}
+function toggleSB(){
+  const sb=document.getElementById('sb'),ov=document.getElementById('sb-ov');
+  if(window.innerWidth<=768){sb.classList.toggle('open');ov.classList.toggle('open');}
+  else{const col=sb.classList.toggle('sb-collapsed');localStorage.setItem('_sb_col',col);}
+}
+function closeSB(){const sb=document.getElementById('sb'),ov=document.getElementById('sb-ov');sb.classList.remove('open');ov.classList.remove('open');}
+function navGroupToggle(id){
+  if(window.innerWidth<=768)return;
+  const el=document.getElementById(id);if(!el)return;
+  const hidden=el.style.display==='none';
+  el.style.display=hidden?'':'none';
+  const arr=document.getElementById('arr-'+id);if(arr)arr.style.transform=hidden?'':'rotate(-90deg)';
+  const st=JSON.parse(localStorage.getItem('_sb_grp')||'{}');
+  st[id]=hidden;localStorage.setItem('_sb_grp',JSON.stringify(st));
+}
+function navRestoreState(){
+  const sb=document.getElementById('sb');
+  if(window.innerWidth>768&&localStorage.getItem('_sb_col')==='true')sb.classList.add('sb-collapsed');
+  if(window.innerWidth<=768)return;
+  const st=JSON.parse(localStorage.getItem('_sb_grp')||'{}');
+  Object.entries(st).forEach(([id,open])=>{
+    const el=document.getElementById(id);if(!el)return;
+    el.style.display=open?'':'none';
+    const arr=document.getElementById('arr-'+id);if(arr)arr.style.transform=open?'':'rotate(-90deg)';
+  });
+}
 
 // ---- AUTH ----
 function toEmail(u){return u.includes('@')?u:u.trim().toLowerCase()+'@heladeria.local'}
@@ -389,6 +423,7 @@ async function autoMarcarVencidosRec(){
 }
 
 function nav(p){
+  if(p.startsWith('produccion-')){window._prodNavTo=p.split('-').slice(1).join('-');p='produccion';}
   if(_rol==='readonly'&&['facturas','pagos','gastos','recurrentes','caja','stock','proveedores','productos'].includes(p))p='dashboard';
   if(_rol==='operador'&&['rep-compras','rep-err','rep-flujo','rep-comp','config'].includes(p))p='dashboard';
   _page=p;
@@ -396,7 +431,7 @@ function nav(p){
   document.getElementById('ptitle').textContent=_titles[p]||p;
   document.getElementById('tbar-r').innerHTML='';
   if(p==='facturas'||p==='vencimientos')autoMarcarVencidas();
-  if(p==='vencimientos'||p==='recurrentes')autoMarcarVencidosRec();
+  if(p==='vencimientos'||p==='recurrentes')autoMarcarVencidosRec();navRestoreState();
   const map={dashboard,proveedores,productos,facturas,pagos,vencimientos,'pagos-rec':pagosRec,gastos,recurrentes,caja,stock,'rep-compras':repCompras,'rep-err':repErr,'rep-flujo':repFlujo,'rep-comp':repComp,contable:contablePage,config:configPage,produccion:produccionPage};
   if(map[p])map[p]();
 }
@@ -2784,10 +2819,15 @@ async function produccionPage(){
     sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero')
   ]);
   _prodSabs=s||[];_prodPos=p||[];
-  prodNav('pd');
+  const _initTab=window._prodNavTo||'pd';window._prodNavTo=null;
+  document.querySelectorAll('[data-pt]').forEach(t=>t.classList.remove('active'));
+  const _initEl=document.querySelector('[data-pt="'+_initTab+'"]');
+  if(_initEl)_initEl.classList.add('active');
+  prodNav(_initTab);
 }
 
 async function prodNav(tab,el){
+  document.querySelectorAll('.nav-item').forEach(i=>i.classList.remove('active'));const _si=document.querySelector('[data-p="produccion-'+tab+'"]');if(_si)_si.classList.add('active');
   if(el){document.querySelectorAll('[data-pt]').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
   const fns={'pd':pdDash,'pc':pdCfg,'ps':pdStock,'pp':pdOrdenProd,'pe':pdOrdenEnt,'ph':pdHist};
   if(fns[tab])await fns[tab]();
