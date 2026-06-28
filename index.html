@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Sistema de gestión - Eis Bibione</title>
+<title>Heladería — Gestión</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -3550,28 +3550,33 @@ window._allInsumos=null;
 
 async function pdEntInsumos(){
   const ct=document.getElementById('pd-ent-ct');if(!ct)return;
-  ct.innerHTML='<div class="ld">Cargando insumos...</div>';
+  ct.innerHTML='<div class="ld">Cargando...</div>';
   if(!window._allInsumos){
     const{data}=await sb.from('insumos').select('*').eq('activo',true).order('nombre');
     window._allInsumos=data||[];
   }
   window._remitoItems=[];
-  const sel=(v,l)=>`<option value="${v}">${l}</option>`;
-  ct.innerHTML=`
+  const{data:bors}=await sb.from('remitos').select('*').eq('estado','borrador').order('created_at',{ascending:false});
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const ss='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%';
+  let html='';
+  if((bors||[]).length){
+    html+=`<div class="card"><div class="card-t">📝 Borradores pendientes</div>`;
+    bors.forEach(r=>{html+=`<div class="ri"><div><div class="ri-n">${bLab[r.sucursal]||r.sucursal} — ${fmtD(r.fecha)}</div><div class="ri-s"><span class="bd bd-warn">Borrador</span>${r.notas?` · ${r.notas}`:''}</div></div><div style="display:flex;gap:6px"><button class="btn btn-sm btn-p" onclick="pdVerRemito('${r.id}','ent')">Ver / Editar</button><button class="btn btn-sm btn-d" onclick="pdEliminarRemito('${r.id}','ent')">✕</button></div></div>`;});
+    html+='</div>';
+  }
+  html+=`
   <div class="card"><div class="card-t">Nuevo Remito de Insumos</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="f" style="min-width:150px"><label>Sucursal</label>
-        <select id="rem-suc" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%">
-          ${sel('eutingen','Eutingen')}${sel('muhlacker','Mühlacker')}${sel('konigsbacj','Königsbach')}
-        </select>
+        <select id="rem-suc" style="${ss}"><option value="eutingen">Eutingen</option><option value="muhlacker">Mühlacker</option><option value="konigsbacj">Königsbach</option></select>
       </div>
       <div class="f" style="min-width:140px"><label>Fecha</label>
-        <input type="date" id="rem-fecha" value="${today()}" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%">
+        <input type="date" id="rem-fecha" value="${today()}" style="${ss}">
       </div>
     </div>
     <div class="f"><label>Buscar producto</label>
-      <input id="rem-buscar" placeholder="Ej: cono, frutilla, sorbetes..." oninput="pdFiltrarInsumos(this.value)"
-        style="font-size:14px;padding:10px 14px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%">
+      <input id="rem-buscar" placeholder="Ej: cono, frutilla, sorbetes..." oninput="pdFiltrarInsumos(this.value)" style="font-size:14px;padding:10px 14px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%">
     </div>
     <div id="rem-lista" style="margin-top:8px;max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r)"></div>
   </div>
@@ -3584,8 +3589,9 @@ async function pdEntInsumos(){
     <div class="f" style="margin-top:14px"><label>Notas (opcional)</label>
       <textarea id="rem-notas" style="height:50px;font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);width:100%" placeholder="Observaciones..."></textarea>
     </div>
-    <button class="btn btn-p" style="width:100%;margin-top:12px;padding:12px" onclick="pdRegistrarRemito()" id="rem-btn-save">✅ Registrar remito</button>
+    <button class="btn btn-p" style="width:100%;margin-top:12px;padding:12px" onclick="pdRegistrarRemito()" id="rem-btn-save">📝 Guardar borrador</button>
   </div>`;
+  ct.innerHTML=html;
   pdFiltrarInsumos('');
 }
 
@@ -3623,11 +3629,10 @@ function pdRenderRemitoItems(){
         <button onclick="pdCambiarCant(${i},-1)" style="${btnS}">−</button>
         <input type="number" min="1" value="${it.cantidad}" onchange="pdSetCant(${i},this.value)" style="width:55px;padding:5px;font-size:14px;border:1px solid var(--border-md);border-radius:var(--r);text-align:center">
         <button onclick="pdCambiarCant(${i},1)" style="${btnS}">+</button>
-        <button onclick="pdQuitarInsumo(${i})" style="width:32px;height:32px;border:none;background:none;cursor:pointer;color:var(--text-faint);font-size:18px">✕</button>
+        <button onclick="pdQuitarInsumo(${i})" style="width:32px;height:32px;border:none;background:none;cursor:pointer;color:var(--text-faint);font-size:18px">&#x2715;</button>
       </div>
     </div>`).join('');
 }
-
 function pdCambiarCant(idx,delta){const it=window._remitoItems[idx];if(!it)return;it.cantidad=Math.max(1,it.cantidad+delta);pdRenderRemitoItems();}
 function pdSetCant(idx,val){const it=window._remitoItems[idx];if(!it)return;it.cantidad=Math.max(1,parseInt(val)||1);}
 function pdQuitarInsumo(idx){window._remitoItems.splice(idx,1);pdRenderRemitoItems();}
@@ -3640,14 +3645,152 @@ async function pdRegistrarRemito(){
   if(!window._remitoItems.length){alert('Agregá al menos un producto.');return}
   const btn=document.getElementById('rem-btn-save');
   if(btn){btn.disabled=true;btn.textContent='Guardando...';}
-  const{data:rem,error}=await sb.from('remitos').insert({sucursal:suc,fecha,notas}).select().single();
-  if(error){alert('Error: '+error.message);if(btn){btn.disabled=false;btn.textContent='✅ Registrar remito';}return}
+  const{data:rem,error}=await sb.from('remitos').insert({sucursal:suc,fecha,notas,estado:'borrador'}).select().single();
+  if(error){alert('Error: '+error.message);if(btn){btn.disabled=false;btn.textContent='📝 Guardar borrador';}return}
   const{error:e2}=await sb.from('remito_items').insert(window._remitoItems.map(i=>({remito_id:rem.id,insumo_id:i.id,cantidad:i.cantidad,unidad:i.unidad})));
-  if(e2){alert('Error al guardar items: '+e2.message);if(btn){btn.disabled=false;btn.textContent='✅ Registrar remito';}return}
-  alert('✅ Remito registrado.');
+  if(e2){alert('Error al guardar items: '+e2.message);if(btn){btn.disabled=false;btn.textContent='📝 Guardar borrador';}return}
   window._remitoItems=[];
-  pdEntInsumos();
+  pdVerRemito(rem.id,'ent');
 }
+
+async function pdVerRemito(remitoId,from='hist'){
+  const{data:r}=await sb.from('remitos').select('*,remito_items(*,insumos(nombre,unidad,categoria))').eq('id',remitoId).single();
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const isBor=r?.estado==='borrador';
+  const backFn=from==='ent'?`pdEntTab('ins')`:`pdHistTab('rem',null)`;
+  const ct=from==='ent'?document.getElementById('pd-ent-ct'):document.getElementById('pd-hist-ct');
+  if(!ct)return;
+  ct.innerHTML=`<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div>
+        <h3 style="font-size:15px;font-weight:700">Remito — ${bLab[r?.sucursal]||r?.sucursal} — ${fmtD(r?.fecha)}</h3>
+        <div style="margin-top:4px">${isBor?'<span class="bd bd-warn">📝 Borrador</span>':'<span class="bd bd-ok">✅ Confirmado</span>'}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${!isBor?`<button class="btn btn-sm" onclick="pdImprimirRemito('${r?.id}')">🖨️ Imprimir</button>`:''}
+        ${isBor?`<button class="btn btn-sm btn-ok" onclick="pdConfirmarRemito('${r?.id}','${from}')">✅ Confirmar</button>`:''}
+        <button class="btn btn-sm btn-p" onclick="pdEditarRemito('${r?.id}','${from}')">✏️ Editar</button>
+        ${isBor?`<button class="btn btn-sm btn-d" onclick="pdEliminarRemito('${r?.id}','${from}')">✕ Eliminar</button>`:''}
+        <button class="btn btn-sm btn-g" onclick="${backFn}">← Volver</button>
+      </div>
+    </div>
+    ${r?.notas?`<div class="al al-info" style="margin-bottom:12px">${r.notas}</div>`:''}
+    <table><thead><tr><th>Producto</th><th>Categoría</th><th>Cantidad</th><th>Unidad</th></tr></thead><tbody>
+    ${(r?.remito_items||[]).map(it=>`<tr><td><strong>${it.insumos?.nombre||'?'}</strong></td><td style="font-size:12px;color:var(--text-muted)">${it.insumos?.categoria||''}</td><td><strong>${it.cantidad}</strong></td><td>${it.insumos?.unidad||'?'}</td></tr>`).join('')}
+    </tbody></table>
+    <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong>${(r?.remito_items||[]).length} productos</strong></div>
+  </div>`;
+}
+
+async function pdConfirmarRemito(remitoId,from){
+  if(!confirm('¿Confirmar este remito? Ya no podrá ser eliminado.'))return;
+  const{error}=await sb.from('remitos').update({estado:'confirmado'}).eq('id',remitoId);
+  if(error){alert('Error: '+error.message);return}
+  pdVerRemito(remitoId,from);
+}
+
+async function pdEliminarRemito(remitoId,from){
+  if(!confirm('¿Eliminar este borrador?'))return;
+  await sb.from('remito_items').delete().eq('remito_id',remitoId);
+  const{error}=await sb.from('remitos').delete().eq('id',remitoId);
+  if(error){alert('Error: '+error.message);return}
+  if(from==='ent')pdEntTab('ins');
+  else pdHistTab('rem',null);
+}
+
+async function pdEditarRemito(remitoId,from){
+  if(!window._allInsumos){
+    const{data}=await sb.from('insumos').select('*').eq('activo',true).order('nombre');
+    window._allInsumos=data||[];
+  }
+  const{data:r}=await sb.from('remitos').select('*,remito_items(*,insumos(nombre,unidad))').eq('id',remitoId).single();
+  if(!r)return;
+  window._remitoItems=(r.remito_items||[]).map(it=>({id:it.insumo_id,nombre:it.insumos?.nombre||'?',unidad:it.insumos?.unidad||'?',cantidad:it.cantidad,_itemId:it.id}));
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const ct=from==='ent'?document.getElementById('pd-ent-ct'):document.getElementById('pd-hist-ct');
+  if(!ct)return;
+  const ss='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%';
+  ct.innerHTML=`<div class="card"><div class="card-t">Editando remito</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="f" style="min-width:150px"><label>Sucursal</label>
+        <select id="rem-suc" style="${ss}">
+          <option value="eutingen" ${r.sucursal==='eutingen'?'selected':''}>Eutingen</option>
+          <option value="muhlacker" ${r.sucursal==='muhlacker'?'selected':''}>Mühlacker</option>
+          <option value="konigsbacj" ${r.sucursal==='konigsbacj'?'selected':''}>Königsbach</option>
+        </select>
+      </div>
+      <div class="f" style="min-width:140px"><label>Fecha</label>
+        <input type="date" id="rem-fecha" value="${r.fecha||today()}" style="${ss}">
+      </div>
+    </div>
+    <div class="f"><label>Buscar producto</label>
+      <input id="rem-buscar" placeholder="Ej: cono, frutilla, sorbetes..." oninput="pdFiltrarInsumos(this.value)" style="font-size:14px;padding:10px 14px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%">
+    </div>
+    <div id="rem-lista" style="margin-top:8px;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r)"></div>
+  </div>
+  <div class="card">
+    <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+      Items del remito
+      <span id="rem-count" style="font-size:12px;color:var(--text-muted);font-weight:400">0 productos</span>
+    </div>
+    <div id="rem-items-list"></div>
+    <div class="f" style="margin-top:14px"><label>Notas (opcional)</label>
+      <textarea id="rem-notas" style="height:50px;font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);width:100%" placeholder="Observaciones...">${r.notas||''}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-p" style="flex:1;padding:12px" onclick="pdGuardarEditRemito('${remitoId}','${from}')">💾 Guardar cambios</button>
+      <button class="btn btn-g" style="padding:12px" onclick="pdVerRemito('${remitoId}','${from}')">Cancelar</button>
+    </div>
+  </div>`;
+  pdRenderRemitoItems();
+  pdFiltrarInsumos('');
+}
+
+async function pdGuardarEditRemito(remitoId,from){
+  const suc=document.getElementById('rem-suc')?.value;
+  const fecha=document.getElementById('rem-fecha')?.value;
+  const notas=document.getElementById('rem-notas')?.value||'';
+  if(!suc||!fecha){alert('Completá sucursal y fecha.');return}
+  if(!window._remitoItems.length){alert('Agregá al menos un producto.');return}
+  const{error}=await sb.from('remitos').update({sucursal:suc,fecha,notas}).eq('id',remitoId);
+  if(error){alert('Error: '+error.message);return}
+  await sb.from('remito_items').delete().eq('remito_id',remitoId);
+  const{error:e2}=await sb.from('remito_items').insert(window._remitoItems.map(i=>({remito_id:remitoId,insumo_id:i.id,cantidad:i.cantidad,unidad:i.unidad})));
+  if(e2){alert('Error al guardar items: '+e2.message);return}
+  window._remitoItems=[];
+  pdVerRemito(remitoId,from);
+}
+
+async function pdImprimirRemito(remitoId){
+  const{data:r}=await sb.from('remitos').select('*,remito_items(*,insumos(nombre,unidad,categoria))').eq('id',remitoId).single();
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const rows=(r?.remito_items||[]).map(it=>`<tr><td>${it.insumos?.nombre||'?'}</td><td>${it.insumos?.categoria||''}</td><td style="text-align:center">${it.cantidad}</td><td>${it.insumos?.unidad||'?'}</td></tr>`).join('');
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Remito</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#000}
+    h1{font-size:16px;margin:0 0 4px}
+    .sub{color:#555;font-size:11px;margin-bottom:16px}
+    table{width:100%;border-collapse:collapse;margin-bottom:20px}
+    th{background:#f0f0f0;padding:6px 8px;text-align:left;border:1px solid #ccc;font-size:11px}
+    td{padding:5px 8px;border:1px solid #ccc}
+    .firma{display:flex;gap:40px;margin-top:30px}
+    .firma-box{flex:1;border-top:1px solid #000;padding-top:4px;font-size:11px}
+    @media print{button{display:none}}
+  </style></head><body>
+  <h1>Remito de Entrega — Eis Bibione</h1>
+  <div class="sub">Sucursal: ${bLab[r?.sucursal]||r?.sucursal} &nbsp;|&nbsp; Fecha: ${fmtD(r?.fecha)}</div>
+  ${r?.notas?`<p style="margin-bottom:12px;font-style:italic">${r.notas}</p>`:''}
+  <table><thead><tr><th>Producto</th><th>Categoría</th><th style="text-align:center">Cantidad</th><th>Unidad</th></tr></thead><tbody>${rows}</tbody></table>
+  <div class="firma">
+    <div class="firma-box">Entregado por</div>
+    <div class="firma-box">Recibido por</div>
+  </div>
+  <button onclick="window.print()" style="margin-top:20px;padding:8px 20px;cursor:pointer">🖨️ Imprimir</button>
+  </body></html>`);
+  w.document.close();
+}
+
 
 
 async function pdParseCsvSuc(file){
@@ -4076,7 +4219,7 @@ async function pdHistRemCargar(){
   const hasta=document.getElementById('hrem-hasta')?.value;
   const res=document.getElementById('hrem-res');if(!res)return;
   res.innerHTML='<div class="ld">Cargando...</div>';
-  let q=sb.from('remitos').select('*,remito_items(*,insumos(nombre,unidad))').order('fecha',{ascending:false}).limit(200);
+  let q=sb.from('remitos').select('*,remito_items(*,insumos(nombre,unidad))').eq('estado','confirmado').order('fecha',{ascending:false}).limit(200);
   if(suc)q=q.eq('sucursal',suc);
   if(desde)q=q.gte('fecha',desde);
   if(hasta)q=q.lte('fecha',hasta);
@@ -4107,22 +4250,7 @@ async function pdHistRemCargar(){
   </div>`;
 }
 
-async function pdVerRemito(remitoId){
-  const{data:r}=await sb.from('remitos').select('*,remito_items(*,insumos(nombre,unidad))').eq('id',remitoId).single();
-  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
-  const ct=document.getElementById('pd-hist-ct');if(!ct)return;
-  ct.innerHTML=`<div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:16px">
-      <div><h3 style="font-size:15px;font-weight:700">Remito — ${bLab[r?.sucursal]||r?.sucursal} — ${fmtD(r?.fecha)}</h3></div>
-      <button class="btn btn-sm btn-g" onclick="pdHistTab('rem',null);document.querySelector('[data-pht=\'rem\']')?.classList.add('active')">← Volver</button>
-    </div>
-    ${r?.notas?`<div class="al al-info" style="margin-bottom:12px">${r.notas}</div>`:''}
-    <table><thead><tr><th>Producto</th><th>Cantidad</th><th>Unidad</th></tr></thead><tbody>
-    ${(r?.remito_items||[]).map(it=>`<tr><td>${it.insumos?.nombre||'?'}</td><td><strong>${it.cantidad}</strong></td><td>${it.insumos?.unidad||'?'}</td></tr>`).join('')}
-    </tbody></table>
-    <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong>${(r?.remito_items||[]).length} productos</strong></div>
-  </div>`;
-}
+// pdVerRemito moved above
 
 
 // --- IMPRIMIR ---
