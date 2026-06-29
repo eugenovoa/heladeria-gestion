@@ -2691,6 +2691,7 @@ async function contTab(tab,el){
 
 // ── TAB 1: ANÁLISIS DE FACTURACIÓN ──────────────────────────────────────────
 async function contAnalisis(ct){
+  const ss='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
   const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
   const now=new Date();
   ct.innerHTML=`
@@ -2754,7 +2755,7 @@ async function zbonLeerPDF(file){
       method:'POST',headers:{...IA_HEADERS,'content-type':'application/json'},
       body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1000,messages:[{role:'user',content:[
         {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
-        {type:'text',text:'Extraé estos datos del Endabrechnung y respondé SOLO con JSON sin markdown:\n{"numero":0,"fecha_emision":"YYYY-MM-DD","fecha_ventas":"YYYY-MM-DD","neto":0,"mwst_monto":0,"mwst_7_neto":0,"mwst_7_monto":0,"mwst_19_neto":0,"mwst_19_monto":0,"bruto":0,"bar":0,"karte":0,"gutscheine":0,"trinkgeld":0}\nUsa punto como decimal. fecha_ventas = fecha_emision por defecto.'}
+        {type:'text',text:'Extraé exactamente estos campos del Endabrechnung (Z-Bon) y respondé SOLO con JSON válido, sin markdown, sin texto extra:\n{"numero":0,"fecha_emision":"YYYY-MM-DD","fecha_ventas":"YYYY-MM-DD","neto":0,"mwst_monto":0,"mwst_7_neto":0,"mwst_7_monto":0,"mwst_19_neto":0,"mwst_19_monto":0,"bruto":0,"bar":0,"karte":0,"gutscheine":0,"trinkgeld":0}\nReglas:\n- numero: número de Endabrechnung (ej: 938)\n- fecha_emision: fecha de "Erstellt am" en formato YYYY-MM-DD\n- fecha_ventas: igual a fecha_emision por defecto\n- neto: campo "Nettoumsatz"\n- mwst_monto: campo "Steuern" total\n- mwst_7_neto/mwst_7_monto: Netto y Steuern de la fila "7%" en tabla "Gesamtumsatz nach Steuersätzen" (0 si no existe)\n- mwst_19_neto/mwst_19_monto: igual para "19%"\n- bruto: campo "Bruttoumsatz"\n- bar: campo "Bruttoumsatz BAR" de la sección Bargeldbestand (sin propinas)\n- karte: suma de todas las filas "Karte" en "Gesamtumsatz nach Zahlungsart" (sin Trinkgeld)\n- gutscheine: suma de filas "Gutscheine" en "Gesamtumsatz nach Zahlungsart" (0 si no aparece)\n- trinkgeld: campo "Trinkgeld" total\nUsa punto como separador decimal.'}
       ]}]})
     });
     const d=await resp.json();
@@ -2870,6 +2871,7 @@ async function zbonEliminar(id){
 
 // ── TAB 2: MWST ──────────────────────────────────────────────────────────────
 async function contMwst(ct){
+  const ss='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
   const yr=new Date().getFullYear();
   const mes=new Date().getMonth()+1;
   const q=mes<=3?'1':mes<=6?'2':mes<=9?'3':'4';
@@ -2933,6 +2935,7 @@ async function mwstCalc(){
 
 // ── TAB 3: DESCARGA DE FACTURAS ───────────────────────────────────────────────
 function contDescarga(ct){
+  const ss='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
   const now=new Date(),yr=now.getFullYear(),mo=String(now.getMonth()+1).padStart(2,'0');
   const meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   ct.innerHTML=`<div class="card" style="max-width:560px">
