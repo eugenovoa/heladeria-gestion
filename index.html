@@ -2704,11 +2704,11 @@ async function contAnalisis(ct){
           <option value="konigsbacj">Königsbach</option>
         </select>
       </div>
-      <div class="upz" style="margin-top:12px" onclick="document.getElementById('zbon-xlsx-inp').click()">
-        <div class="ui">📊</div><div class="ut">Subir XLSX del Z-Bon</div>
-        <div class="us">Exportá el Endabrechnung desde la controladora fiscal como Excel</div>
+      <div class="upz" style="margin-top:12px" onclick="document.getElementById('zbon-pdf-inp').click()">
+        <div class="ui">📄</div><div class="ut">Subir PDF del Z-Bon</div>
+        <div class="us">Endabrechnung exportado de la controladora fiscal</div>
       </div>
-      <input type="file" id="zbon-xlsx-inp" accept=".xlsx,.xls,.csv" style="display:none" onchange="zbonLeerXLSX(this.files[0])">
+      <input type="file" id="zbon-pdf-inp" accept=".pdf" style="display:none" onchange="zbonLeerPDF(this.files[0])">
       <div id="zbon-prev" style="margin-top:16px"></div>
     </div>
     <div class="card"><div class="card-t">Comparativo Ventas</div>
@@ -2834,7 +2834,7 @@ function zbonMostrarVerif(data){
   </div>
   <div style="display:flex;gap:8px;margin-top:12px">
     <button class="btn btn-p" style="flex:1" onclick="zbonGuardar()">✅ Confirmar y guardar</button>
-    <button class="btn btn-g" onclick="document.getElementById('zbon-prev').innerHTML='';document.getElementById('zbon-xlsx-inp').value=''">Cancelar</button>
+    <button class="btn btn-g" onclick="document.getElementById('zbon-prev').innerHTML='';document.getElementById('zbon-pdf-inp').value=''">Cancelar</button>
   </div>`;
 }
 
