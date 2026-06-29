@@ -2704,11 +2704,11 @@ async function contAnalisis(ct){
           <option value="konigsbacj">Königsbach</option>
         </select>
       </div>
-      <div class="upz" style="margin-top:12px" onclick="document.getElementById('zbon-pdf-inp').click()">
-        <div class="ui">📄</div><div class="ut">Subir PDF del Z-Bon</div>
-        <div class="us">Endabrechnung exportado de la controladora fiscal</div>
+      <div class="upz" style="margin-top:12px" onclick="document.getElementById('zbon-xlsx-inp').click()">
+        <div class="ui">📊</div><div class="ut">Subir XLSX del Z-Bon</div>
+        <div class="us">Exportá el Endabrechnung desde la controladora fiscal como Excel</div>
       </div>
-      <input type="file" id="zbon-pdf-inp" accept=".pdf" style="display:none" onchange="zbonLeerPDF(this.files[0])">
+      <input type="file" id="zbon-xlsx-inp" accept=".xlsx,.xls,.csv" style="display:none" onchange="zbonLeerXLSX(this.files[0])">
       <div id="zbon-prev" style="margin-top:16px"></div>
     </div>
     <div class="card"><div class="card-t">Comparativo Ventas</div>
@@ -2744,6 +2744,48 @@ async function contAnalisis(ct){
   await zbonCargarHist();
 }
 
+async function zbonLeerXLSX(file){
+  if(!file)return;
+  const prev=document.getElementById('zbon-prev');
+  prev.innerHTML='<div class="ld">Leyendo archivo...</div>';
+  try{
+    // Load SheetJS if needed
+    if(!window.XLSX){
+      await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+    }
+    const buf=await file.arrayBuffer();
+    const wb=window.XLSX.read(buf,{type:'array',cellDates:true});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=window.XLSX.utils.sheet_to_json(ws,{raw:false,dateNF:'yyyy-mm-dd'});
+    if(!rows.length){prev.innerHTML='<div class="al al-err">El archivo está vacío.</div>';return}
+    const r=rows[0];
+    // Parse fecha from Zeitstempel
+    let fecha=r['Zeitstempel']||'';
+    if(fecha.includes(' '))fecha=fecha.split(' ')[0];
+    if(fecha.includes('T'))fecha=fecha.split('T')[0];
+    // Calculate karte
+    const bruto=parseFloat(r['Verkäufe (brutto)'])||0;
+    const bar=parseFloat(r['Verkäufe BAR (brutto)'])||0;
+    const gs=parseFloat(r['Gutschein Einlösungen (brutto)'])||0;
+    const karte=Math.round((bruto-bar-gs)*100)/100;
+    const data={
+      numero:parseInt(r['Nr.'])||0,
+      fecha_emision:fecha,fecha_ventas:fecha,
+      neto:parseFloat(r['Verkäufe (netto)'])||0,
+      mwst_monto:parseFloat(r['Gesamtsteuer'])||0,
+      mwst_7_neto:parseFloat(r['Netto 7%'])||0,
+      mwst_7_monto:parseFloat(r['Steuern 7%'])||0,
+      mwst_19_neto:parseFloat(r['Netto 19%'])||0,
+      mwst_19_monto:parseFloat(r['Steuern 19%'])||0,
+      bruto,bar,karte,
+      gutscheine:gs,
+      trinkgeld:parseFloat(r['Trinkgeld'])||0
+    };
+    zbonMostrarVerif(data);
+  }catch(e){prev.innerHTML=`<div class="al al-err">Error al leer archivo: ${e.message}</div>`;}
+}
+
+// Keep PDF reader for backwards compatibility (hidden)
 async function zbonLeerPDF(file){
   if(!file)return;
   const prev=document.getElementById('zbon-prev');
@@ -2751,20 +2793,13 @@ async function zbonLeerPDF(file){
   if(!IA_HEADERS['x-api-key']){prev.innerHTML='<div class="al al-err">No hay clave API configurada.</div>';return}
   const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
   try{
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',headers:{...IA_HEADERS,'content-type':'application/json'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1000,messages:[{role:'user',content:[
-        {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
-        {type:'text',text:'Extraé exactamente estos campos del Endabrechnung (Z-Bon) y respondé SOLO con JSON válido, sin markdown, sin texto extra:\n{"numero":0,"fecha_emision":"YYYY-MM-DD","fecha_ventas":"YYYY-MM-DD","neto":0,"mwst_monto":0,"mwst_7_neto":0,"mwst_7_monto":0,"mwst_19_neto":0,"mwst_19_monto":0,"bruto":0,"bar":0,"karte":0,"gutscheine":0,"trinkgeld":0}\nReglas ESTRICTAS:\n- numero: número de Endabrechnung (ej: 938)\n- fecha_emision: fecha de "Erstellt am" en formato YYYY-MM-DD\n- fecha_ventas: igual a fecha_emision por defecto\n- neto: campo "Nettoumsatz"\n- mwst_monto: campo "Steuern" total\n- mwst_7_neto/mwst_7_monto: Netto y Steuern de la fila "7%" en tabla "Gesamtumsatz nach Steuersätzen" (0 si no existe)\n- mwst_19_neto/mwst_19_monto: igual para "19%"\n- bruto: campo "Bruttoumsatz"\n- bar: campo "Bruttoumsatz BAR" de la sección Bargeldbestand (NO de Gesamtumsatz)\n- karte: valor Brutto de la fila "Karte" en sección "Gesamtumsatz nach Zahlungsart (mit Trinkgeld)" (0 si no hay)\n- gutscheine: valor Brutto de la fila "Gutscheine" en sección "Gesamtumsatz nach Zahlungsart (mit Trinkgeld)" ÚNICAMENTE. Si Gutscheine NO aparece en esa sección exacta, el valor es SIEMPRE 0. IGNORAR cualquier mención de Gutschein en Artikelumsatz o Artikelumsatz nach Artikelgruppen.\n- trinkgeld: campo "Trinkgeld" total de la sección "Trinkgeld nach Zahlungsart"\nUsa punto como separador decimal.'}
-      ]}]})
-    });
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{...IA_HEADERS,'content-type':'application/json'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:'Extraé exactamente estos campos del Endabrechnung (Z-Bon) y respondé SOLO con JSON válido, sin markdown, sin texto extra:\n{"numero":0,"fecha_emision":"YYYY-MM-DD","fecha_ventas":"YYYY-MM-DD","neto":0,"mwst_monto":0,"mwst_7_neto":0,"mwst_7_monto":0,"mwst_19_neto":0,"mwst_19_monto":0,"bruto":0,"bar":0,"karte":0,"gutscheine":0,"trinkgeld":0}\nReglas ESTRICTAS:\n- numero: número de Endabrechnung\n- fecha_emision: fecha de "Erstellt am" en YYYY-MM-DD\n- fecha_ventas: igual a fecha_emision\n- neto: Nettoumsatz\n- mwst_monto: Steuern total\n- mwst_7_neto/mwst_7_monto: fila 7% en Gesamtumsatz nach Steuersätzen\n- mwst_19_neto/mwst_19_monto: fila 19%\n- bruto: Bruttoumsatz\n- bar: Bruttoumsatz BAR de Bargeldbestand\n- karte: fila Karte en Gesamtumsatz nach Zahlungsart\n- gutscheine: fila Gutscheine en Gesamtumsatz nach Zahlungsart ÚNICAMENTE (0 si no aparece, IGNORAR Artikelumsatz)\n- trinkgeld: Trinkgeld total\nUsa punto como decimal.'}]}]})});
     const d=await resp.json();
     const txt=(d.content||[]).map(x=>x.text||'').join('');
-    const clean=txt.replace(/```json|```/g,'').trim();
-    const parsed=JSON.parse(clean);
-    zbonMostrarVerif(parsed);
-  }catch(e){prev.innerHTML=`<div class="al al-err">Error al leer PDF: ${e.message}. Intentá manualmente.</div>`;}
+    zbonMostrarVerif(JSON.parse(txt.replace(/```json|```/g,'').trim()));
+  }catch(e){prev.innerHTML=`<div class="al al-err">Error: ${e.message}</div>`;}
 }
+
 
 function zbonMostrarVerif(data){
   const prev=document.getElementById('zbon-prev');
@@ -2787,9 +2822,12 @@ function zbonMostrarVerif(data){
     <div class="f"><label>Trinkgeld</label><input id="zv-trk" type="number" step="0.01" value="${data.trinkgeld||0}" style="${iSty}"></div>
   </div>
   <div class="f"><label>Notas (opcional)</label><input id="zv-notas" placeholder="Observaciones..." style="${iSty}"></div>
+  <div class="f" style="margin-top:4px"><label>Adjuntar PDF del Z-Bon (opcional)</label>
+    <input type="file" id="zv-pdf-adj" accept=".pdf" style="${iSty}">
+  </div>
   <div style="display:flex;gap:8px;margin-top:12px">
     <button class="btn btn-p" style="flex:1" onclick="zbonGuardar()">✅ Confirmar y guardar</button>
-    <button class="btn btn-g" onclick="document.getElementById('zbon-prev').innerHTML='';document.getElementById('zbon-pdf-inp').value=''">Cancelar</button>
+    <button class="btn btn-g" onclick="document.getElementById('zbon-prev').innerHTML='';document.getElementById('zbon-xlsx-inp').value=''">Cancelar</button>
   </div>`;
 }
 
@@ -2803,11 +2841,18 @@ async function zbonGuardar(){
     bar:g('zv-bar'),karte:g('zv-kar'),gutscheine:g('zv-gut'),trinkgeld:g('zv-trk'),
     estado:'confirmado',notas:gs('zv-notas')};
   if(!row.fecha_ventas||!row.sucursal){alert('Completá sucursal y fecha.');return}
+  // Upload PDF if provided
+  const pdfFile=document.getElementById('zv-pdf-adj')?.files?.[0];
+  if(pdfFile){
+    const path=`z-bons/${row.sucursal}/${row.fecha_ventas?.substring(0,7)}/${row.numero||Date.now()}.pdf`;
+    const{data:upD,error:upE}=await sb.storage.from('adjuntos').upload(path,pdfFile,{upsert:true});
+    if(!upE){const{data:urlD}=sb.storage.from('adjuntos').getPublicUrl(path);row.pdf_url=urlD?.publicUrl||null;}
+  }
   const{error}=await sb.from('endabrechnungen').insert(row);
   if(error){alert('Error: '+error.message);return}
   alert('✅ Endabrechnung guardado.');
   document.getElementById('zbon-prev').innerHTML='';
-  document.getElementById('zbon-pdf-inp').value='';
+  document.getElementById('zbon-xlsx-inp').value='';
   await zbonCargarHist();
 }
 
