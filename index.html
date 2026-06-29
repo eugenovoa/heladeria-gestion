@@ -228,7 +228,7 @@ tbody tr:hover td{background:var(--surface2)}
         <div class="nav-lbl" onclick="navGroupToggle('grp-ventas')">Ventas<span class="nav-arr" id="arr-grp-ventas">▼</span></div>
         <div class="nav-group-items" id="grp-ventas">
           <div class="nav-item" data-p="caja"><span class="nav-ico">▧</span>Cierre de caja</div>
-          <div class="nav-item" data-p="contable"><span class="nav-ico">🗂️</span>Descarga de facturas</div>
+          <div class="nav-item" data-p="contable"><span class="nav-ico">🏦</span>Contabilidad</div>
         </div>
       </div>
       <div class="nav-sec">
@@ -399,7 +399,7 @@ function setupNav(){
   if(_rol==='readonly'){['facturas','pagos','gastos','recurrentes','caja','stock','proveedores','productos'].forEach(p=>{const e=document.querySelector(`[data-p="${p}"]`);if(e)e.style.display='none'})}
 }
 
-const _titles={dashboard:'Dashboard',proveedores:'Proveedores',productos:'Productos / Materias primas',facturas:'Facturas de proveedores',pagos:'Pagos a Proveedores','pagos-rec':'Pagos Gastos Recurrentes',vencimientos:'Vencimientos',gastos:'Gastos al contado',recurrentes:'Gastos recurrentes',caja:'Cierre de caja',stock:'Stock','rep-compras':'Compras por período',contable:'Módulo contable','rep-err':'Estado de resultados','rep-flujo':'Flujo de caja','rep-comp':'Comparativo de temporadas',config:'Configuración',produccion:'Producción'};
+const _titles={dashboard:'Dashboard',proveedores:'Proveedores',productos:'Productos / Materias primas',facturas:'Facturas de proveedores',pagos:'Pagos a Proveedores','pagos-rec':'Pagos Gastos Recurrentes',vencimientos:'Vencimientos',gastos:'Gastos al contado',recurrentes:'Gastos recurrentes',caja:'Cierre de caja',stock:'Stock','rep-compras':'Compras por período',contable:'Contabilidad','rep-err':'Estado de resultados','rep-flujo':'Flujo de caja','rep-comp':'Comparativo de temporadas',config:'Configuración',produccion:'Producción'};
 
 
 async function autoMarcarVencidas(){
@@ -2671,58 +2671,291 @@ async function loadErr(){
 // ---- MÓDULO CONTABLE ----
 async function contablePage(){
   loading();
-  const now=new Date(),yr=now.getFullYear(),mo=String(now.getMonth()+1).padStart(2,'0');
-  const meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   document.getElementById('ct').innerHTML=`
-    <div class="card" style="max-width:560px">
-      <div class="card-t">Descarga mensual para contadora</div>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Seleccioná el mes y descargá todos los adjuntos en un ZIP.</p>
-      <div class="fg" style="margin-bottom:16px">
-        <div class="f"><label>Año</label>
-          <select id="cnt-yr" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
-            <option value="2026" ${yr===2026?'selected':''}>2026</option>
-            <option value="2025" ${yr===2025?'selected':''}>2025</option>
-          </select>
-        </div>
-        <div class="f"><label>Mes</label>
-          <select id="cnt-mo" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
-            ${meses.map((m,i)=>`<option value="${String(i+1).padStart(2,'0')}" ${String(i+1).padStart(2,'0')===mo?'selected':''}>${m}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <button class="btn btn-p" style="width:100%" onclick="descargarMes()">⬇ Generar y descargar ZIP</button>
-      <div id="cnt-status" style="margin-top:12px"></div>
-    </div>`;
+    <div class="tabs">
+      <div class="tab active" data-cpt="analisis" onclick="contTab('analisis',this)">📊 Análisis de Facturación</div>
+      <div class="tab" data-cpt="mwst" onclick="contTab('mwst',this)">💶 MwSt</div>
+      <div class="tab" data-cpt="descarga" onclick="contTab('descarga',this)">📥 Descarga de Facturas</div>
+    </div>
+    <div id="cont-ct"></div>`;
+  await contTab('analisis');
 }
 
-async function descargarMes(){
-  const yr=document.getElementById('cnt-yr').value,mo=document.getElementById('cnt-mo').value;
-  const status=document.getElementById('cnt-status'),btn=event.target;
-  btn.disabled=true;btn.textContent='Buscando...';status.innerHTML='';
-  const ultimoDia=new Date(parseInt(yr),parseInt(mo),0).getDate();
-  const desde=`${yr}-${mo}-01`,hasta=`${yr}-${mo}-${String(ultimoDia).padStart(2,'0')}`;
-  const[{data:facts},{data:gastos}]=await Promise.all([
-    sb.from('facturas').select('id,numero_factura,fecha_emision,adjunto_url,proveedores(nombre)').gte('fecha_emision',desde).lte('fecha_emision',hasta).not('adjunto_url','is',null),
-    sb.from('gastos').select('id,concepto,fecha,adjunto_url').gte('fecha',desde).lte('fecha',hasta).not('adjunto_url','is',null)
-  ]);
-  const total=(facts||[]).length+(gastos||[]).length;
-  if(!total){status.innerHTML='<div class="al al-warn">No hay adjuntos para este período.</div>';btn.disabled=false;btn.textContent='⬇ Generar y descargar ZIP';return;}
-  btn.textContent=`Descargando ${total} archivo(s)...`;
-  const script=document.createElement('script');script.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';document.head.appendChild(script);
-  await new Promise(r=>script.onload=r);
-  const zip=new JSZip(),mesesN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const mes=mesesN[parseInt(mo)-1],folder=zip.folder(`${mes}_${yr}`),fF=folder.folder('Facturas'),gF=folder.folder('Gastos');
-  let ok=0,err=0;
-  const dl=async(url,fn,zf)=>{try{let fu=url;const pm=url.match(/object\/(?:sign|public)\/adjuntos\/([^?]+)/);if(pm){const{data}=await sb.storage.from('adjuntos').createSignedUrl(pm[1].split('?')[0],300);if(data?.signedUrl)fu=data.signedUrl;}const r=await fetch(fu);if(!r.ok)throw new Error('HTTP '+r.status);zf.file(fn,await r.blob());ok++;}catch(e){err++;status.innerHTML+=`<div style="font-size:12px;color:var(--red)">✗ ${fn}: ${e.message}</div>`;}};
-  const tasks=[];
-  (facts||[]).forEach(f=>{const ext=(f.adjunto_url?.split('?')[0]?.split('.').pop()||'pdf').toLowerCase();tasks.push(dl(f.adjunto_url,`${f.proveedores?.nombre||'fact'}_${f.numero_factura||f.id}.${ext}`,fF));});
-  (gastos||[]).forEach(g=>{const ext=(g.adjunto_url?.split('?')[0]?.split('.').pop()||'jpg').toLowerCase();tasks.push(dl(g.adjunto_url,`${(g.concepto||'gasto').substring(0,25)}_${g.fecha}.${ext}`,gF));});
-  await Promise.all(tasks);
-  if(!ok){status.innerHTML='<div class="al al-err">No se pudo descargar ningún archivo.</div>';btn.disabled=false;btn.textContent='⬇ Generar y descargar ZIP';return;}
-  const blob=await zip.generateAsync({type:'blob'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`Contabilidad_${mes}_${yr}.zip`;a.click();
-  status.innerHTML=`<div class="al al-ok">✓ ZIP: ${ok} archivo(s)${err?` (${err} con error)`:''}</div>`;
-  btn.disabled=false;btn.textContent='⬇ Generar y descargar ZIP';
+async function contTab(tab,el){
+  if(el){document.querySelectorAll('[data-cpt]').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
+  const ct=document.getElementById('cont-ct');if(!ct)return;
+  if(tab==='analisis')await contAnalisis(ct);
+  else if(tab==='mwst')await contMwst(ct);
+  else contDescarga(ct);
 }
+
+// ── TAB 1: ANÁLISIS DE FACTURACIÓN ──────────────────────────────────────────
+async function contAnalisis(ct){
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const now=new Date();
+  ct.innerHTML=`
+  <div class="g2">
+    <div class="card"><div class="card-t">Cargar Endabrechnung (Z-Bon)</div>
+      <div class="f"><label>Sucursal</label>
+        <select id="zbon-suc" style="${ss}">
+          <option value="eutingen">Eutingen</option>
+          <option value="muhlacker">Mühlacker</option>
+          <option value="konigsbacj">Königsbach</option>
+        </select>
+      </div>
+      <div class="upz" style="margin-top:12px" onclick="document.getElementById('zbon-pdf-inp').click()">
+        <div class="ui">📄</div><div class="ut">Subir PDF del Z-Bon</div>
+        <div class="us">Endabrechnung exportado de la controladora fiscal</div>
+      </div>
+      <input type="file" id="zbon-pdf-inp" accept=".pdf" style="display:none" onchange="zbonLeerPDF(this.files[0])">
+      <div id="zbon-prev" style="margin-top:16px"></div>
+    </div>
+    <div class="card"><div class="card-t">Comparativo Ventas</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
+        <div class="f"><label>Año</label>
+          <input type="number" id="zbon-yr" value="${now.getFullYear()}" style="${ss};width:90px">
+        </div>
+        <div class="f"><label>Período</label>
+          <select id="zbon-per" style="${ss}">
+            <option value="q1">Q1 (Ene–Mar)</option>
+            <option value="q2">Q2 (Abr–Jun)</option>
+            <option value="q3">Q3 (Jul–Sep)</option>
+            <option value="q4">Q4 (Oct–Dic)</option>
+            <option value="mes">Mes específico</option>
+          </select>
+        </div>
+        <div class="f" id="zbon-mes-wrap" style="display:none"><label>Mes</label>
+          <select id="zbon-mes" style="${ss}">
+            ${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((m,i)=>`<option value="${i+1}">${m}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-p" onclick="zbonComparativo()">Calcular</button>
+      </div>
+      <div id="zbon-comp-res"></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:0"><div class="card-t">Historial de Endabrechnungen</div>
+    <div id="zbon-hist-res"><div class="ld">Cargando...</div></div>
+  </div>`;
+  document.getElementById('zbon-per').addEventListener('change',function(){
+    document.getElementById('zbon-mes-wrap').style.display=this.value==='mes'?'':'none';
+  });
+  await zbonCargarHist();
+}
+
+async function zbonLeerPDF(file){
+  if(!file)return;
+  const prev=document.getElementById('zbon-prev');
+  prev.innerHTML='<div class="ld">Leyendo PDF con IA...</div>';
+  if(!IA_HEADERS['x-api-key']){prev.innerHTML='<div class="al al-err">No hay clave API configurada.</div>';return}
+  const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',headers:{...IA_HEADERS,'content-type':'application/json'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1000,messages:[{role:'user',content:[
+        {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
+        {type:'text',text:'Extraé estos datos del Endabrechnung y respondé SOLO con JSON sin markdown:\n{"numero":0,"fecha_emision":"YYYY-MM-DD","fecha_ventas":"YYYY-MM-DD","neto":0,"mwst_monto":0,"mwst_7_neto":0,"mwst_7_monto":0,"mwst_19_neto":0,"mwst_19_monto":0,"bruto":0,"bar":0,"karte":0,"gutscheine":0,"trinkgeld":0}\nUsa punto como decimal. fecha_ventas = fecha_emision por defecto.'}
+      ]}]})
+    });
+    const d=await resp.json();
+    const txt=(d.content||[]).map(x=>x.text||'').join('');
+    const clean=txt.replace(/```json|```/g,'').trim();
+    const parsed=JSON.parse(clean);
+    zbonMostrarVerif(parsed);
+  }catch(e){prev.innerHTML=`<div class="al al-err">Error al leer PDF: ${e.message}. Intentá manualmente.</div>`;}
+}
+
+function zbonMostrarVerif(data){
+  const prev=document.getElementById('zbon-prev');
+  const iSty=`font-size:13px;padding:6px 10px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%`;
+  prev.innerHTML=`<div class="al al-info" style="margin-bottom:12px">Revisá los datos extraídos antes de confirmar.</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+    <div class="f"><label>N° Endabrechnung</label><input id="zv-num" type="number" value="${data.numero||''}" style="${iSty}"></div>
+    <div class="f"><label>Fecha emisión</label><input id="zv-fem" type="date" value="${data.fecha_emision||''}" style="${iSty}"></div>
+    <div class="f"><label>Fecha ventas (editable)</label><input id="zv-fvt" type="date" value="${data.fecha_ventas||data.fecha_emision||''}" style="${iSty}"></div>
+    <div class="f"><label>Neto</label><input id="zv-net" type="number" step="0.01" value="${data.neto||0}" style="${iSty}"></div>
+    <div class="f"><label>MwSt total</label><input id="zv-mwst" type="number" step="0.01" value="${data.mwst_monto||0}" style="${iSty}"></div>
+    <div class="f"><label>Bruto</label><input id="zv-bru" type="number" step="0.01" value="${data.bruto||0}" style="${iSty}"></div>
+    <div class="f"><label>7% — Neto</label><input id="zv-7n" type="number" step="0.01" value="${data.mwst_7_neto||0}" style="${iSty}"></div>
+    <div class="f"><label>7% — MwSt</label><input id="zv-7m" type="number" step="0.01" value="${data.mwst_7_monto||0}" style="${iSty}"></div>
+    <div class="f"><label>19% — Neto</label><input id="zv-19n" type="number" step="0.01" value="${data.mwst_19_neto||0}" style="${iSty}"></div>
+    <div class="f"><label>19% — MwSt</label><input id="zv-19m" type="number" step="0.01" value="${data.mwst_19_monto||0}" style="${iSty}"></div>
+    <div class="f"><label>BAR</label><input id="zv-bar" type="number" step="0.01" value="${data.bar||0}" style="${iSty}"></div>
+    <div class="f"><label>Karte</label><input id="zv-kar" type="number" step="0.01" value="${data.karte||0}" style="${iSty}"></div>
+    <div class="f"><label>Gutscheine</label><input id="zv-gut" type="number" step="0.01" value="${data.gutscheine||0}" style="${iSty}"></div>
+    <div class="f"><label>Trinkgeld</label><input id="zv-trk" type="number" step="0.01" value="${data.trinkgeld||0}" style="${iSty}"></div>
+  </div>
+  <div class="f"><label>Notas (opcional)</label><input id="zv-notas" placeholder="Observaciones..." style="${iSty}"></div>
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button class="btn btn-p" style="flex:1" onclick="zbonGuardar()">✅ Confirmar y guardar</button>
+    <button class="btn btn-g" onclick="document.getElementById('zbon-prev').innerHTML='';document.getElementById('zbon-pdf-inp').value=''">Cancelar</button>
+  </div>`;
+}
+
+async function zbonGuardar(){
+  const suc=document.getElementById('zbon-suc')?.value;
+  const g=id=>parseFloat(document.getElementById(id)?.value)||0;
+  const gs=id=>document.getElementById(id)?.value||'';
+  const row={sucursal:suc,fecha_emision:gs('zv-fem'),fecha_ventas:gs('zv-fvt'),numero:parseInt(gs('zv-num'))||null,
+    neto:g('zv-net'),mwst_monto:g('zv-mwst'),mwst_7_neto:g('zv-7n'),mwst_7_monto:g('zv-7m'),
+    mwst_19_neto:g('zv-19n'),mwst_19_monto:g('zv-19m'),bruto:g('zv-bru'),
+    bar:g('zv-bar'),karte:g('zv-kar'),gutscheine:g('zv-gut'),trinkgeld:g('zv-trk'),
+    estado:'confirmado',notas:gs('zv-notas')};
+  if(!row.fecha_ventas||!row.sucursal){alert('Completá sucursal y fecha.');return}
+  const{error}=await sb.from('endabrechnungen').insert(row);
+  if(error){alert('Error: '+error.message);return}
+  alert('✅ Endabrechnung guardado.');
+  document.getElementById('zbon-prev').innerHTML='';
+  document.getElementById('zbon-pdf-inp').value='';
+  await zbonCargarHist();
+}
+
+async function zbonCargarHist(){
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const{data}=await sb.from('endabrechnungen').select('*').order('fecha_ventas',{ascending:false}).limit(50);
+  const el=document.getElementById('zbon-hist-res');if(!el)return;
+  if(!(data||[]).length){el.innerHTML='<div class="empty">Sin registros cargados aún.</div>';return}
+  el.innerHTML=`<table><thead><tr><th>Fecha ventas</th><th>Sucursal</th><th>N°</th><th>Neto</th><th>MwSt</th><th>Bruto</th><th>BAR</th><th>Karte</th><th></th></tr></thead><tbody>
+  ${data.map(r=>`<tr>
+    <td>${fmtD(r.fecha_ventas)}</td>
+    <td>${bLab[r.sucursal]||r.sucursal}</td>
+    <td style="font-size:12px">${r.numero||'—'}</td>
+    <td>${fmt(r.neto)}</td><td>${fmt(r.mwst_monto)}</td><td>${fmt(r.bruto)}</td>
+    <td style="font-size:12px">${fmt(r.bar)}</td><td style="font-size:12px">${fmt(r.karte)}</td>
+    <td><button class="btn btn-sm btn-d" onclick="zbonEliminar('${r.id}')">✕</button></td>
+  </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function zbonComparativo(){
+  const yr=document.getElementById('zbon-yr')?.value;
+  const per=document.getElementById('zbon-per')?.value;
+  const res=document.getElementById('zbon-comp-res');
+  if(!yr){alert('Ingresá el año.');return}
+  res.innerHTML='<div class="ld">Calculando...</div>';
+  const qRanges={q1:[`${yr}-01-01`,`${yr}-03-31`],q2:[`${yr}-04-01`,`${yr}-06-30`],q3:[`${yr}-07-01`,`${yr}-09-30`],q4:[`${yr}-10-01`,`${yr}-12-31`]};
+  let desde,hasta,label;
+  if(per==='mes'){
+    const m=String(document.getElementById('zbon-mes')?.value||1).padStart(2,'0');
+    const ld=new Date(parseInt(yr),parseInt(m),0).getDate();
+    desde=`${yr}-${m}-01`;hasta=`${yr}-${m}-${ld}`;
+    const mn=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    label=mn[parseInt(m)-1]+' '+yr;
+  }else{
+    [desde,hasta]=qRanges[per]||qRanges.q1;
+    label=per.toUpperCase()+' '+yr;
+  }
+  const[{data:cierres},{data:zbons}]=await Promise.all([
+    sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta,fecha').gte('fecha',desde).lte('fecha',hasta),
+    sb.from('endabrechnungen').select('*').gte('fecha_ventas',desde).lte('fecha_ventas',hasta)
+  ]);
+  const vReales=(cierres||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia||0)+parseFloat(v.ventas_tarjeta||0),0);
+  const vFact=(zbons||[]).reduce((a,z)=>a+parseFloat(z.bruto||0),0);
+  const diff=vFact-vReales;
+  const col=n=>Math.abs(n)<0.01?'var(--text-muted)':n>0?'var(--green)':'var(--red)';
+  res.innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Período: ${label}</div>
+  <table class="stmt">
+    <tr class="ind"><td>Ventas reales (cierres de caja)</td><td>${fmt(vReales)}</td></tr>
+    <tr class="ind"><td>Ventas facturadas (Endabrechnungen)</td><td>${fmt(vFact)}</td></tr>
+    <tr class="tt"><td>Diferencia</td><td style="color:${col(diff)}">${diff>=0?'+':''}${fmt(diff)}</td></tr>
+  </table>
+  ${!(zbons||[]).length?'<div class="al al-warn" style="margin-top:8px">Sin Endabrechnungen cargados para este período.</div>':''}`;
+}
+
+async function zbonEliminar(id){
+  if(!confirm('¿Eliminar este registro?'))return;
+  await sb.from('endabrechnungen').delete().eq('id',id);
+  await zbonCargarHist();
+}
+
+// ── TAB 2: MWST ──────────────────────────────────────────────────────────────
+async function contMwst(ct){
+  const yr=new Date().getFullYear();
+  const mes=new Date().getMonth()+1;
+  const q=mes<=3?'1':mes<=6?'2':mes<=9?'3':'4';
+  ct.innerHTML=`<div class="card"><div class="card-t">Liquidación MwSt por Cuartal</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:4px">
+      <div class="f"><label>Año</label><input type="number" id="mwst-yr" value="${yr}" style="${ss};width:90px"></div>
+      <div class="f"><label>Cuartal</label>
+        <select id="mwst-q" style="${ss}">
+          <option value="1" ${q==='1'?'selected':''}>Q1 — Enero / Febrero / Marzo</option>
+          <option value="2" ${q==='2'?'selected':''}>Q2 — Abril / Mayo / Junio</option>
+          <option value="3" ${q==='3'?'selected':''}>Q3 — Julio / Agosto / Septiembre</option>
+          <option value="4" ${q==='4'?'selected':''}>Q4 — Octubre / Noviembre / Diciembre</option>
+        </select>
+      </div>
+      <button class="btn btn-p" onclick="mwstCalc()">Calcular</button>
+    </div>
+    <div id="mwst-body"></div>
+  </div>`;
+  await mwstCalc();
+}
+
+async function mwstCalc(){
+  const yr=document.getElementById('mwst-yr')?.value;
+  const q=document.getElementById('mwst-q')?.value||'1';
+  const body=document.getElementById('mwst-body');if(!body)return;
+  body.innerHTML='<div class="ld">Calculando...</div>';
+  const qDates={1:[`${yr}-01-01`,`${yr}-03-31`],2:[`${yr}-04-01`,`${yr}-06-30`],3:[`${yr}-07-01`,`${yr}-09-30`],4:[`${yr}-10-01`,`${yr}-12-31`]};
+  const[desde,hasta]=qDates[q];
+  const qL=['Q1 — Ene/Feb/Mar','Q2 — Abr/May/Jun','Q3 — Jul/Ago/Sep','Q4 — Oct/Nov/Dic'][q-1];
+  const[{data:zbons},{data:pagos},{data:gastos}]=await Promise.all([
+    sb.from('endabrechnungen').select('mwst_monto,mwst_7_monto,mwst_19_monto').gte('fecha_ventas',desde).lte('fecha_ventas',hasta),
+    sb.from('pagos').select('factura_id,facturas(mwst_monto)').gte('fecha_pago',desde).lte('fecha_pago',hasta),
+    sb.from('gastos').select('mwst_monto').gte('fecha',desde).lte('fecha',hasta)
+  ]);
+  // IVA Ventas
+  const ivaVentas=(zbons||[]).reduce((a,z)=>a+parseFloat(z.mwst_monto||0),0);
+  // IVA Compras — facturas (deduplicate)
+  const factSeen=new Set();
+  let ivaFact=0;
+  (pagos||[]).forEach(p=>{if(p.factura_id&&!factSeen.has(p.factura_id)){factSeen.add(p.factura_id);ivaFact+=parseFloat(p.facturas?.mwst_monto||0);}});
+  // IVA Compras — gastos
+  const ivaGastos=(gastos||[]).reduce((a,g)=>a+parseFloat(g.mwst_monto||0),0);
+  const ivaCompras=ivaFact+ivaGastos;
+  const saldo=ivaVentas-ivaCompras;
+  const col=n=>n>0?'var(--red)':'var(--green)';
+  const colV=n=>n>0?'var(--text)':'var(--text-muted)';
+  body.innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin:12px 0 16px">Período: ${qL} ${yr} · ${fmtD(desde)} — ${fmtD(hasta)}</div>
+  <table class="stmt">
+    <tr class="hd"><td colspan="2">IVA Ventas (Umsatzsteuer)</td></tr>
+    <tr class="ind"><td>MwSt de Endabrechnungen cargados</td><td style="color:var(--text)">${fmt(ivaVentas)}</td></tr>
+    <tr class="st"><td>Total IVA Ventas</td><td style="color:var(--text);font-weight:700">${fmt(ivaVentas)}</td></tr>
+    <tr class="hd"><td colspan="2">IVA Compras (Vorsteuer)</td></tr>
+    <tr class="ind"><td>Facturas de proveedores pagadas</td><td style="color:var(--green)">(${fmt(ivaFact)})</td></tr>
+    <tr class="ind"><td>Gastos al contado</td><td style="color:var(--green)">(${fmt(ivaGastos)})</td></tr>
+    <tr class="st"><td>Total IVA Compras</td><td style="color:var(--green);font-weight:700">(${fmt(ivaCompras)})</td></tr>
+    <tr class="tt"><td>${saldo>0?'MwSt a pagar':'MwSt a favor'}</td><td style="color:${col(saldo)};font-weight:700">${saldo>0?fmt(saldo):'('+fmt(Math.abs(saldo))+')'}</td></tr>
+  </table>
+  ${!(zbons||[]).length?'<div class="al al-warn" style="margin-top:12px">⚠️ No hay Endabrechnungen cargados para este cuartal — IVA Ventas incompleto.</div>':''}
+  <div class="al al-info" style="margin-top:12px;font-size:12px">⚠️ IVA de gastos recurrentes no incluido (pendiente).</div>`;
+}
+
+// ── TAB 3: DESCARGA DE FACTURAS ───────────────────────────────────────────────
+function contDescarga(ct){
+  const now=new Date(),yr=now.getFullYear(),mo=String(now.getMonth()+1).padStart(2,'0');
+  const meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  ct.innerHTML=`<div class="card" style="max-width:560px">
+    <div class="card-t">Descarga mensual para contadora</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Seleccioná el mes y descargá todos los adjuntos en un ZIP.</p>
+    <div class="fg" style="margin-bottom:16px">
+      <div class="f"><label>Año</label>
+        <select id="cnt-yr" style="${ss}">
+          <option value="2026" ${yr===2026?'selected':''}>2026</option>
+          <option value="2025" ${yr===2025?'selected':''}>2025</option>
+        </select>
+      </div>
+      <div class="f"><label>Mes</label>
+        <select id="cnt-mo" style="${ss}">
+          ${meses.map((m,i)=>`<option value="${String(i+1).padStart(2,'0')}" ${String(i+1).padStart(2,'0')===mo?'selected':''}>${m}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-p" style="width:100%" onclick="descargarMes()">⬇ Generar y descargar ZIP</button>
+    <div id="cnt-status" style="margin-top:12px"></div>
+  </div>`;
+}
+
 
 // ---- CONFIGURACIÓN ----
 async function configPage(){
