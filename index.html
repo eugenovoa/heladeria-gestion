@@ -78,7 +78,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .kpi-l{font-size:11px;font-weight:500;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em}
 .kpi-v{font-size:22px;font-weight:700;letter-spacing:-.5px}
 .kpi-s{font-size:11px;color:var(--text-faint);margin-top:4px}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{font-size:11px;font-weight:600;color:var(--text-muted);text-align:left;padding:0 10px 10px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.04em}
 td{padding:10px;border-bottom:1px solid var(--border);color:var(--text)}
@@ -2710,7 +2710,7 @@ async function contAnalisis(ct){
       <input type="file" id="zbon-pdf-inp" accept=".pdf" style="display:none" onchange="zbonLeerPDF(this.files[0])">
       <div id="zbon-prev" style="margin-top:16px"></div>
     </div>
-    <div class="card"><div class="card-t">Comparativo Ventas Reales vs. Facturadas</div>
+    <div class="card" style="min-width:0"><div class="card-t">Comparativo Ventas Reales vs. Facturadas</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
         <div class="f"><label>Sucursal</label>
           <select id="zbon-comp-suc" style="${ss}">
@@ -2956,9 +2956,9 @@ async function zbonComparativo(){
   </table>
   <div style="display:flex;align-items:center;gap:10px;margin-top:14px;padding:14px;background:var(--surface2);border-radius:var(--r)">
     <div style="font-size:28px;font-weight:800;color:${pctCol}">${pct.toFixed(1)}%</div>
-    <div style="font-size:12px;color:var(--text-muted)">de las ventas reales fueron facturadas.</div>
+    <div style="font-size:14px;font-weight:600;color:var(--text-muted)">de las ventas reales fueron facturadas.</div>
   </div>
-  <div style="overflow-x:auto;max-width:100%;margin-top:16px"><div id="ch-zbon-inner" style="position:relative;height:240px;min-width:100%"><canvas id="ch-zbon-comp"></canvas></div></div>
+  <div style="overflow-x:auto;width:100%;min-width:0;margin-top:16px;border-radius:var(--r);scrollbar-width:thin"><div id="ch-zbon-inner" style="position:relative;height:240px"><canvas id="ch-zbon-comp"></canvas></div></div>
   ${!(zbons||[]).length?'<div class="al al-warn" style="margin-top:8px">Sin Endabrechnungen cargados para este período.</div>':''}`;
   // Chart: daily comparison — estilo Dashboard
   const byDate={};
