@@ -2048,7 +2048,7 @@ async function nuevoCierre(){
     const ef=parseFloat(document.getElementById('nc-ef').value)||0;
     const dif=ef-(ei+ing-eg);
     const{data:cierre,error}=await sb.from('cierres_caja').insert({fecha:f,sucursal_id:document.getElementById('nc-s').value||null,efectivo_inicial:ei,ingresos_dia:ing,ventas_tarjeta:tar,egresos_efectivo:eg,efectivo_final_contado:ef,diferencia_caja:dif,observaciones:document.getElementById('nc-obs').value||null}).select('id').single();
-    if(error){alert(error.message);return}
+    if(error){alert(error.code==='23505'?'⚠️ Ya existe un cierre de caja para esta sucursal y fecha. Editá el cierre existente en lugar de crear uno nuevo.':error.message);return}
     if(tar>0&&cierre?.id){
       const comision=parseFloat((tar*0.0079).toFixed(2));
       const fd=f.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
@@ -2110,7 +2110,7 @@ async function editCierre(id){
       diferencia_caja:parseFloat(document.getElementById('ec-dif').value)||0,
       observaciones:document.getElementById('ec-obs').value||null
     }).eq('id',id);
-    if(error){alert(error.message);return}
+    if(error){alert(error.code==='23505'?'⚠️ Ya existe otro cierre de caja para esa sucursal y fecha.':error.message);return}
     const fd=nuevaFecha.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
     const comision=parseFloat((tar*0.0079).toFixed(2));
     const{data:gastoEx}=await sb.from('gastos').select('id').eq('cierre_caja_id',id).maybeSingle();
@@ -2712,6 +2712,14 @@ async function contAnalisis(ct){
     </div>
     <div class="card"><div class="card-t">Comparativo Ventas Reales vs. Facturadas</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
+        <div class="f"><label>Sucursal</label>
+          <select id="zbon-comp-suc" style="${ss}">
+            <option value="">Todas</option>
+            <option value="eutingen">Eutingen</option>
+            <option value="muhlacker">Mühlacker</option>
+            <option value="konigsbacj">Königsbach</option>
+          </select>
+        </div>
         <div class="f"><label>Modo</label>
           <select id="zbon-modo" style="${ss}" onchange="zbonModoChange()">
             <option value="mes">Por mes</option>
@@ -2840,7 +2848,7 @@ async function zbonGuardar(editId=''){
   }else{
     ({error}=await sb.from('endabrechnungen').insert(row));
   }
-  if(error){alert('Error: '+error.message);return}
+  if(error){alert(error.code==='23505'?'⚠️ Ya existe un Endabrechnung para esta sucursal y fecha de ventas. Editá el registro existente en lugar de crear uno nuevo.':'Error: '+error.message);return}
   alert(editId?'✅ Cambios guardados.':'✅ Endabrechnung guardado.');
   document.getElementById('zbon-prev').innerHTML='';
   const i=document.getElementById('zbon-pdf-inp');if(i)i.value='';
@@ -2908,6 +2916,7 @@ function renderZbonHist(){
 
 async function zbonComparativo(){
   const modo=document.getElementById('zbon-modo')?.value||'mes';
+  const sucF=document.getElementById('zbon-comp-suc')?.value||'';
   const res=document.getElementById('zbon-comp-res');
   let desde,hasta,label;
   if(modo==='mes'){
@@ -2925,17 +2934,21 @@ async function zbonComparativo(){
     label=`${fmtD(desde)} — ${fmtD(hasta)}`;
   }
   res.innerHTML='<div class="ld">Calculando...</div>';
-  const[{data:cierres},{data:zbons}]=await Promise.all([
-    sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta,fecha').gte('fecha',desde).lte('fecha',hasta),
-    sb.from('endabrechnungen').select('*').gte('fecha_ventas',desde).lte('fecha_ventas',hasta).order('fecha_ventas')
-  ]);
+  // Mapear slug de sucursal (eutingen/muhlacker/konigsbacj) a sucursal_id de cierres_caja
+  const slugMatch={eutingen:'euting',muhlacker:'hlacker',konigsbacj:'nigsbach'};
+  const sucIdMatch=sucF?_sucs.find(s=>(s.nombre||'').toLowerCase().includes(slugMatch[sucF]||sucF))?.id:null;
+  let qC=sb.from('cierres_caja').select('ingresos_dia,ventas_tarjeta,fecha').gte('fecha',desde).lte('fecha',hasta);
+  if(sucF&&sucIdMatch)qC=qC.eq('sucursal_id',sucIdMatch);
+  let qZ=sb.from('endabrechnungen').select('*').gte('fecha_ventas',desde).lte('fecha_ventas',hasta).order('fecha_ventas');
+  if(sucF)qZ=qZ.eq('sucursal',sucF);
+  const[{data:cierres},{data:zbons}]=await Promise.all([qC,qZ]);
   const vReales=(cierres||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia||0)+parseFloat(v.ventas_tarjeta||0),0);
   const vFact=(zbons||[]).reduce((a,z)=>a+parseFloat(z.bruto||0),0);
   const diff=vFact-vReales;
   const pct=vReales>0?(vFact/vReales*100):0;
   const col=n=>Math.abs(n)<0.01?'var(--text-muted)':n>0?'var(--green)':'var(--red)';
   const pctCol=pct>=99?'var(--green)':pct>=95?'var(--amber)':'var(--red)';
-  res.innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Período: ${label}</div>
+  res.innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Período: ${label}${sucF?' · '+bLabZ[sucF]:''}</div>
   <table class="stmt">
     <tr class="ind"><td>Ventas reales (cierres de caja)</td><td>${fmt(vReales)}</td></tr>
     <tr class="ind"><td>Ventas facturadas (Endabrechnungen)</td><td>${fmt(vFact)}</td></tr>
@@ -2943,25 +2956,42 @@ async function zbonComparativo(){
   </table>
   <div style="display:flex;align-items:center;gap:10px;margin-top:14px;padding:14px;background:var(--surface2);border-radius:var(--r)">
     <div style="font-size:28px;font-weight:800;color:${pctCol}">${pct.toFixed(1)}%</div>
-    <div style="font-size:12px;color:var(--text-muted)">de las ventas reales tienen Endabrechnung cargado</div>
+    <div style="font-size:12px;color:var(--text-muted)">de las ventas reales fueron facturadas.</div>
   </div>
-  <div style="position:relative;height:220px;margin-top:16px"><canvas id="ch-zbon-comp"></canvas></div>
+  <div style="overflow-x:auto;max-width:100%;margin-top:16px"><div id="ch-zbon-inner" style="position:relative;height:240px;min-width:100%"><canvas id="ch-zbon-comp"></canvas></div></div>
   ${!(zbons||[]).length?'<div class="al al-warn" style="margin-top:8px">Sin Endabrechnungen cargados para este período.</div>':''}`;
-  // Chart: daily comparison
+  // Chart: daily comparison — estilo Dashboard
   const byDate={};
   (cierres||[]).forEach(c=>{byDate[c.fecha]=byDate[c.fecha]||{real:0,fact:0};byDate[c.fecha].real+=parseFloat(c.ingresos_dia||0)+parseFloat(c.ventas_tarjeta||0);});
   (zbons||[]).forEach(z=>{const f=z.fecha_ventas;byDate[f]=byDate[f]||{real:0,fact:0};byDate[f].fact+=parseFloat(z.bruto||0);});
   const dates=Object.keys(byDate).sort();
+  const diasSem=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const labs=dates.map(f=>{const[y,m,d]=f.split('-').map(Number);return `${diasSem[new Date(y,m-1,d).getDay()]} ${d}/${m}`;});
   if(window._chZbonComp)window._chZbonComp.destroy();
   const ctxEl=document.getElementById('ch-zbon-comp');
   if(ctxEl&&dates.length){
+    const minW=Math.max(document.getElementById('ch-zbon-inner')?.offsetWidth||600,dates.length*2*28);
+    if(document.getElementById('ch-zbon-inner'))document.getElementById('ch-zbon-inner').style.minWidth=minW+'px';
     window._chZbonComp=new Chart(ctxEl,{type:'bar',data:{
-      labels:dates.map(d=>fmtD(d)),
+      labels:labs,
       datasets:[
-        {label:'Ventas reales',data:dates.map(d=>byDate[d].real),backgroundColor:'#60a5fa'},
-        {label:'Facturado',data:dates.map(d=>byDate[d].fact),backgroundColor:'#34d399'}
+        {label:'Ventas reales',data:dates.map(d=>byDate[d].real),backgroundColor:'rgba(99,179,237,0.8)',borderRadius:4,borderSkipped:false},
+        {label:'Facturado',data:dates.map(d=>byDate[d].fact),backgroundColor:'rgba(154,205,150,0.8)',borderRadius:4,borderSkipped:false}
       ]
-    },options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true}}}});
+    },options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:true,position:'bottom',labels:{boxWidth:12,padding:16,font:{size:12}}},
+        tooltip:{callbacks:{
+          title:items=>{const f=dates[items[0].dataIndex];const[y,m,d]=f.split('-').map(Number);const dows=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];return dows[new Date(y,m-1,d).getDay()]+' '+d+'/'+m+'/'+y;},
+          label:item=>' '+item.dataset.label+': €'+item.parsed.y.toLocaleString('de-DE',{minimumFractionDigits:2})
+        }}
+      },
+      scales:{
+        x:{grid:{display:false},ticks:{font:{size:11},maxRotation:45}},
+        y:{beginAtZero:true,grid:{color:'rgba(0,0,0,.04)'},ticks:{callback:v=>'€'+v.toLocaleString('de-DE')}}
+      }
+    }});
   }
 }
 
