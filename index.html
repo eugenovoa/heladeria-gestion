@@ -2671,6 +2671,7 @@ async function loadErr(){
 // ---- MÓDULO CONTABLE ----
 async function contablePage(){
   loading();
+  setR(`<button class="btn btn-p" onclick="zbonOpenModal()">📄 Cargar Z-Bon</button>`);
   document.getElementById('ct').innerHTML=`
     <div class="tabs">
       <div class="tab active" data-cpt="analisis" onclick="contTab('analisis',this)">📊 Análisis de Facturación</div>
@@ -2694,51 +2695,34 @@ async function contAnalisis(ct){
   const ss='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
   const now=new Date();
   ct.innerHTML=`
-  <div class="g2">
-    <div class="card"><div class="card-t">Cargar Endabrechnung (Z-Bon)</div>
+  <div class="card" style="min-width:0"><div class="card-t">Comparativo Ventas Reales vs. Facturadas</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
       <div class="f"><label>Sucursal</label>
-        <select id="zbon-suc" style="${ss}">
+        <select id="zbon-comp-suc" style="${ss}">
+          <option value="">Todas</option>
           <option value="eutingen">Eutingen</option>
           <option value="muhlacker">Mühlacker</option>
           <option value="konigsbacj">Königsbach</option>
         </select>
       </div>
-      <div class="upz" style="margin-top:12px" onclick="document.getElementById('zbon-pdf-inp').click()">
-        <div class="ui">📄</div><div class="ut">Subir PDF del Z-Bon</div>
-        <div class="us">Endabrechnung exportado de la controladora fiscal</div>
+      <div class="f"><label>Modo</label>
+        <select id="zbon-modo" style="${ss}" onchange="zbonModoChange()">
+          <option value="mes">Por mes</option>
+          <option value="rango">Rango de fechas</option>
+        </select>
       </div>
-      <input type="file" id="zbon-pdf-inp" accept=".pdf" style="display:none" onchange="zbonLeerPDF(this.files[0])">
-      <div id="zbon-prev" style="margin-top:16px"></div>
-    </div>
-    <div class="card" style="min-width:0"><div class="card-t">Comparativo Ventas Reales vs. Facturadas</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
-        <div class="f"><label>Sucursal</label>
-          <select id="zbon-comp-suc" style="${ss}">
-            <option value="">Todas</option>
-            <option value="eutingen">Eutingen</option>
-            <option value="muhlacker">Mühlacker</option>
-            <option value="konigsbacj">Königsbach</option>
-          </select>
+      <div id="zbon-modo-mes" style="display:flex;gap:10px;align-items:flex-end">
+        <div class="f"><label>Mes</label>
+          <input type="month" id="zbon-mes2" value="${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}" style="${ss}">
         </div>
-        <div class="f"><label>Modo</label>
-          <select id="zbon-modo" style="${ss}" onchange="zbonModoChange()">
-            <option value="mes">Por mes</option>
-            <option value="rango">Rango de fechas</option>
-          </select>
-        </div>
-        <div id="zbon-modo-mes" style="display:flex;gap:10px;align-items:flex-end">
-          <div class="f"><label>Mes</label>
-            <input type="month" id="zbon-mes2" value="${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}" style="${ss}">
-          </div>
-        </div>
-        <div id="zbon-modo-rango" style="display:none;gap:10px;align-items:flex-end">
-          <div class="f"><label>Desde</label><input type="date" id="zbon-desde" style="${ss}"></div>
-          <div class="f"><label>Hasta</label><input type="date" id="zbon-hasta" value="${today()}" style="${ss}"></div>
-        </div>
-        <button class="btn btn-p" onclick="zbonComparativo()">Calcular</button>
       </div>
-      <div id="zbon-comp-res"></div>
+      <div id="zbon-modo-rango" style="display:none;gap:10px;align-items:flex-end">
+        <div class="f"><label>Desde</label><input type="date" id="zbon-desde" style="${ss}"></div>
+        <div class="f"><label>Hasta</label><input type="date" id="zbon-hasta" value="${today()}" style="${ss}"></div>
+      </div>
+      <button class="btn btn-p" onclick="zbonComparativo()">Calcular</button>
     </div>
+    <div id="zbon-comp-res"><div class="ld">Calculando...</div></div>
   </div>
   <div class="card"><div class="card-t">Historial de Endabrechnungen</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
@@ -2750,17 +2734,27 @@ async function contAnalisis(ct){
         <option value="konigsbacj">Königsbach</option>
       </select>
       <input id="zbon-f-mes" type="month" onchange="renderZbonHist()" style="${ss}">
-      <button class="btn btn-sm" onclick="document.getElementById('zbon-buscar').value='';document.getElementById('zbon-f-suc').value='';document.getElementById('zbon-f-mes').value='';renderZbonHist()">✕ Limpiar</button>
+      <button class="btn btn-sm" onclick="document.getElementById('zbon-buscar').value='';document.getElementById('zbon-f-suc').value='';document.getElementById('zbon-f-mes').value='';renderZbonHist()">&#x2715; Limpiar</button>
     </div>
     <div id="zbon-hist-res"><div class="ld">Cargando...</div></div>
   </div>`;
-  await zbonCargarHist();
+  await Promise.all([zbonCargarHist(), zbonComparativo()]);
 }
-
 function zbonModoChange(){
   const modo=document.getElementById('zbon-modo')?.value;
   document.getElementById('zbon-modo-mes').style.display=modo==='mes'?'flex':'none';
   document.getElementById('zbon-modo-rango').style.display=modo==='rango'?'flex':'none';
+}
+
+function zbonOpenModal(editId=null){
+  const ss2='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%';
+  const body='<div class="f" style="margin-bottom:12px"><label>Sucursal</label><select id="zbon-suc" style="'+ss2+'"><option value="eutingen">Eutingen</option><option value="muhlacker">Mühlacker</option><option value="konigsbacj">Königsbach</option></select></div>'
+    +'<div class="upz" onclick="document.getElementById(\'zbon-pdf-inp\').click()">'
+    +'<div class="ui">📄</div><div class="ut">Subir PDF del Z-Bon</div><div class="us">Endabrechnung exportado de la controladora fiscal</div></div>'
+    +'<input type="file" id="zbon-pdf-inp" accept=".pdf" style="display:none" onchange="zbonLeerPDF(this.files[0])">'
+    +'<div id="zbon-prev" style="margin-top:16px"></div>';
+  openMo(editId?'Editar Endabrechnung':'Cargar Endabrechnung (Z-Bon)',body,null,true);
+  if(editId)zbonEditar(editId);
 }
 
 async function zbonLeerPDF(file){
@@ -2805,7 +2799,7 @@ function zbonMostrarVerif(data,editId=null){
   </div>
   <div style="display:flex;gap:8px;margin-top:12px">
     <button class="btn btn-p" style="flex:1" onclick="zbonGuardar('${editId||''}')">✅ ${editId?'Guardar cambios':'Confirmar y guardar'}</button>
-    <button class="btn btn-g" onclick="document.getElementById('zbon-prev').innerHTML='';const i=document.getElementById('zbon-pdf-inp');if(i)i.value=''">Cancelar</button>
+    <button class="btn btn-g" onclick="closeMo()">Cancelar</button>
   </div>`;
 }
 
@@ -2849,10 +2843,9 @@ async function zbonGuardar(editId=''){
     ({error}=await sb.from('endabrechnungen').insert(row));
   }
   if(error){alert(error.code==='23505'?'⚠️ Ya existe un Endabrechnung para esta sucursal y fecha de ventas. Editá el registro existente en lugar de crear uno nuevo.':'Error: '+error.message);return}
+  closeMo();
   alert(editId?'✅ Cambios guardados.':'✅ Endabrechnung guardado.');
-  document.getElementById('zbon-prev').innerHTML='';
-  const i=document.getElementById('zbon-pdf-inp');if(i)i.value='';
-  await zbonCargarHist();
+  await Promise.all([zbonCargarHist(), zbonComparativo()]);
 }
 
 let _zbonData=[];
@@ -2894,7 +2887,7 @@ function renderZbonHist(){
     <td style="font-size:12px">${fmt(r.bar)}</td><td style="font-size:12px">${fmt(r.karte)}</td>
     <td style="font-size:12px">${fmt(r.gutscheine)}</td><td style="font-size:12px">${fmt(r.trinkgeld)}</td>
     <td style="display:flex;gap:4px">
-      <button class="btn btn-sm" onclick="zbonEditar('${r.id}')">Editar</button>
+      <button class="btn btn-sm" onclick="zbonOpenModal('${r.id}')">Editar</button>
       ${r.pdf_url?`<button class="btn btn-sm btn-g" onclick="verAdjunto('${r.pdf_url}','${nombreArch}')">📎</button>`:''}
       <button class="btn btn-sm btn-d" onclick="zbonEliminar('${r.id}')">✕</button>
     </td>
