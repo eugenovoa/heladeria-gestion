@@ -4024,11 +4024,26 @@ window._allInsumos=null;
 async function pdEntInsumos(){
   const ct=document.getElementById('pd-ent-ct');if(!ct)return;
   ct.innerHTML='<div class="ld">Cargando...</div>';
-  if(!window._allInsumos){
-    const{data}=await sb.from('insumos').select('*').eq('activo',true).order('nombre');
-    window._allInsumos=data||[];
-  }
+  const{data}=await sb.from('insumos').select('*').order('categoria,nombre');
+  window._allInsumos=data||[];
   window._remitoItems=[];
+  ct.innerHTML=`
+    <div class="tabs" style="margin-bottom:0">
+      <div class="tab active" data-pit="remito" onclick="pdInsTab('remito',this)">📝 Nuevo Remito</div>
+      <div class="tab" data-pit="catalogo" onclick="pdInsTab('catalogo',this)">📋 Catálogo de Insumos</div>
+    </div>
+    <div id="pd-ins-ct"></div>`;
+  await pdInsTab('remito');
+}
+
+async function pdInsTab(tab,el){
+  if(el){document.querySelectorAll('[data-pit]').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
+  const ct=document.getElementById('pd-ins-ct');if(!ct)return;
+  if(tab==='remito')await pdInsRemito(ct);
+  else await pdCatalogoInsumos(ct);
+}
+
+async function pdInsRemito(ct){
   const{data:bors}=await sb.from('remitos').select('*').eq('estado','borrador').order('created_at',{ascending:false});
   const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
   const ss='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%';
@@ -4068,10 +4083,120 @@ async function pdEntInsumos(){
   pdFiltrarInsumos('');
 }
 
+async function pdCatalogoInsumos(ct){
+  const ss3='font-size:13px;padding:7px 10px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
+  const todos=window._allInsumos||[];
+  const catLabel={descartable:'Descartables',comestible:'Comestibles'};
+  const grupos={descartable:[],comestible:[]};
+  todos.forEach(i=>{if(grupos[i.categoria])grupos[i.categoria].push(i);else grupos.comestible.push(i);});
+  let html=`<div class="card">
+    <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+      Catálogo de Insumos
+      <button class="btn btn-sm btn-p" onclick="pdNuevoInsumo()">+ Nuevo producto</button>
+    </div>
+    <input id="ins-buscar" placeholder="Buscar..." oninput="pdFiltrarCatalogo(this.value)" style="${ss3};width:100%;margin-bottom:14px">`;
+  for(const[cat,items]of Object.entries(grupos)){
+    if(!items.length)continue;
+    html+=`<div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;padding:10px 0 6px">${catLabel[cat]||cat} (${items.length})</div>`;
+    html+=`<table><thead><tr><th>Nombre</th><th>Unidad</th><th>Estado</th><th></th></tr></thead><tbody>`;
+    html+=items.map(i=>`<tr id="cat-row-${i.id}">
+      <td style="font-size:13px">${i.nombre}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${i.unidad}</td>
+      <td>${i.activo?'<span class="bd bd-ok">Activo</span>':'<span class="bd bd-gray">Inactivo</span>'}</td>
+      <td style="display:flex;gap:4px">
+        <button class="btn btn-sm" onclick="pdEditarInsumo('${i.id}')">Editar</button>
+        <button class="btn btn-sm btn-d" onclick="pdEliminarInsumo('${i.id}','${i.nombre.replace(/'/g,"\\'")}')">&#x2715;</button>
+      </td>
+    </tr>`).join('');
+    html+=`</tbody></table>`;
+  }
+  html+=`</div>`;
+  ct.innerHTML=html;
+}
+
+function pdFiltrarCatalogo(q){
+  const term=q.toLowerCase().trim();
+  document.querySelectorAll('[id^="cat-row-"]').forEach(row=>{
+    row.style.display=(!term||row.textContent.toLowerCase().includes(term))?'':'none';
+  });
+}
+
+function pdNuevoInsumo(){
+  const ss='font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
+  openMo('Nuevo producto',`<div class="fg">
+    <div class="f full"><label>Nombre *</label><input id="ins-nom" placeholder="Ej: Cono 4B" style="${ss};width:100%"></div>
+    <div class="f"><label>Unidad *</label>
+      <input id="ins-uni" list="ins-uni-list" placeholder="Ej: CAJA" style="${ss};width:100%">
+      <datalist id="ins-uni-list"><option>CAJA</option><option>PAQUETE</option><option>UNIDAD</option><option>ROLLO</option><option>SCHALE</option><option>TACHO</option><option>CONSULTAR</option></datalist>
+    </div>
+    <div class="f"><label>Categoría</label>
+      <select id="ins-cat" style="${ss};width:100%"><option value="descartable">Descartable</option><option value="comestible">Comestible</option></select>
+    </div>
+  </div>`,
+  async()=>{
+    const nombre=document.getElementById('ins-nom').value.trim().toUpperCase();
+    const unidad=document.getElementById('ins-uni').value.trim().toUpperCase();
+    if(!nombre||!unidad){alert('Completá nombre y unidad.');return}
+    const{error}=await sb.from('insumos').insert({nombre,unidad,categoria:document.getElementById('ins-cat').value,activo:true});
+    if(error){alert('Error: '+error.message);return}
+    closeMo();
+    const{data}=await sb.from('insumos').select('*').order('categoria,nombre');
+    window._allInsumos=data||[];
+    const el=document.querySelector('[data-pit="catalogo"]');if(el)pdInsTab('catalogo',el);
+  });
+}
+
+async function pdEditarInsumo(id){
+  const ins=(window._allInsumos||[]).find(i=>i.id===id);if(!ins)return;
+  const ss='font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
+  openMo('Editar producto',`<div class="fg">
+    <div class="f full"><label>Nombre *</label><input id="ins-nom" value="${ins.nombre}" style="${ss};width:100%"></div>
+    <div class="f"><label>Unidad *</label>
+      <input id="ins-uni" list="ins-uni-list2" value="${ins.unidad}" style="${ss};width:100%">
+      <datalist id="ins-uni-list2"><option>CAJA</option><option>PAQUETE</option><option>UNIDAD</option><option>ROLLO</option><option>SCHALE</option><option>TACHO</option><option>CONSULTAR</option></datalist>
+    </div>
+    <div class="f"><label>Categoría</label>
+      <select id="ins-cat" style="${ss};width:100%">
+        <option value="descartable" ${ins.categoria==='descartable'?'selected':''}>Descartable</option>
+        <option value="comestible" ${ins.categoria==='comestible'?'selected':''}>Comestible</option>
+      </select>
+    </div>
+    <div class="f"><label>Estado</label>
+      <select id="ins-act" style="${ss};width:100%">
+        <option value="true" ${ins.activo?'selected':''}>Activo</option>
+        <option value="false" ${!ins.activo?'selected':''}>Inactivo</option>
+      </select>
+    </div>
+  </div>`,
+  async()=>{
+    const nombre=document.getElementById('ins-nom').value.trim().toUpperCase();
+    const unidad=document.getElementById('ins-uni').value.trim().toUpperCase();
+    if(!nombre||!unidad){alert('Completá nombre y unidad.');return}
+    const{error}=await sb.from('insumos').update({nombre,unidad,categoria:document.getElementById('ins-cat').value,activo:document.getElementById('ins-act').value==='true'}).eq('id',id);
+    if(error){alert('Error: '+error.message);return}
+    closeMo();
+    const{data}=await sb.from('insumos').select('*').order('categoria,nombre');
+    window._allInsumos=data||[];
+    const el=document.querySelector('[data-pit="catalogo"]');if(el)pdInsTab('catalogo',el);
+  });
+}
+
+async function pdEliminarInsumo(id,nombre){
+  if(!confirm(`¿Eliminar "${nombre}"?`))return;
+  const{data:usos}=await sb.from('remito_items').select('id').eq('insumo_id',id).limit(1);
+  if(usos?.length){alert(`No se puede eliminar "${nombre}" — tiene entregas registradas.\n\nUsá Editar → marcalo como Inactivo para que no aparezca en nuevos remitos.`);return}
+  const{error}=await sb.from('insumos').delete().eq('id',id);
+  if(error){alert('Error: '+error.message);return}
+  const{data}=await sb.from('insumos').select('*').order('categoria,nombre');
+  window._allInsumos=data||[];
+  const el=document.querySelector('[data-pit="catalogo"]');if(el)pdInsTab('catalogo',el);
+}
+
+
 function pdFiltrarInsumos(q){
   const lista=document.getElementById('rem-lista');if(!lista)return;
   const term=q.toLowerCase().trim();
-  const items=(window._allInsumos||[]).filter(i=>!term||i.nombre.toLowerCase().includes(term));
+  const items=(window._allInsumos||[]).filter(i=>i.activo&&(!term||i.nombre.toLowerCase().includes(term)));
   if(!items.length){lista.innerHTML='<div class="empty" style="padding:16px">Sin resultados</div>';return}
   lista.innerHTML=items.map(i=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
