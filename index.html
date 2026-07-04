@@ -1073,7 +1073,7 @@ async function guardarFactIA(){
   if(error){alert(error.message);return}
   if(iaLineas.length&&fact?.id)await sb.from('lineas_factura').insert(iaLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.monto*mult,mwst_porcentaje:l.mwst,mwst_monto:0})));
   const adjFile=document.getElementById('fi-fadj')?.files[0];
-  if(adjFile&&fact?.id){const yr=fe.substring(0,4),mo=fe.substring(5,7);const pInfo=(window._iaProvs||[]).find(p=>p.id===pv);const nroFact=document.getElementById('ia-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(adjFile,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,nombreArch);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
+  if(adjFile&&fact?.id){const yr=fe.substring(0,4),mo=fe.substring(5,7);const pInfo=(window._iaProvs||[]).find(p=>p.id===pv);const nroFact=document.getElementById('ia-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(adjFile,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,`${nombreArch}-${fact.id.substring(0,8)}`);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
   closeMo();facturas();
 }
 
@@ -1122,7 +1122,7 @@ async function newFactMan(){
     if(error){alert(error.message);return}
     if(fmLineas.length&&fact?.id)await sb.from('lineas_factura').insert(fmLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.monto,mwst_porcentaje:l.mwst,mwst_monto:0})));
     const mAdj=document.getElementById('fi-madj')?.files[0];
-    if(mAdj&&fact?.id){const yr=fe.substring(0,4);const mo=fe.substring(5,7);const{data:pInfo}=await sb.from('proveedores').select('nombre').eq('id',pv).single();const nroFact=document.getElementById('fm-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(mAdj,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,nombreArch,fe);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
+    if(mAdj&&fact?.id){const yr=fe.substring(0,4);const mo=fe.substring(5,7);const{data:pInfo}=await sb.from('proveedores').select('nombre').eq('id',pv).single();const nroFact=document.getElementById('fm-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(mAdj,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,`${nombreArch}-${fact.id.substring(0,8)}`,fe);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
     closeMo();facturas();
   });
   setTimeout(()=>updS('fm'),50);
@@ -1825,7 +1825,7 @@ async function newGastoIA(){
     const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:giTot,monto_neto:giNeto,mwst_porcentaje:giMp,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,medio_pago:document.getElementById('gi-mp2').value||'efectivo',lineas_json:JSON.stringify(giLineas),numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gi-adj').files[0];
-    if(file&&row?.id){const concepto=document.getElementById('gi-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,nombreArch,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
+    if(file&&row?.id){const concepto=document.getElementById('gi-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`${nombreArch}-${row.id.substring(0,8)}`,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
     closeMo();gastos();
   });
   document.getElementById('mo-save').style.display='none';
@@ -1895,7 +1895,7 @@ async function newGastoMan(){
     const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,numero_documento:document.getElementById('gm-nd')?.value||null,categoria_id:document.getElementById('gm-cat').value||null,monto:gmTot,monto_neto:gmNeto,mwst_porcentaje:gmMp,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,medio_pago:document.getElementById('gm-mp').value||'efectivo',notas:document.getElementById('gm-no').value,lineas_json:JSON.stringify(gmLineas)}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gm-adj').files[0];
-    if(file&&row?.id){const concepto=document.getElementById('gm-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,nombreArch,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
+    if(file&&row?.id){const concepto=document.getElementById('gm-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`${nombreArch}-${row.id.substring(0,8)}`,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
     closeMo();gastos();
   });
   setTimeout(()=>updS('gm'),50);
@@ -1968,7 +1968,7 @@ async function editGasto(id){
     if(error){alert(error.message);return}
     const egFile=document.getElementById('eg-adj')?.files[0];
     const egFecha=document.getElementById('eg-d').value;
-    if(egFile){const egConcepto=document.getElementById('eg-c').value||'gasto';const fd=egFecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${egConcepto} - ${fechaFmt}`;const url=await uploadAdjunto(egFile,`gastos/${egFecha.substring(0,4)}`,nombreArch,egFecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
+    if(egFile){const egConcepto=document.getElementById('eg-c').value||'gasto';const fd=egFecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${egConcepto} - ${fechaFmt}`;const url=await uploadAdjunto(egFile,`gastos/${egFecha.substring(0,4)}`,`${nombreArch}-${id.substring(0,8)}`,egFecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
     closeMo();gastos();
   });
   setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id;updS('eg');},50);
