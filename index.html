@@ -1388,6 +1388,7 @@ async function newRec(){
   openMo('Nuevo gasto recurrente',`<div class="fg">
     <div class="f full"><label>Concepto *</label><input id="rc-con" placeholder="Ej: Alquiler local Eutingen"></div>
     <div class="f"><label>Monto (€) *</label><input id="rc-mon" type="number" step="0.01" value="0"></div>
+    <div class="f"><label>MwSt (€) por período</label><input id="rc-mwst" type="number" step="0.01" value="0" placeholder="0 si no aplica"></div>
     <div class="f"><label>Frecuencia</label><select id="rc-frq" style="${ss}" oninput="rcPreview()"><option value="mensual">Mensual</option><option value="bimestral">Bimestral</option><option value="trimestral">Trimestral</option><option value="anual">Anual</option></select></div>
     <div class="f"><label>Día del mes *</label><input id="rc-dia" type="number" min="1" max="31" value="1" oninput="rcPreview()"></div>
     <div class="f"><label>Categoría</label><select id="rc-cat" style="${ss}"><option value="">— Sin categoría —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
@@ -1411,6 +1412,7 @@ async function newRec(){
     const dia=parseInt(document.getElementById('rc-dia').value)||1;
     const{data:rec,error}=await sb.from('gastos_recurrentes').insert({
       concepto,monto,frecuencia:frq,dia_del_mes:dia,
+      mwst_monto:parseFloat(document.getElementById('rc-mwst').value)||0,
       categoria_id:document.getElementById('rc-cat').value||null,
       sucursal_id:document.getElementById('rc-suc').value||null,
       fecha_inicio:fi,fecha_fin:ff,activo:true,
@@ -1441,6 +1443,7 @@ async function editRec(id){
   openMo('Editar gasto recurrente',`<div class="fg">
     <div class="f full"><label>Concepto *</label><input id="rc-con" value="${r.concepto||''}"></div>
     <div class="f"><label>Monto (€) *</label><input id="rc-mon" type="number" step="0.01" value="${r.monto||0}"></div>
+    <div class="f"><label>MwSt (€) por período</label><input id="rc-mwst" type="number" step="0.01" value="${r.mwst_monto||0}" placeholder="0 si no aplica"></div>
     <div class="f"><label>Frecuencia</label><select id="rc-frq" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="mensual" ${r.frecuencia==='mensual'?'selected':''}>Mensual</option><option value="bimestral" ${r.frecuencia==='bimestral'?'selected':''}>Bimestral</option><option value="trimestral" ${r.frecuencia==='trimestral'?'selected':''}>Trimestral</option><option value="anual" ${r.frecuencia==='anual'?'selected':''}>Anual</option></select></div>
     <div class="f"><label>Día del mes *</label><input id="rc-dia" type="number" min="1" max="31" value="${r.dia_del_mes||1}"></div>
     <div class="f"><label>Categoría</label><select id="rc-cat"><option value="">— Sin categoría —</option>${(cats||[]).map(c=>`<option value="${c.id}" ${c.id===r.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
@@ -1458,6 +1461,7 @@ async function editRec(id){
     const{error}=await sb.from('gastos_recurrentes').update({
       concepto,
       monto:nuevoMonto,
+      mwst_monto:parseFloat(document.getElementById('rc-mwst').value)||0,
       frecuencia:document.getElementById('rc-frq').value,
       dia_del_mes:parseInt(document.getElementById('rc-dia').value)||1,
       categoria_id:document.getElementById('rc-cat').value||null,
@@ -3032,10 +3036,11 @@ async function mwstCalc(){
   const qDates={1:[`${yr}-01-01`,`${yr}-03-31`],2:[`${yr}-04-01`,`${yr}-06-30`],3:[`${yr}-07-01`,`${yr}-09-30`],4:[`${yr}-10-01`,`${yr}-12-31`]};
   const[desde,hasta]=qDates[q];
   const qL=['Q1 — Ene/Feb/Mar','Q2 — Abr/May/Jun','Q3 — Jul/Ago/Sep','Q4 — Oct/Nov/Dic'][q-1];
-  const[{data:zbons},{data:pagos},{data:gastos}]=await Promise.all([
+  const[{data:zbons},{data:pagos},{data:gastos},{data:recPag}]=await Promise.all([
     sb.from('endabrechnungen').select('mwst_monto,mwst_7_monto,mwst_19_monto').gte('fecha_ventas',desde).lte('fecha_ventas',hasta),
     sb.from('pagos').select('factura_id,facturas(mwst_monto)').gte('fecha_pago',desde).lte('fecha_pago',hasta),
-    sb.from('gastos').select('mwst_monto').gte('fecha',desde).lte('fecha',hasta)
+    sb.from('gastos').select('mwst_monto').gte('fecha',desde).lte('fecha',hasta),
+    sb.from('vencimientos_recurrentes').select('gastos_recurrentes(mwst_monto)').eq('estado','pagado').gte('fecha_pago',desde).lte('fecha_pago',hasta)
   ]);
   // IVA Ventas
   const ivaVentas=(zbons||[]).reduce((a,z)=>a+parseFloat(z.mwst_monto||0),0);
@@ -3043,12 +3048,13 @@ async function mwstCalc(){
   const factSeen=new Set();
   let ivaFact=0;
   (pagos||[]).forEach(p=>{if(p.factura_id&&!factSeen.has(p.factura_id)){factSeen.add(p.factura_id);ivaFact+=parseFloat(p.facturas?.mwst_monto||0);}});
-  // IVA Compras — gastos
+  // IVA Compras — gastos al contado
   const ivaGastos=(gastos||[]).reduce((a,g)=>a+parseFloat(g.mwst_monto||0),0);
-  const ivaCompras=ivaFact+ivaGastos;
+  // IVA Compras — recurrentes pagados en el período
+  const ivaRec=(recPag||[]).reduce((a,v)=>a+parseFloat(v.gastos_recurrentes?.mwst_monto||0),0);
+  const ivaCompras=ivaFact+ivaGastos+ivaRec;
   const saldo=ivaVentas-ivaCompras;
   const col=n=>n>0?'var(--red)':'var(--green)';
-  const colV=n=>n>0?'var(--text)':'var(--text-muted)';
   body.innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin:12px 0 16px">Período: ${qL} ${yr} · ${fmtD(desde)} — ${fmtD(hasta)}</div>
   <table class="stmt">
     <tr class="hd"><td colspan="2">IVA Ventas (Umsatzsteuer)</td></tr>
@@ -3057,11 +3063,11 @@ async function mwstCalc(){
     <tr class="hd"><td colspan="2">IVA Compras (Vorsteuer)</td></tr>
     <tr class="ind"><td>Facturas de proveedores pagadas</td><td style="color:var(--green)">(${fmt(ivaFact)})</td></tr>
     <tr class="ind"><td>Gastos al contado</td><td style="color:var(--green)">(${fmt(ivaGastos)})</td></tr>
+    <tr class="ind"><td>Gastos recurrentes</td><td style="color:var(--green)">(${fmt(ivaRec)})</td></tr>
     <tr class="st"><td>Total IVA Compras</td><td style="color:var(--green);font-weight:700">(${fmt(ivaCompras)})</td></tr>
     <tr class="tt"><td>${saldo>0?'MwSt a pagar':'MwSt a favor'}</td><td style="color:${col(saldo)};font-weight:700">${saldo>0?fmt(saldo):'('+fmt(Math.abs(saldo))+')'}</td></tr>
   </table>
-  ${!(zbons||[]).length?'<div class="al al-warn" style="margin-top:12px">⚠️ No hay Endabrechnungen cargados para este cuartal — IVA Ventas incompleto.</div>':''}
-  <div class="al al-info" style="margin-top:12px;font-size:12px">⚠️ IVA de gastos recurrentes no incluido (pendiente).</div>`;
+  ${!(zbons||[]).length?'<div class="al al-warn" style="margin-top:12px">⚠️ No hay Endabrechnungen cargados para este cuartal — IVA Ventas incompleto.</div>':''}`;
 }
 
 // ── TAB 3: DESCARGA DE FACTURAS ───────────────────────────────────────────────
