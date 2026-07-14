@@ -1073,7 +1073,7 @@ async function guardarFactIA(){
   if(error){alert(error.message);return}
   if(iaLineas.length&&fact?.id)await sb.from('lineas_factura').insert(iaLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.monto*mult,mwst_porcentaje:l.mwst,mwst_monto:0})));
   const adjFile=document.getElementById('fi-fadj')?.files[0];
-  if(adjFile&&fact?.id){const yr=fe.substring(0,4),mo=fe.substring(5,7);const pInfo=(window._iaProvs||[]).find(p=>p.id===pv);const nroFact=document.getElementById('ia-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(adjFile,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,`${nombreArch}-${fact.id.substring(0,8)}`);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
+  if(adjFile&&fact?.id){const yr=fe.substring(0,4),mo=fe.substring(5,7);const pInfo=(window._iaProvs||[]).find(p=>p.id===pv);const nroFact=document.getElementById('ia-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(adjFile,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,nombreArch);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
   closeMo();facturas();
 }
 
@@ -1122,7 +1122,7 @@ async function newFactMan(){
     if(error){alert(error.message);return}
     if(fmLineas.length&&fact?.id)await sb.from('lineas_factura').insert(fmLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.monto,mwst_porcentaje:l.mwst,mwst_monto:0})));
     const mAdj=document.getElementById('fi-madj')?.files[0];
-    if(mAdj&&fact?.id){const yr=fe.substring(0,4);const mo=fe.substring(5,7);const{data:pInfo}=await sb.from('proveedores').select('nombre').eq('id',pv).single();const nroFact=document.getElementById('fm-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(mAdj,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,`${nombreArch}-${fact.id.substring(0,8)}`,fe);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
+    if(mAdj&&fact?.id){const yr=fe.substring(0,4);const mo=fe.substring(5,7);const{data:pInfo}=await sb.from('proveedores').select('nombre').eq('id',pv).single();const nroFact=document.getElementById('fm-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(mAdj,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,nombreArch,fe);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
     closeMo();facturas();
   });
   setTimeout(()=>updS('fm'),50);
@@ -1825,7 +1825,7 @@ async function newGastoIA(){
     const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:giTot,monto_neto:giNeto,mwst_porcentaje:giMp,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,medio_pago:document.getElementById('gi-mp2').value||'efectivo',lineas_json:JSON.stringify(giLineas),numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gi-adj').files[0];
-    if(file&&row?.id){const concepto=document.getElementById('gi-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`${nombreArch}-${row.id.substring(0,8)}`,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
+    if(file&&row?.id){const concepto=document.getElementById('gi-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,nombreArch,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
     closeMo();gastos();
   });
   document.getElementById('mo-save').style.display='none';
@@ -1895,7 +1895,7 @@ async function newGastoMan(){
     const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gm-c').value,numero_documento:document.getElementById('gm-nd')?.value||null,categoria_id:document.getElementById('gm-cat').value||null,monto:gmTot,monto_neto:gmNeto,mwst_porcentaje:gmMp,mwst_monto:gmMwst,sucursal_id:document.getElementById('gm-s').value||null,medio_pago:document.getElementById('gm-mp').value||'efectivo',notas:document.getElementById('gm-no').value,lineas_json:JSON.stringify(gmLineas)}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gm-adj').files[0];
-    if(file&&row?.id){const concepto=document.getElementById('gm-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`${nombreArch}-${row.id.substring(0,8)}`,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
+    if(file&&row?.id){const concepto=document.getElementById('gm-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,nombreArch,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
     closeMo();gastos();
   });
   setTimeout(()=>updS('gm'),50);
@@ -1968,7 +1968,7 @@ async function editGasto(id){
     if(error){alert(error.message);return}
     const egFile=document.getElementById('eg-adj')?.files[0];
     const egFecha=document.getElementById('eg-d').value;
-    if(egFile){const egConcepto=document.getElementById('eg-c').value||'gasto';const fd=egFecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${egConcepto} - ${fechaFmt}`;const url=await uploadAdjunto(egFile,`gastos/${egFecha.substring(0,4)}`,`${nombreArch}-${id.substring(0,8)}`,egFecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
+    if(egFile){const egConcepto=document.getElementById('eg-c').value||'gasto';const fd=egFecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${egConcepto} - ${fechaFmt}`;const url=await uploadAdjunto(egFile,`gastos/${egFecha.substring(0,4)}`,nombreArch,egFecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
     closeMo();gastos();
   });
   setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id;updS('eg');},50);
@@ -2430,11 +2430,7 @@ async function recurrentes(){
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="display:flex;gap:16px;align-items:baseline;text-align:right">
-            ${r.mwst_monto>0?`<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Netto</div><div style="font-size:13px;font-weight:600">${fmt(r.monto-(r.mwst_monto||0))}</div></div>
-            <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">MwSt</div><div style="font-size:13px;font-weight:600">${fmt(r.mwst_monto)}</div></div>`:''}
-            <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">${r.mwst_monto>0?'Total':''}</div><div style="font-size:16px;font-weight:700">${fmt(r.monto)}</div></div>
-          </div>
+          <div style="font-size:16px;font-weight:700">${fmt(r.monto)}</div>
           <button class="btn btn-sm" onclick="editRec('${r.id}')">Editar</button>
           ${btnGen}
           <button class="btn btn-sm btn-d" onclick="delRec('${r.id}')">&#x2715;</button>
@@ -3785,31 +3781,52 @@ async function pdGenerarOrden(){
     if(totEfectivo<min)items.push({pos:p,sab:act.prod_sabores,stock:tot,comprometido,totEfectivo,min,prod:min-totEfectivo});
   });
   if(!items.length){alert('✅ Stock al día. No hay nada que producir.');return}
+  // Dividir en tiradas de máx 2 sorbeteras
+  const filas=[];
+  items.forEach(it=>{
+    let restante=it.prod;
+    while(restante>0){
+      const cant=Math.min(2,restante);
+      filas.push({...it,prod:cant,_orig:it.prod});
+      restante-=cant;
+    }
+  });
   const tod=today();
   const borrInfo=hasBorrs?`<div class="al al-warn" style="margin-bottom:12px">⚠️ Se encontraron <strong>${(borsEnt||[]).length} borrador(es) de entrega</strong> pendientes. Las cantidades ya descuentan los helados comprometidos en esas entregas.</div>`:'';
   const extraCols=hasBorrs?'<th>En entregas</th><th>Efectivo</th>':'';
   openMo('Nueva Orden de Producción',`
     ${borrInfo}
-    <div class="al al-info" style="margin-bottom:12px">Revisá las cantidades. Podés editar el campo "Producir" antes de guardar.</div>
-    <div style="overflow-x:auto"><table><thead><tr><th>Pos.</th><th>Sabor activo</th><th>Stock</th>${extraCols}<th>Mínimo</th><th>Producir</th></tr></thead>
+    <div class="al al-info" style="margin-bottom:12px">Cada fila = 1 tirada (máx. 2 sorbeteras). Podés editar o borrar filas antes de guardar.</div>
+    <div style="overflow-x:auto"><table><thead><tr><th>Pos.</th><th>Sabor activo</th><th>Stock</th>${extraCols}<th>Mínimo</th><th>Tirada</th><th></th></tr></thead>
     <tbody id="pd-ord-items">
-    ${items.map((it,i)=>`<tr>
+    ${filas.map((it,i)=>`<tr id="pd-row-${i}">
       <td><strong>${it.pos.numero}</strong></td>
       <td>${it.sab.nombre}</td>
-      <td>${it.stock} sorb.</td>
-      ${hasBorrs?`<td style="color:var(--amber);font-size:12px">−${it.comprometido}</td><td style="font-weight:600">${it.totEfectivo} sorb.</td>`:''}
-      <td>${it.min} sorb.</td>
-      <td><input type="number" min="0" value="${it.prod}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-i="${i}"></td>
+      <td style="font-size:12px">${it.stock} sorb.</td>
+      ${hasBorrs?`<td style="color:var(--amber);font-size:12px">−${it.comprometido}</td><td style="font-weight:600;font-size:12px">${it.totEfectivo} sorb.</td>`:''}
+      <td style="font-size:12px">${it.min} sorb.</td>
+      <td><input type="number" min="0" max="2" value="${it.prod}" style="width:55px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-i="${i}" data-pos="${it.pos.id}"></td>
+      <td><button onclick="document.getElementById('pd-row-${i}').remove()" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 6px" title="Eliminar tirada">✕</button></td>
     </tr>`).join('')}
     </tbody></table></div>
     <div class="f" style="margin-top:14px"><label>Notas (opcional)</label><textarea id="pd-ord-n" style="height:50px;font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);width:100%" placeholder="Observaciones..."></textarea></div>`,
   async()=>{
     const inps=document.querySelectorAll('#pd-ord-items input[data-i]');
-    const finals=items.map((it,i)=>({...it,pf:parseInt(inps[i]?.value)||0})).filter(it=>it.pf>0);
+    // Agrupar tiradas por posición y sumar
+    const byPos={};
+    inps.forEach(inp=>{
+      const i=parseInt(inp.dataset.i);
+      const posId=inp.dataset.pos;
+      const qty=Math.min(2,parseInt(inp.value)||0);
+      if(qty<=0)return;
+      if(!byPos[posId]){byPos[posId]={...filas[i],pf:0};}
+      byPos[posId].pf+=qty;
+    });
+    const finals=Object.values(byPos).filter(it=>it.pf>0);
     if(!finals.length){alert('Sin cantidades mayores a 0.');return}
     const{data:ord,error}=await sb.from('prod_ordenes_produccion').insert({fecha:tod,estado:'borrador',notas:document.getElementById('pd-ord-n').value}).select().single();
     if(error){alert('Error: '+error.message);return}
-    await sb.from('prod_ord_prod_items').insert(finals.map(it=>({orden_id:ord.id,posicion_id:it.pos.id,sabor_id:it.sab.id,stock_antes:it.stock,cantidad_sugerida:it.prod,cantidad_confirmada:it.pf})));
+    await sb.from('prod_ord_prod_items').insert(finals.map(it=>({orden_id:ord.id,posicion_id:it.pos.id,sabor_id:it.sab.id,stock_antes:it.stock,cantidad_sugerida:it._orig,cantidad_confirmada:it.pf})));
     closeMo();pdVerOrdenProd(ord.id);
   });
 }
