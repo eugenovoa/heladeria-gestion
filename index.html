@@ -1073,7 +1073,7 @@ async function guardarFactIA(){
   if(error){alert(error.message);return}
   if(iaLineas.length&&fact?.id)await sb.from('lineas_factura').insert(iaLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.monto*mult,mwst_porcentaje:l.mwst,mwst_monto:0})));
   const adjFile=document.getElementById('fi-fadj')?.files[0];
-  if(adjFile&&fact?.id){const yr=fe.substring(0,4),mo=fe.substring(5,7);const pInfo=(window._iaProvs||[]).find(p=>p.id===pv);const nroFact=document.getElementById('ia-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(adjFile,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,nombreArch);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
+  if(adjFile&&fact?.id){const yr=fe.substring(0,4),mo=fe.substring(5,7);const pInfo=(window._iaProvs||[]).find(p=>p.id===pv);const nroFact=document.getElementById('ia-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(adjFile,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,`${nombreArch}-${fact.id.substring(0,8)}`);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
   closeMo();facturas();
 }
 
@@ -1122,7 +1122,7 @@ async function newFactMan(){
     if(error){alert(error.message);return}
     if(fmLineas.length&&fact?.id)await sb.from('lineas_factura').insert(fmLineas.map(l=>({factura_id:fact.id,descripcion:l.desc,cantidad:l.qty,monto_neto:l.monto,mwst_porcentaje:l.mwst,mwst_monto:0})));
     const mAdj=document.getElementById('fi-madj')?.files[0];
-    if(mAdj&&fact?.id){const yr=fe.substring(0,4);const mo=fe.substring(5,7);const{data:pInfo}=await sb.from('proveedores').select('nombre').eq('id',pv).single();const nroFact=document.getElementById('fm-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(mAdj,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,nombreArch,fe);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
+    if(mAdj&&fact?.id){const yr=fe.substring(0,4);const mo=fe.substring(5,7);const{data:pInfo}=await sb.from('proveedores').select('nombre').eq('id',pv).single();const nroFact=document.getElementById('fm-nm')?.value||fact.id;const nombreArch=`${pInfo?.nombre||'varios'} - ${nroFact}`;const url=await uploadAdjunto(mAdj,`facturas/${yr}/${mo}/${pInfo?.nombre||'varios'}`,`${nombreArch}-${fact.id.substring(0,8)}`,fe);if(url)await sb.from('facturas').update({adjunto_url:url}).eq('id',fact.id)}
     closeMo();facturas();
   });
   setTimeout(()=>updS('fm'),50);
@@ -1388,6 +1388,7 @@ async function newRec(){
   openMo('Nuevo gasto recurrente',`<div class="fg">
     <div class="f full"><label>Concepto *</label><input id="rc-con" placeholder="Ej: Alquiler local Eutingen"></div>
     <div class="f"><label>Monto (€) *</label><input id="rc-mon" type="number" step="0.01" value="0"></div>
+    <div class="f"><label>MwSt (€) por período</label><input id="rc-mwst" type="number" step="0.01" value="0" placeholder="0 si no aplica"></div>
     <div class="f"><label>Frecuencia</label><select id="rc-frq" style="${ss}" oninput="rcPreview()"><option value="mensual">Mensual</option><option value="bimestral">Bimestral</option><option value="trimestral">Trimestral</option><option value="anual">Anual</option></select></div>
     <div class="f"><label>Día del mes *</label><input id="rc-dia" type="number" min="1" max="31" value="1" oninput="rcPreview()"></div>
     <div class="f"><label>Categoría</label><select id="rc-cat" style="${ss}"><option value="">— Sin categoría —</option>${(cats||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
@@ -1410,7 +1411,7 @@ async function newRec(){
     const frq=document.getElementById('rc-frq').value;
     const dia=parseInt(document.getElementById('rc-dia').value)||1;
     const{data:rec,error}=await sb.from('gastos_recurrentes').insert({
-      concepto,monto,frecuencia:frq,dia_del_mes:dia,
+      concepto,monto,mwst_monto:parseFloat(document.getElementById('rc-mwst').value)||0,frecuencia:frq,dia_del_mes:dia,
       categoria_id:document.getElementById('rc-cat').value||null,
       sucursal_id:document.getElementById('rc-suc').value||null,
       fecha_inicio:fi,fecha_fin:ff,activo:true,
@@ -1441,6 +1442,7 @@ async function editRec(id){
   openMo('Editar gasto recurrente',`<div class="fg">
     <div class="f full"><label>Concepto *</label><input id="rc-con" value="${r.concepto||''}"></div>
     <div class="f"><label>Monto (€) *</label><input id="rc-mon" type="number" step="0.01" value="${r.monto||0}"></div>
+    <div class="f"><label>MwSt (€) por período</label><input id="rc-mwst" type="number" step="0.01" value="${r.mwst_monto||0}" placeholder="0 si no aplica"></div>
     <div class="f"><label>Frecuencia</label><select id="rc-frq" style="font-size:13px;padding:9px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit"><option value="mensual" ${r.frecuencia==='mensual'?'selected':''}>Mensual</option><option value="bimestral" ${r.frecuencia==='bimestral'?'selected':''}>Bimestral</option><option value="trimestral" ${r.frecuencia==='trimestral'?'selected':''}>Trimestral</option><option value="anual" ${r.frecuencia==='anual'?'selected':''}>Anual</option></select></div>
     <div class="f"><label>Día del mes *</label><input id="rc-dia" type="number" min="1" max="31" value="${r.dia_del_mes||1}"></div>
     <div class="f"><label>Categoría</label><select id="rc-cat"><option value="">— Sin categoría —</option>${(cats||[]).map(c=>`<option value="${c.id}" ${c.id===r.categoria_id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
@@ -1458,6 +1460,7 @@ async function editRec(id){
     const{error}=await sb.from('gastos_recurrentes').update({
       concepto,
       monto:nuevoMonto,
+      mwst_monto:parseFloat(document.getElementById('rc-mwst').value)||0,
       frecuencia:document.getElementById('rc-frq').value,
       dia_del_mes:parseInt(document.getElementById('rc-dia').value)||1,
       categoria_id:document.getElementById('rc-cat').value||null,
@@ -1825,7 +1828,7 @@ async function newGastoIA(){
     const{data:row,error}=await sb.from('gastos').insert({fecha,concepto:document.getElementById('gi-c').value,categoria_id:document.getElementById('gi-cat').value||null,monto:giTot,monto_neto:giNeto,mwst_porcentaje:giMp,mwst_monto:giMwst,sucursal_id:document.getElementById('gi-s').value||null,medio_pago:document.getElementById('gi-mp2').value||'efectivo',lineas_json:JSON.stringify(giLineas),numero_documento:document.getElementById('gi-nd')?.value||null}).select('id').single();
     if(error){alert(error.message);return}
     const file=document.getElementById('gi-adj').files[0];
-    if(file&&row?.id){const concepto=document.getElementById('gi-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,nombreArch,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
+    if(file&&row?.id){const concepto=document.getElementById('gi-c').value||'gasto';const fd=fecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${concepto} - ${fechaFmt}`;const url=await uploadAdjunto(file,`gastos/${fecha.substring(0,4)}`,`${nombreArch}-${row.id.substring(0,8)}`,fecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',row.id)}
     closeMo();gastos();
   });
   document.getElementById('mo-save').style.display='none';
@@ -1968,7 +1971,7 @@ async function editGasto(id){
     if(error){alert(error.message);return}
     const egFile=document.getElementById('eg-adj')?.files[0];
     const egFecha=document.getElementById('eg-d').value;
-    if(egFile){const egConcepto=document.getElementById('eg-c').value||'gasto';const fd=egFecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${egConcepto} - ${fechaFmt}`;const url=await uploadAdjunto(egFile,`gastos/${egFecha.substring(0,4)}`,nombreArch,egFecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
+    if(egFile){const egConcepto=document.getElementById('eg-c').value||'gasto';const fd=egFecha.split('-');const fechaFmt=`${fd[2]}-${fd[1]}-${fd[0].slice(2)}`;const nombreArch=`${egConcepto} - ${fechaFmt}`;const url=await uploadAdjunto(egFile,`gastos/${egFecha.substring(0,4)}`,`${nombreArch}-${id.substring(0,8)}`,egFecha);if(url)await sb.from('gastos').update({adjunto_url:url}).eq('id',id)}
     closeMo();gastos();
   });
   setTimeout(()=>{const s=document.getElementById('eg-s');if(s&&g.sucursal_id)s.value=g.sucursal_id;updS('eg');},50);
@@ -2430,7 +2433,11 @@ async function recurrentes(){
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="font-size:16px;font-weight:700">${fmt(r.monto)}</div>
+          <div style="display:flex;gap:16px;align-items:baseline;text-align:right">
+            ${r.mwst_monto>0?`<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Netto</div><div style="font-size:13px;font-weight:600">${fmt(r.monto-(r.mwst_monto||0))}</div></div>
+            <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">MwSt</div><div style="font-size:13px;font-weight:600">${fmt(r.mwst_monto)}</div></div>`:''}
+            <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">${r.mwst_monto>0?'Total':''}</div><div style="font-size:16px;font-weight:700">${fmt(r.monto)}</div></div>
+          </div>
           <button class="btn btn-sm" onclick="editRec('${r.id}')">Editar</button>
           ${btnGen}
           <button class="btn btn-sm btn-d" onclick="delRec('${r.id}')">&#x2715;</button>
@@ -3032,10 +3039,11 @@ async function mwstCalc(){
   const qDates={1:[`${yr}-01-01`,`${yr}-03-31`],2:[`${yr}-04-01`,`${yr}-06-30`],3:[`${yr}-07-01`,`${yr}-09-30`],4:[`${yr}-10-01`,`${yr}-12-31`]};
   const[desde,hasta]=qDates[q];
   const qL=['Q1 — Ene/Feb/Mar','Q2 — Abr/May/Jun','Q3 — Jul/Ago/Sep','Q4 — Oct/Nov/Dic'][q-1];
-  const[{data:zbons},{data:pagos},{data:gastos}]=await Promise.all([
+  const[{data:zbons},{data:pagos},{data:gastos},{data:recPag}]=await Promise.all([
     sb.from('endabrechnungen').select('mwst_monto,mwst_7_monto,mwst_19_monto').gte('fecha_ventas',desde).lte('fecha_ventas',hasta),
     sb.from('pagos').select('factura_id,facturas(mwst_monto)').gte('fecha_pago',desde).lte('fecha_pago',hasta),
-    sb.from('gastos').select('mwst_monto').gte('fecha',desde).lte('fecha',hasta)
+    sb.from('gastos').select('mwst_monto').gte('fecha',desde).lte('fecha',hasta),
+    sb.from('vencimientos_recurrentes').select('gastos_recurrentes(mwst_monto)').eq('estado','pagado').gte('fecha_pago',desde).lte('fecha_pago',hasta)
   ]);
   // IVA Ventas
   const ivaVentas=(zbons||[]).reduce((a,z)=>a+parseFloat(z.mwst_monto||0),0);
@@ -3045,7 +3053,8 @@ async function mwstCalc(){
   (pagos||[]).forEach(p=>{if(p.factura_id&&!factSeen.has(p.factura_id)){factSeen.add(p.factura_id);ivaFact+=parseFloat(p.facturas?.mwst_monto||0);}});
   // IVA Compras — gastos
   const ivaGastos=(gastos||[]).reduce((a,g)=>a+parseFloat(g.mwst_monto||0),0);
-  const ivaCompras=ivaFact+ivaGastos;
+  const ivaRec=(recPag||[]).reduce((a,v)=>a+parseFloat(v.gastos_recurrentes?.mwst_monto||0),0);
+  const ivaCompras=ivaFact+ivaGastos+ivaRec;
   const saldo=ivaVentas-ivaCompras;
   const col=n=>n>0?'var(--red)':'var(--green)';
   const colV=n=>n>0?'var(--text)':'var(--text-muted)';
@@ -3057,11 +3066,11 @@ async function mwstCalc(){
     <tr class="hd"><td colspan="2">IVA Compras (Vorsteuer)</td></tr>
     <tr class="ind"><td>Facturas de proveedores pagadas</td><td style="color:var(--green)">(${fmt(ivaFact)})</td></tr>
     <tr class="ind"><td>Gastos al contado</td><td style="color:var(--green)">(${fmt(ivaGastos)})</td></tr>
+    <tr class="ind"><td>Gastos recurrentes</td><td style="color:var(--green)">(${fmt(ivaRec)})</td></tr>
     <tr class="st"><td>Total IVA Compras</td><td style="color:var(--green);font-weight:700">(${fmt(ivaCompras)})</td></tr>
     <tr class="tt"><td>${saldo>0?'MwSt a pagar':'MwSt a favor'}</td><td style="color:${col(saldo)};font-weight:700">${saldo>0?fmt(saldo):'('+fmt(Math.abs(saldo))+')'}</td></tr>
   </table>
-  ${!(zbons||[]).length?'<div class="al al-warn" style="margin-top:12px">⚠️ No hay Endabrechnungen cargados para este cuartal — IVA Ventas incompleto.</div>':''}
-  <div class="al al-info" style="margin-top:12px;font-size:12px">⚠️ IVA de gastos recurrentes no incluido (pendiente).</div>`;
+  ${!(zbons||[]).length?'<div class="al al-warn" style="margin-top:12px">⚠️ No hay Endabrechnungen cargados para este cuartal — IVA Ventas incompleto.</div>':''}`;
 }
 
 // ── TAB 3: DESCARGA DE FACTURAS ───────────────────────────────────────────────
@@ -3797,7 +3806,7 @@ async function pdGenerarOrden(){
   openMo('Nueva Orden de Producción',`
     ${borrInfo}
     <div class="al al-info" style="margin-bottom:12px">Cada fila = 1 tirada (máx. 2 sorbeteras). Podés editar o borrar filas antes de guardar.</div>
-    <div style="overflow-x:auto"><table><thead><tr><th>Pos.</th><th>Sabor activo</th><th>Stock</th>${extraCols}<th>Mínimo</th><th>Tirada</th><th></th></tr></thead>
+    <div style="overflow-x:auto"><table><thead><tr><th>Pos.</th><th>Sabor activo</th><th>Stock</th>${extraCols}<th>Mínimo</th><th>Sorbeteras</th><th></th></tr></thead>
     <tbody id="pd-ord-items">
     ${filas.map((it,i)=>`<tr id="pd-row-${i}">
       <td><strong>${it.pos.numero}</strong></td>
@@ -3805,28 +3814,23 @@ async function pdGenerarOrden(){
       <td style="font-size:12px">${it.stock} sorb.</td>
       ${hasBorrs?`<td style="color:var(--amber);font-size:12px">−${it.comprometido}</td><td style="font-weight:600;font-size:12px">${it.totEfectivo} sorb.</td>`:''}
       <td style="font-size:12px">${it.min} sorb.</td>
-      <td><input type="number" min="0" max="2" value="${it.prod}" style="width:55px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-i="${i}" data-pos="${it.pos.id}"></td>
+      <td><input type="number" min="0" max="2" value="${it.prod}" style="width:55px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-i="${i}"></td>
       <td><button onclick="document.getElementById('pd-row-${i}').remove()" style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 6px" title="Eliminar tirada">✕</button></td>
     </tr>`).join('')}
     </tbody></table></div>
     <div class="f" style="margin-top:14px"><label>Notas (opcional)</label><textarea id="pd-ord-n" style="height:50px;font-size:13px;padding:8px;border:1px solid var(--border-md);border-radius:var(--r);width:100%" placeholder="Observaciones..."></textarea></div>`,
   async()=>{
     const inps=document.querySelectorAll('#pd-ord-items input[data-i]');
-    // Agrupar tiradas por posición y sumar
-    const byPos={};
+    const tiradas=[];
     inps.forEach(inp=>{
       const i=parseInt(inp.dataset.i);
-      const posId=inp.dataset.pos;
       const qty=Math.min(2,parseInt(inp.value)||0);
-      if(qty<=0)return;
-      if(!byPos[posId]){byPos[posId]={...filas[i],pf:0};}
-      byPos[posId].pf+=qty;
+      if(qty>0)tiradas.push({...filas[i],pf:qty});
     });
-    const finals=Object.values(byPos).filter(it=>it.pf>0);
-    if(!finals.length){alert('Sin cantidades mayores a 0.');return}
+    if(!tiradas.length){alert('Sin cantidades mayores a 0.');return}
     const{data:ord,error}=await sb.from('prod_ordenes_produccion').insert({fecha:tod,estado:'borrador',notas:document.getElementById('pd-ord-n').value}).select().single();
     if(error){alert('Error: '+error.message);return}
-    await sb.from('prod_ord_prod_items').insert(finals.map(it=>({orden_id:ord.id,posicion_id:it.pos.id,sabor_id:it.sab.id,stock_antes:it.stock,cantidad_sugerida:it._orig,cantidad_confirmada:it.pf})));
+    await sb.from('prod_ord_prod_items').insert(tiradas.map(it=>({orden_id:ord.id,posicion_id:it.pos.id,sabor_id:it.sab.id,stock_antes:it.stock,cantidad_sugerida:it._orig,cantidad_confirmada:it.pf})));
     closeMo();pdVerOrdenProd(ord.id);
   });
 }
@@ -3859,7 +3863,7 @@ async function pdVerOrdenProd(ordenId,readonly=false){
       <td><span class="bd bd-gray">${it.prod_sabores?.codigo||'?'}</span></td>
       <td><strong>${it.prod_sabores?.nombre||'?'}</strong></td>
       <td>${it.stock_antes} sorb.</td>
-      <td>${isConf||readonly?`<strong>${it.cantidad_confirmada}</strong> sorbeteras`:`<input type="number" min="0" value="${it.cantidad_confirmada}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${it.id}">`}</td>
+      <td>${isConf||readonly?`<strong>${it.cantidad_confirmada}</strong> sorbeteras`:`<input type="number" min="0" max="2" value="${it.cantidad_confirmada}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${it.id}">`}</td>
     </tr>`).join('')}
     </tbody></table>
     <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong id="pd-vp-total">${total} sorbeteras</strong></div>
@@ -4574,7 +4578,7 @@ async function pdVerOrdenEnt(ordenId,readonly=false){
       <td><span class="bd bd-gray">${it.prod_sabores?.codigo||'?'}</span></td>
       <td><strong>${it.prod_sabores?.nombre||'?'}</strong></td>
       <td>${it.stock_sucursal} sorb.</td>
-      <td>${isConf||readonly?`<strong>${it.cantidad_confirmada}</strong> sorbeteras`:`<input type="number" min="0" value="${it.cantidad_confirmada}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${it.id}">`}</td>
+      <td>${isConf||readonly?`<strong>${it.cantidad_confirmada}</strong> sorbeteras`:`<input type="number" min="0" max="2" value="${it.cantidad_confirmada}" style="width:65px;padding:5px;font-size:13px;border:1px solid var(--border-md);border-radius:6px;text-align:center" data-item="${it.id}">`}</td>
     </tr>`).join('')}
     </tbody></table>
     <div style="text-align:right;margin-top:10px;color:var(--text-muted);font-size:13px">Total: <strong id="pd-ve-total">${total} sorbeteras</strong></div>
