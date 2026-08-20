@@ -3845,7 +3845,7 @@ async function pdGenerarOrden(){
 async function pdVerOrdenProd(ordenId,readonly=false){
   const[{data:ord},{data:items},{data:sabs}]=await Promise.all([
     sb.from('prod_ordenes_produccion').select('*').eq('id',ordenId).single(),
-    sb.from('prod_ord_prod_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId),
+    sb.from('prod_ord_prod_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId).order('orden'),
     sb.from('prod_sabores').select('*').eq('activo',true).order('nombre')
   ]);
   const isConf=ord?.estado==='confirmada';
@@ -3960,9 +3960,9 @@ async function pdGuardarCants(ordenId,tipo){
   const tbl=tipo==='prod'?'prod_ord_prod_items':'prod_ord_entrega_items';
   // Actualizar cantidades de los ítems visibles
   const visibleIds=[];
-  for(const inp of inps){
-    await sb.from(tbl).update({cantidad_confirmada:parseInt(inp.value)||0}).eq('id',inp.dataset.item);
-    visibleIds.push(inp.dataset.item);
+  for(let i=0;i<inps.length;i++){
+    await sb.from(tbl).update({cantidad_confirmada:parseInt(inps[i].value)||0,orden:i}).eq('id',inps[i].dataset.item);
+    visibleIds.push(inps[i].dataset.item);
   }
   // Eliminar de la BD los ítems que se borraron con la X
   if(ordenId){
@@ -3977,7 +3977,7 @@ async function pdGuardarCants(ordenId,tipo){
 async function pdConfirmarProd(ordenId){
   if(!confirm('¿Confirmar la orden? Se sumará al stock del depósito.'))return;
   await pdGuardarCants(ordenId,'prod');
-  const{data:items}=await sb.from('prod_ord_prod_items').select('*').eq('orden_id',ordenId);
+  const{data:items}=await sb.from('prod_ord_prod_items').select('*').eq('orden_id',ordenId).order('orden');
   for(const it of(items||[])){
     const{data:curr}=await sb.from('prod_stock_deposito').select('cantidad').eq('sabor_id',it.sabor_id).maybeSingle();
     await sb.from('prod_stock_deposito').upsert({sabor_id:it.sabor_id,cantidad:(curr?.cantidad||0)+(it.cantidad_confirmada||0),ultima_actualizacion:new Date().toISOString()},{onConflict:'sabor_id'});
@@ -4559,7 +4559,7 @@ async function pdCrearOrdenEnt(suc){
 async function pdVerOrdenEnt(ordenId,readonly=false){
   const[{data:ord},{data:items},{data:sabs}]=await Promise.all([
     sb.from('prod_ordenes_entrega').select('*').eq('id',ordenId).single(),
-    sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId),
+    sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId).order('orden'),
     sb.from('prod_sabores').select('*').eq('activo',true).order('nombre')
   ]);
   const isConf=ord?.estado==='confirmada';
@@ -4648,7 +4648,7 @@ async function pdConfirmarEnt(ordenId){
   await pdGuardarCants(ordenId,'ent');
   const{data:ord}=await sb.from('prod_ordenes_entrega').select('sucursal').eq('id',ordenId).single();
   const suc=ord?.sucursal;
-  const{data:items}=await sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre)').eq('orden_id',ordenId);
+  const{data:items}=await sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre)').eq('orden_id',ordenId).order('orden');
   // Verificar stock en depósito para cada ítem
   const sinStock=[];
   for(const it of(items||[])){
@@ -4890,7 +4890,7 @@ async function pdHistRemCargar(){
 async function pdImprimir(ordenId,tipo){
   let ord,items,title;
   if(tipo==='prod'){
-    const[r1,r2]=await Promise.all([sb.from('prod_ordenes_produccion').select('*').eq('id',ordenId).single(),sb.from('prod_ord_prod_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId)]);
+    const[r1,r2]=await Promise.all([sb.from('prod_ordenes_produccion').select('*').eq('id',ordenId).single(),sb.from('prod_ord_prod_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId).order('orden')]);
     ord=r1.data;
     // Respetar el orden visual (drag-and-drop) si la tabla está en pantalla
     const tbody=document.getElementById('pd-vp-items');
@@ -4903,7 +4903,7 @@ async function pdImprimir(ordenId,tipo){
     }else{items=r2.data;}
     title='Orden de Producción — '+fmtD(ord?.fecha);
   }else{
-    const[r1,r2]=await Promise.all([sb.from('prod_ordenes_entrega').select('*').eq('id',ordenId).single(),sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId)]);
+    const[r1,r2]=await Promise.all([sb.from('prod_ordenes_entrega').select('*').eq('id',ordenId).single(),sb.from('prod_ord_entrega_items').select('*,prod_sabores(nombre,codigo),prod_posiciones(numero)').eq('orden_id',ordenId).order('orden')]);
     ord=r1.data;items=r2.data;
     const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
     title='Orden de Entrega — '+(bLab[ord?.sucursal]||ord?.sucursal)+' — '+fmtD(ord?.fecha);
