@@ -4424,6 +4424,47 @@ async function pdImprimirRemito(remitoId){
 
 
 
+function pdCalcEntItems(sucMap,depMap,minMap,pos,borsEnt){
+  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const borMap={};
+  (borsEnt||[]).forEach(o=>(o.prod_ord_entrega_items||[]).forEach(it=>{
+    if(!borMap[it.sabor_id])borMap[it.sabor_id]=[];
+    borMap[it.sabor_id].push({suc:o.sucursal,fecha:o.fecha,cant:it.cantidad_confirmada});
+  }));
+  const items=[];
+  (pos||[]).forEach(p=>{
+    const ids=(p.prod_posicion_sabores||[]).map(ps=>ps.sabor_id);
+    const act=(p.prod_posicion_sabores||[]).find(ps=>ps.es_activo);
+    if(!act)return;
+    const totSuc=ids.reduce((s,id)=>(sucMap[id]||0)+s,0);
+    const min=minMap[p.id]||0;
+    if(totSuc>=min)return;
+    const def=min-totSuc;
+    const warns=[];
+    const sucInact=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(sucMap[ps.sabor_id]||0)>0);
+    if(sucInact.length)warns.push(`Suc. tiene: ${sucInact.map(ps=>ps.prod_sabores?.nombre+'('+sucMap[ps.sabor_id]+')').join(', ')}`);
+    const depInact=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(depMap[ps.sabor_id]||0)>0);
+    let sugSabId,sugSabNom,sugDepStock;
+    if(depInact.length){
+      depInact.sort((a,b)=>(depMap[b.sabor_id]||0)-(depMap[a.sabor_id]||0));
+      const prim=depInact[0];
+      sugSabId=prim.sabor_id;sugSabNom=prim.prod_sabores?.nombre||'?';sugDepStock=depMap[prim.sabor_id]||0;
+      const bors=borMap[sugSabId]||[];
+      if(bors.length){const bt=bors.reduce((a,b)=>a+b.cant,0);warns.push(`⚠️ ${bt} ${sugSabNom} en borrador: ${bors.map(b=>`${bLab[b.suc]||b.suc} ${fmtD(b.fecha)}(${b.cant})`).join(', ')}`);}
+      if(sugDepStock<def)warns.push(`⚠️ Depósito solo tiene ${sugDepStock} ${sugSabNom}`);
+      if(depInact.length>1)warns.push(`También: ${depInact.slice(1).map(ps=>ps.prod_sabores?.nombre+'('+depMap[ps.sabor_id]+')').join(', ')}`);
+    }else{
+      sugSabId=act.sabor_id;sugSabNom=act.prod_sabores?.nombre||'?';sugDepStock=depMap[act.sabor_id]||0;
+      const bors=borMap[sugSabId]||[];
+      if(bors.length){const bt=bors.reduce((a,b)=>a+b.cant,0);warns.push(`⚠️ ${bt} ${sugSabNom} en borrador: ${bors.map(b=>`${bLab[b.suc]||b.suc} ${fmtD(b.fecha)}(${b.cant})`).join(', ')}`);}
+      if(sugDepStock<def)warns.push(`⚠️ Depósito solo tiene ${sugDepStock} ${sugSabNom}`);
+    }
+    items.push({posId:p.id,sabId:sugSabId,sabNom:sugSabNom,posNum:p.numero,totSuc,depStock:sugDepStock,min,def,warn:warns.length?warns.join(' · '):null});
+  });
+  return items;
+}
+
+
 async function pdParseCsvSuc(file){
   if(!file)return;
   const prev=document.getElementById('pd-ent-prev');
@@ -4433,36 +4474,16 @@ async function pdParseCsvSuc(file){
   if(!rows.length){prev.innerHTML='<div class="al al-err">No se pudo leer el archivo.</div>';return}
   const matched=[],unmatched=[];
   rows.forEach(r=>{const s=_prodSabs.find(x=>x.nombre_csv.normalize('NFC')===r.producto.normalize('NFC'));if(s)matched.push({s,c:r.cantidad});else unmatched.push(r.producto);});
-  const[{data:stD},{data:mins},{data:pos}]=await Promise.all([
+  const[{data:stD},{data:mins},{data:pos},{data:borsEnt}]=await Promise.all([
     sb.from('prod_stock_deposito').select('*'),
     sb.from('prod_stock_minimos').select('*').eq('ubicacion',suc),
-    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero')
+    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero'),
+    sb.from('prod_ordenes_entrega').select('id,sucursal,fecha,prod_ord_entrega_items(sabor_id,cantidad_confirmada)').eq('estado','borrador')
   ]);
   const depMap={};(stD||[]).forEach(r=>depMap[r.sabor_id]=r.cantidad);
   const sucMap={};matched.forEach(m=>sucMap[m.s.id]=m.c);
   const minMap={};(mins||[]).forEach(m=>minMap[m.posicion_id]=m.cantidad_minima);
-  const bLab={eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
-  const items=[];
-  (pos||[]).forEach(p=>{
-    const ids=(p.prod_posicion_sabores||[]).map(ps=>ps.sabor_id);
-    const act=(p.prod_posicion_sabores||[]).find(ps=>ps.es_activo);
-    if(!act)return;
-    const totSuc=ids.reduce((s,id)=>(sucMap[id]||0)+s,0);
-    const min=minMap[p.id]||0;
-    if(totSuc<min){
-      const def=min-totSuc;
-      const depStock=depMap[act.sabor_id]||0;
-      const noAct=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(sucMap[ps.sabor_id]||0)>0&&(depMap[ps.sabor_id]||0)>0);
-      let warn=null;
-      if(noAct.length)warn=`Suc. tiene: ${noAct.map(ps=>ps.prod_sabores?.nombre+'('+sucMap[ps.sabor_id]+')').join(', ')}`;
-      if(depStock<def){
-        const altDep=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(depMap[ps.sabor_id]||0)>0).map(ps=>`${ps.prod_sabores?.nombre}(${depMap[ps.sabor_id]})`);
-        const altMsg=altDep.length?` — Alternativa en depósito: ${altDep.join(', ')}`:'';
-        warn=(warn?warn+' · ':'')+`⚠️ Depósito solo tiene ${depStock} ${act.prod_sabores?.nombre||''}${altMsg}`;
-      }
-      items.push({posId:p.id,sabId:act.sabor_id,sabNom:act.prod_sabores?.nombre||'?',posNum:p.numero,totSuc,depStock,min,def,warn});
-    }
-  });
+  const items=pdCalcEntItems(sucMap,depMap,minMap,pos,borsEnt);
   const uid='snap_'+Date.now();
   if(matched.length)await sb.from('prod_stock_sucursal').insert(matched.map(m=>({sucursal:suc,fecha_snapshot:new Date().toISOString(),sabor_id:m.s.id,cantidad:m.c,upload_id:uid})));
   let html=`<div class="al al-ok">✓ ${matched.length} sabores leídos.</div>`;
@@ -4497,34 +4518,15 @@ async function pdUsarStockActual(){
   const snapDate=new Date(latestSnap[0].fecha_snapshot).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   const sucMap={};latestSnap.forEach(s=>sucMap[s.sabor_id]=s.cantidad);
   // Misma lógica de cálculo que pdParseCsvSuc
-  const[{data:stD},{data:mins},{data:pos}]=await Promise.all([
+  const[{data:stD},{data:mins},{data:pos},{data:borsEnt}]=await Promise.all([
     sb.from('prod_stock_deposito').select('*'),
     sb.from('prod_stock_minimos').select('*').eq('ubicacion',suc),
-    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero')
+    sb.from('prod_posiciones').select('*,prod_posicion_sabores(*,prod_sabores(*))').order('numero'),
+    sb.from('prod_ordenes_entrega').select('id,sucursal,fecha,prod_ord_entrega_items(sabor_id,cantidad_confirmada)').eq('estado','borrador')
   ]);
   const depMap={};(stD||[]).forEach(r=>depMap[r.sabor_id]=r.cantidad);
   const minMap={};(mins||[]).forEach(m=>minMap[m.posicion_id]=m.cantidad_minima);
-  const items=[];
-  (pos||[]).forEach(p=>{
-    const ids=(p.prod_posicion_sabores||[]).map(ps=>ps.sabor_id);
-    const act=(p.prod_posicion_sabores||[]).find(ps=>ps.es_activo);
-    if(!act)return;
-    const totSuc=ids.reduce((s,id)=>(sucMap[id]||0)+s,0);
-    const min=minMap[p.id]||0;
-    if(totSuc<min){
-      const def=min-totSuc;
-      const depStock=depMap[act.sabor_id]||0;
-      const noAct=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(sucMap[ps.sabor_id]||0)>0&&(depMap[ps.sabor_id]||0)>0);
-      let warn=null;
-      if(noAct.length)warn=`Suc. tiene: ${noAct.map(ps=>ps.prod_sabores?.nombre+'('+sucMap[ps.sabor_id]+')').join(', ')}`;
-      if(depStock<def){
-        const altDep=(p.prod_posicion_sabores||[]).filter(ps=>!ps.es_activo&&(depMap[ps.sabor_id]||0)>0).map(ps=>`${ps.prod_sabores?.nombre}(${depMap[ps.sabor_id]})`);
-        const altMsg=altDep.length?` — Alternativa en depósito: ${altDep.join(', ')}`:'';
-        warn=(warn?warn+' · ':'')+`⚠️ Depósito solo tiene ${depStock} ${act.prod_sabores?.nombre||''}${altMsg}`;
-      }
-      items.push({posId:p.id,sabId:act.sabor_id,sabNom:act.prod_sabores?.nombre||'?',posNum:p.numero,totSuc,depStock,min,def,warn});
-    }
-  });
+  const items=pdCalcEntItems(sucMap,depMap,minMap,pos,borsEnt);
   let html=`<div class="al al-info">📋 Usando stock de ${bLab[suc]} registrado el ${snapDate}</div>`;
   if(!items.length){html+='<div class="al al-ok" style="margin-top:8px">✅ La sucursal tiene todo al día según el último stock registrado.</div>';prev.innerHTML=html;return}
   window._prodEntItems=items;
