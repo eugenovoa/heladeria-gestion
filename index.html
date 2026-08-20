@@ -315,6 +315,13 @@ const sb=supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefr
 let _page='dashboard',_moFn=null,_cfg={},_user=null,_rol='admin',_sucId=null,_sucs=[],_init=false,_rt=null,_semOff=0;
 
 // ---- SIDEBAR ----
+function _shouldRefresh(){
+  // Cualquier modal abierto (facturas, gastos, producción, etc.)
+  if(document.getElementById('mo')?.classList.contains('open'))return false;
+  // Producción → Entrega (helados e insumos)
+  if(document.querySelector('[data-pt="pe"].active'))return false;
+  return true;
+}
 function toggleSB(){
   const sb=document.getElementById('sb'),ov=document.getElementById('sb-ov');
   if(window.innerWidth<=768){sb.classList.toggle('open');ov.classList.toggle('open');}
@@ -372,7 +379,7 @@ async function initApp(user){
   document.getElementById('u-av').textContent=dn.charAt(0).toUpperCase();
   document.getElementById('u-rl').textContent={admin:'Administrador',operador:'Operador',readonly:'Solo lectura'}[_rol]||_rol;
   applyBrand();setupNav();nav('dashboard');
-  if(_rt)clearInterval(_rt);_rt=setInterval(()=>nav(_page),10*60*1000);
+  if(_rt)clearInterval(_rt);_rt=setInterval(()=>{if(_shouldRefresh())nav(_page);},10*60*1000);
 }
 
 // ---- BRAND ----
