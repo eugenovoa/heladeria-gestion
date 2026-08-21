@@ -2158,7 +2158,7 @@ async function nuevoStock(){
     const pr=document.getElementById('ns-pr').value;if(!pr){alert('Seleccioná un producto.');return}
     const qty=parseFloat(document.getElementById('ns-qty').value)||0;
     const pu=parseFloat(document.getElementById('ns-pu').value)||0;
-    const{error}=await sb.from('stock').insert({tipo:document.getElementById('ns-tp').value,temporada_id:document.getElementById('ns-tmp').value,producto_id:pr,cantidad:qty,precio_unitario:pu,valor_total:qty*pu});
+    const{error}=await sb.from('stock').insert({tipo:document.getElementById('ns-tp').value,temporada_id:document.getElementById('ns-tmp').value,producto_id:pr,cantidad:qty,precio_unitario:pu});
     if(error){alert(error.message);return}
     closeMo();stock();
   });
