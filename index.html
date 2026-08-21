@@ -2151,7 +2151,7 @@ async function nuevoStock(){
   openMo('Registrar stock',`<div class="fg">
     <div class="f"><label>Tipo *</label><select id="ns-tp"><option value="inicial">Stock inicial</option><option value="final">Stock final</option></select></div>
     <div class="f"><label>Temporada *</label><select id="ns-tmp">${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
-    <div class="f"><label>Producto *</label><select id="ns-pr" onchange="const p=window._stockPrecioMap[this.value];const pu=document.getElementById('ns-pu');if(p&&parseFloat(pu.value)===0)pu.value=p"><option value="">— Seleccionar —</option>${(prods||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.unidad_medida||'u'})</option>`).join('')}</select></div>
+    <div class="f"><label>Producto *</label><select id="ns-pr" onchange="const p=window._stockPrecioMap[this.value];document.getElementById('ns-pu').value=p||0"><option value="">— Seleccionar —</option>${(prods||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.unidad_medida||'u'})</option>`).join('')}</select></div>
     <div class="f"><label>Cantidad *</label><input id="ns-qty" type="number" step="0.001" value="0"></div>
     <div class="f"><label>Precio unitario</label><input id="ns-pu" type="number" step="0.01" value="0" placeholder="Se completa automáticamente"></div>
   </div>`,
