@@ -2192,6 +2192,35 @@ async function eliminarStock(id){
   await stockCargar(tid,stockTabActual());
 }
 
+async function editarStock(id,nombre,cantidad,precio,sucursal,tipo,tid){
+  openMo(`Editar stock — ${nombre}`,`<div class="fg">
+    <div class="f"><label>Tipo</label><select id="es-tp">
+      <option value="inicial" ${tipo==='inicial'?'selected':''}>Stock inicial</option>
+      <option value="final" ${tipo==='final'?'selected':''}>Stock final</option>
+    </select></div>
+    <div class="f"><label>Sucursal</label><select id="es-suc">
+      <option value="general" ${sucursal==='general'?'selected':''}>Depósito general</option>
+      <option value="eutingen" ${sucursal==='eutingen'?'selected':''}>Eutingen</option>
+      <option value="muhlacker" ${sucursal==='muhlacker'?'selected':''}>Mühlacker</option>
+      <option value="konigsbacj" ${sucursal==='konigsbacj'?'selected':''}>Königsbach</option>
+    </select></div>
+    <div class="f"><label>Cantidad *</label><input id="es-qty" type="number" step="0.001" value="${cantidad}"></div>
+    <div class="f"><label>Precio unitario</label><input id="es-pu" type="number" step="0.01" value="${precio}"></div>
+  </div>`,
+  async()=>{
+    const qty=parseFloat(document.getElementById('es-qty').value)||0;
+    const pu=parseFloat(document.getElementById('es-pu').value)||0;
+    const{error}=await sb.from('stock').update({
+      tipo:document.getElementById('es-tp').value,
+      sucursal:document.getElementById('es-suc').value,
+      cantidad:qty,precio_unitario:pu
+    }).eq('id',id);
+    if(error){alert(error.message);return}
+    closeMo();
+    await stockCargar(tid,stockTabActual());
+  });
+}
+
 let _cajaData=[];
 
 async function caja() {
@@ -2356,7 +2385,10 @@ async function stockCargar(tid,suc='total'){
       <td>${s.cantidad}</td>
       <td>${fmt(s.precio_unitario)}</td>
       <td style="font-weight:600">${fmt(s.valor_total)}</td>
-      <td><button class="btn btn-sm btn-d" onclick="eliminarStock('${s.id}')">✕</button></td>
+      <td style="display:flex;gap:4px">
+        <button class="btn btn-sm" onclick="editarStock('${s.id}','${s.productos?.nombre||''}',${s.cantidad},${s.precio_unitario||0},'${s.sucursal||'general'}','${s.tipo}','${s.temporada_id}')">Editar</button>
+        <button class="btn btn-sm btn-d" onclick="eliminarStock('${s.id}')">✕</button>
+      </td>
     </tr>`).join('')}
     <tr class="trow-t"><td colspan="${showSuc?6:5}">Total</td><td>${fmt(tot)}</td><td></td></tr>
     </tbody></table></div>`;
