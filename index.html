@@ -466,7 +466,11 @@ async function saveMo(){
 function bEst(e){const m={pendiente:'warn',pagada:'ok',vencida:'err',pagado:'ok',vencido:'err'};return`<span class="bd bd-${m[e]||'gray'}">${e}</span>`}
 function sucNom(id){return _sucs.find(s=>s.id===id)?.nombre||'—'}
 function sucOpts(cp=false){return _sucs.filter(s=>cp||!s.es_centro_produccion).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}
-async function getTmps(){const{data}=await sb.from('temporadas').select('*').order('fecha_inicio',{ascending:false});return data||[]}
+async function getTmps(){
+  const{data}=await sb.from('temporadas').select('*').order('fecha_inicio',{ascending:false});
+  const hoy=today();
+  return (data||[]).map(t=>({...t,activa:hoy>=(t.fecha_inicio||'')&&hoy<=(t.fecha_cierre||'9999-12-31')}));
+}
 function tmOpts(ts,sel){const s=sel||(ts[0]?.id||'');return ts.map(t=>`<option value="${t.id}" ${t.id===s?'selected':''}>${t.nombre}</option>`).join('')}
 function tmFechas(ts,id){const t=ts.find(x=>x.id===id);return t?{desde:t.fecha_inicio,hasta:t.fecha_cierre||today()}:{desde:null,hasta:today()}}
 function getTempFechas(temps, tempId){
@@ -2145,14 +2149,27 @@ async function eliminarCierre(id){
   caja();
 }
 
-async function nuevoStock(){
+async function nuevoStock(tipoPresel='inicial',sucPresel=null){
   const{data:prods}=await sb.from('productos').select('id,nombre,unidad_medida,ultimo_precio').eq('activo',true).order('nombre');
   window._stockPrecioMap={};(prods||[]).forEach(p=>{if(p.ultimo_precio)window._stockPrecioMap[p.id]=p.ultimo_precio;});
   const temps=await getTmps();
+  // Si venimos desde topbar, usar tab actual; si viene preseleccionado de botón "Agregar", usarlo
+  const sucActual=sucPresel||(stockTabActual()==='total'?null:stockTabActual());
+  const sucLabs={general:'Depósito general',eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const tid=document.getElementById('stock-tmp')?.value||temps.find(t=>t.activa)?.id;
   openMo('Registrar stock',`<div class="fg">
-    <div class="f"><label>Tipo *</label><select id="ns-tp"><option value="inicial">Stock inicial</option><option value="final">Stock final</option></select></div>
-    <div class="f"><label>Temporada *</label><select id="ns-tmp">${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
-    <div class="f"><label>Producto *</label><select id="ns-pr" onchange="const p=window._stockPrecioMap[this.value];document.getElementById('ns-pu').value=p||0"><option value="">— Seleccionar —</option>${(prods||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.unidad_medida||'u'})</option>`).join('')}</select></div>
+    <div class="f"><label>Tipo *</label><select id="ns-tp">
+      <option value="inicial" ${tipoPresel==='inicial'?'selected':''}>Stock inicial</option>
+      <option value="final" ${tipoPresel==='final'?'selected':''}>Stock final</option>
+    </select></div>
+    <div class="f"><label>Sucursal *</label><select id="ns-suc">
+      <option value="general" ${(sucActual||'general')==='general'?'selected':''}>Depósito general</option>
+      <option value="eutingen" ${sucActual==='eutingen'?'selected':''}>Eutingen</option>
+      <option value="muhlacker" ${sucActual==='muhlacker'?'selected':''}>Mühlacker</option>
+      <option value="konigsbacj" ${sucActual==='konigsbacj'?'selected':''}>Königsbach</option>
+    </select></div>
+    <div class="f"><label>Temporada *</label><select id="ns-tmp">${temps.map(t=>`<option value="${t.id}" ${t.id===tid?'selected':''}>${t.nombre}</option>`).join('')}</select></div>
+    <div class="f full"><label>Producto *</label><select id="ns-pr" onchange="const p=window._stockPrecioMap[this.value];document.getElementById('ns-pu').value=p||0"><option value="">— Seleccionar —</option>${(prods||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.unidad_medida||'u'})</option>`).join('')}</select></div>
     <div class="f"><label>Cantidad *</label><input id="ns-qty" type="number" step="0.001" value="0"></div>
     <div class="f"><label>Precio unitario</label><input id="ns-pu" type="number" step="0.01" value="0" placeholder="Se completa automáticamente"></div>
   </div>`,
@@ -2160,16 +2177,19 @@ async function nuevoStock(){
     const pr=document.getElementById('ns-pr').value;if(!pr){alert('Seleccioná un producto.');return}
     const qty=parseFloat(document.getElementById('ns-qty').value)||0;
     const pu=parseFloat(document.getElementById('ns-pu').value)||0;
-    const{error}=await sb.from('stock').insert({tipo:document.getElementById('ns-tp').value,temporada_id:document.getElementById('ns-tmp').value,producto_id:pr,cantidad:qty,precio_unitario:pu});
+    const{error}=await sb.from('stock').insert({tipo:document.getElementById('ns-tp').value,sucursal:document.getElementById('ns-suc').value,temporada_id:document.getElementById('ns-tmp').value,producto_id:pr,cantidad:qty,precio_unitario:pu});
     if(error){alert(error.message);return}
-    closeMo();stock();
+    closeMo();
+    const tabActual=stockTabActual();
+    await stockCargar(document.getElementById('ns-tmp').value,tabActual);
   });
 }
 
 async function eliminarStock(id){
   if(!confirm('¿Eliminar registro?'))return;
   await sb.from('stock').delete().eq('id',id);
-  stock();
+  const tid=document.getElementById('stock-tmp')?.value;
+  await stockCargar(tid,stockTabActual());
 }
 
 let _cajaData=[];
@@ -2230,41 +2250,136 @@ function renderCaja(){
     </table></div>`;
 }
 
-async function stock() {
+async function stock(){
   loading();
-  setR(`<button class="btn btn-p" onclick="nuevoStock()">+ Registrar stock</button>`);
-  const [{ data },{ data:factsData }] = await Promise.all([
-    sb.from('stock').select('*, productos(nombre,unidad_medida,categorias_producto(nombre)), temporadas(nombre)').order('tipo').order('created_at'),
-    sb.from('facturas').select('monto_neto')
-  ]);
-  const inicial=(data||[]).filter(s=>s.tipo==='inicial');
-  const final=(data||[]).filter(s=>s.tipo==='final');
-  const totalCompras=(factsData||[]).reduce((a,f)=>a+parseFloat(f.monto_neto),0);
-  const totIni=inicial.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
-  const totFin=final.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
-  const cmv=totIni+totalCompras-totFin;
-  const renderTable=(rows,label)=>rows.length===0?`<div class="empty">Sin registros de stock ${label}.</div>`:
-    `<div style="overflow-x:auto"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Unidad</th><th>Cantidad</th><th>Precio unit.</th><th>Valor total</th><th></th></tr></thead><tbody>
-    ${rows.map(s=>`<tr><td>${s.productos?.nombre||'—'}</td><td><span class="bd bd-gray">${s.productos?.categorias_producto?.nombre||'—'}</span></td><td>${s.productos?.unidad_medida||'—'}</td><td>${s.cantidad}</td><td>${fmt(s.precio_unitario)}</td><td style="font-weight:600">${fmt(s.valor_total)}</td><td><button class="btn btn-sm btn-d" onclick="eliminarStock('${s.id}')">✕</button></td></tr>`).join('')}
-    <tr class="trow-t"><td colspan="5">Total</td><td>${fmt(rows.reduce((a,s)=>a+parseFloat(s.valor_total||0),0))}</td><td></td></tr>
-    </tbody></table></div>`;
+  const temps=await getTmps();
+  const activa=temps.find(t=>t.activa)||temps[0];
+  setR('');
   document.getElementById('ct').innerHTML=`
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <div class="f" style="margin:0"><label style="font-size:12px;color:var(--text-muted)">Temporada</label>
+        <select id="stock-tmp" onchange="stockCargar(this.value,stockTabActual())" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
+          ${temps.map(t=>`<option value="${t.id}" ${t.activa?'selected':''}>${t.nombre}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-p" style="margin-top:18px" onclick="nuevoStock()">+ Registrar stock</button>
+    </div>
+    <div id="stock-cmv-card"></div>
+    <div class="tabs" style="margin-bottom:0">
+      <div class="tab active" data-stab="total" onclick="stockTab('total',this)">📊 Total</div>
+      <div class="tab" data-stab="eutingen" onclick="stockTab('eutingen',this)">Eutingen</div>
+      <div class="tab" data-stab="muhlacker" onclick="stockTab('muhlacker',this)">Mühlacker</div>
+      <div class="tab" data-stab="konigsbacj" onclick="stockTab('konigsbacj',this)">Königsbach</div>
+      <div class="tab" data-stab="general" onclick="stockTab('general',this)">Depósito</div>
+    </div>
+    <div id="stock-body"></div>`;
+  await stockCargar(activa?.id,'total');
+}
+
+function stockTabActual(){
+  return document.querySelector('[data-stab].active')?.dataset.stab||'total';
+}
+
+async function stockTab(suc,el){
+  document.querySelectorAll('[data-stab]').forEach(t=>t.classList.remove('active'));
+  if(el)el.classList.add('active');
+  const tid=document.getElementById('stock-tmp')?.value;
+  await stockCargar(tid,suc);
+}
+
+async function stockCargar(tid,suc='total'){
+  const sucLabs={general:'Depósito general',eutingen:'Eutingen',muhlacker:'Mühlacker',konigsbacj:'Königsbach'};
+  const body=document.getElementById('stock-body');
+  const cmvCard=document.getElementById('stock-cmv-card');
+  if(body)body.innerHTML='<div class="ld">Cargando...</div>';
+
+  const temps=await getTmps();
+  const tm=temps.find(t=>t.id===tid);
+  const desde=tm?.fecha_inicio,hasta=tm?.fecha_cierre||today();
+
+  // Queries paralelas
+  let qStock=sb.from('stock').select('*,productos(nombre,unidad_medida,categorias_producto(nombre))').eq('temporada_id',tid).order('tipo').order('created_at');
+  const[{data:stockData},{data:factsCMV},{data:gastosCMV}]=await Promise.all([
+    qStock,
+    sb.from('facturas').select('monto_neto,categorias_factura(tipo)').eq('tipo','factura').gte('fecha_emision',desde).lte('fecha_emision',hasta),
+    sb.from('gastos').select('monto,monto_neto,categorias_gasto(tipo)').gte('fecha',desde).lte('fecha',hasta)
+  ]);
+
+  // Filtrar por sucursal si no es total
+  const rows=suc==='total'?(stockData||[]):(stockData||[]).filter(s=>s.sucursal===suc);
+  const inicial=rows.filter(s=>s.tipo==='inicial');
+  const final=rows.filter(s=>s.tipo==='final');
+
+  // CMV card (siempre con total, no filtrado por sucursal)
+  const allIni=(stockData||[]).filter(s=>s.tipo==='inicial');
+  const allFin=(stockData||[]).filter(s=>s.tipo==='final');
+  const totIni=allIni.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const totFin=allFin.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+  const comprasCMV=(factsCMV||[]).filter(f=>f.categorias_factura?.tipo==='cmv').reduce((a,f)=>a+parseFloat(f.monto_neto||0),0);
+  const gastosCMVtot=(gastosCMV||[]).filter(g=>g.categorias_gasto?.tipo==='cmv').reduce((a,g)=>a+parseFloat(g.monto||0),0);
+  const totalCompras=comprasCMV+gastosCMVtot;
+  const cmv=totIni+totalCompras-totFin;
+
+  if(cmvCard)cmvCard.innerHTML=`
     <div class="card" style="padding:18px 20px;margin-bottom:16px;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-color:#bae6fd">
-      <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">Cálculo de CMV</div>
+      <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">Cálculo de CMV — ${tm?.nombre||''}</div>
       <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;font-size:13px">
         <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Stock inicial</div><div style="font-weight:700;font-size:16px">${fmt(totIni)}</div></div>
         <div style="font-size:20px;color:var(--text-faint)">+</div>
-        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Compras netas</div><div style="font-weight:700;font-size:16px">${fmt(totalCompras)}</div></div>
+        <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Compras CMV</div><div style="font-weight:700;font-size:16px">${fmt(totalCompras)}</div></div>
         <div style="font-size:20px;color:var(--text-faint)">−</div>
         <div><div style="color:var(--text-muted);margin-bottom:3px;font-size:11px">Stock final</div><div style="font-weight:700;font-size:16px">${fmt(totFin)}</div></div>
         <div style="font-size:20px;color:var(--text-faint)">=</div>
-        <div style="background:white;border-radius:10px;padding:10px 16px;border:1px solid #bae6fd"><div style="color:#0369a1;margin-bottom:3px;font-size:11px;font-weight:700">CMV</div><div style="font-weight:800;font-size:22px;color:#0c4a6e">${fmt(cmv)}</div></div>
+        <div style="background:white;border-radius:10px;padding:10px 16px;border:1px solid #bae6fd">
+          <div style="color:#0369a1;margin-bottom:3px;font-size:11px;font-weight:700">CMV</div>
+          <div style="font-weight:800;font-size:22px;color:#0c4a6e">${fmt(cmv)}</div>
+        </div>
       </div>
       ${totFin===0?'<div style="margin-top:10px;font-size:12px;color:var(--amber);font-weight:600">⚠ Stock final aún no registrado — CMV provisorio.</div>':''}
+    </div>`;
+
+  // Render tables
+  const showSuc=suc==='total';
+  const renderTable=(filas,label)=>{
+    if(!filas.length)return`<div class="empty" style="padding:20px">Sin registros de stock ${label}.</div>`;
+    const tot=filas.reduce((a,s)=>a+parseFloat(s.valor_total||0),0);
+    return`<div style="overflow-x:auto"><table><thead><tr>
+      <th>Producto</th><th>Categoría</th><th>Unidad</th>
+      ${showSuc?'<th>Sucursal</th>':''}
+      <th>Cantidad</th><th>Precio unit.</th><th>Valor total</th><th></th>
+    </tr></thead><tbody>
+    ${filas.map(s=>`<tr>
+      <td>${s.productos?.nombre||'—'}</td>
+      <td><span class="bd bd-gray">${s.productos?.categorias_producto?.nombre||'—'}</span></td>
+      <td style="font-size:12px">${s.productos?.unidad_medida||'—'}</td>
+      ${showSuc?`<td style="font-size:12px">${sucLabs[s.sucursal]||s.sucursal||'—'}</td>`:''}
+      <td>${s.cantidad}</td>
+      <td>${fmt(s.precio_unitario)}</td>
+      <td style="font-weight:600">${fmt(s.valor_total)}</td>
+      <td><button class="btn btn-sm btn-d" onclick="eliminarStock('${s.id}')">✕</button></td>
+    </tr>`).join('')}
+    <tr class="trow-t"><td colspan="${showSuc?6:5}">Total</td><td>${fmt(tot)}</td><td></td></tr>
+    </tbody></table></div>`;
+  };
+
+  const sucLabel=suc==='total'?'todas las sucursales':sucLabs[suc]||suc;
+  if(body)body.innerHTML=`
+    <div class="card">
+      <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+        Stock inicial <span style="font-size:12px;color:var(--text-muted);font-weight:400">${sucLabel}</span>
+        <button class="btn btn-sm btn-p" onclick="nuevoStock('inicial','${suc}')">+ Agregar</button>
+      </div>
+      ${renderTable(inicial,'inicial')}
     </div>
-    <div class="card"><div class="card-title">Stock inicial</div>${renderTable(inicial,'inicial')}</div>
-    <div class="card"><div class="card-title">Stock final</div>${renderTable(final,'final')}</div>`;
+    <div class="card">
+      <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+        Stock final <span style="font-size:12px;color:var(--text-muted);font-weight:400">${sucLabel}</span>
+        <button class="btn btn-sm btn-p" onclick="nuevoStock('final','${suc}')">+ Agregar</button>
+      </div>
+      ${renderTable(final,'final')}
+    </div>`;
 }
+
 
 async function repCompras() {
   loading();
