@@ -2602,7 +2602,7 @@ async function recurrentes(){
   loading();setR(`<button class="btn btn-p" onclick="newRec()">+ Nuevo</button>`);
   const[{data},{data:vencs}]=await Promise.all([
     sb.from('gastos_recurrentes').select('*,categorias_gasto_recurrente(nombre),sucursales(nombre)').order('concepto'),
-    sb.from('vencimientos_recurrentes').select('gasto_recurrente_id,estado,monto,fecha_vencimiento,fecha_pago').order('fecha_vencimiento')
+    sb.from('vencimientos_recurrentes').select('id,gasto_recurrente_id,estado,monto,fecha_vencimiento,fecha_pago').order('fecha_vencimiento')
   ]);
   const pendMap={};
   const vencsMap={};
