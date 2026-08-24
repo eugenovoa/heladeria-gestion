@@ -2602,9 +2602,15 @@ async function recurrentes(){
   loading();setR(`<button class="btn btn-p" onclick="newRec()">+ Nuevo</button>`);
   const[{data},{data:vencs}]=await Promise.all([
     sb.from('gastos_recurrentes').select('*,categorias_gasto_recurrente(nombre),sucursales(nombre)').order('concepto'),
-    sb.from('vencimientos_recurrentes').select('gasto_recurrente_id,estado').in('estado',['pendiente','vencido'])
+    sb.from('vencimientos_recurrentes').select('gasto_recurrente_id,estado,monto,fecha_vencimiento,fecha_pago').order('fecha_vencimiento')
   ]);
-  const pendMap={};(vencs||[]).forEach(v=>{pendMap[v.gasto_recurrente_id]=(pendMap[v.gasto_recurrente_id]||0)+1;});
+  const pendMap={};
+  const vencsMap={};
+  (vencs||[]).forEach(v=>{
+    if(!vencsMap[v.gasto_recurrente_id])vencsMap[v.gasto_recurrente_id]=[];
+    vencsMap[v.gasto_recurrente_id].push(v);
+    if(v.estado==='pendiente'||v.estado==='vencido')pendMap[v.gasto_recurrente_id]=(pendMap[v.gasto_recurrente_id]||0)+1;
+  });
   document.getElementById('ct').innerHTML=`
     <div class="al al-info" style="margin-bottom:16px">Los vencimientos se marcan como pagados automáticamente al llegar la fecha. Los importes aparecen en ERR y reportes sin acción manual.</div>
     ${!(data||[]).length?'<div class="empty">Sin gastos recurrentes.</div>':
@@ -2612,29 +2618,92 @@ async function recurrentes(){
       const pend=pendMap[r.id]||0;
       const alerta=!r.fecha_fin&&pend<=2;
       const btnGen=alerta?`<button class="btn btn-sm btn-p" onclick="genVencs('${r.id}',true)">&#x21BA; Generar</button>`:'';
-      return`<div class="ri">
-        <div>
-          <div class="ri-n">${r.concepto}${alerta?`<span class="bd bd-err" style="margin-left:8px;font-size:10px">&#9888; Quedan ${pend} venc.</span>`:''}</div>
-          <div class="ri-s">
-            <span class="bd bd-gray">${r.categorias_gasto_recurrente?.nombre||'—'}</span>
-            <span class="bd bd-gray">${r.sucursales?.nombre||'General'}</span>
-            <span>${r.frecuencia} · día ${r.dia_del_mes}</span>
-            <span>Desde ${fmtD(r.fecha_inicio)}${r.fecha_fin?' hasta '+fmtD(r.fecha_fin):'(sin fecha fin)'}</span>
-            ${!r.activo?'<span class="bd bd-gray">Inactivo</span>':''}
+      return`<div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
+        <div class="ri" style="border-bottom:none;cursor:pointer" onclick="recToggle('${r.id}')">
+          <div>
+            <div class="ri-n">${r.concepto}${alerta?`<span class="bd bd-err" style="margin-left:8px;font-size:10px">&#9888; Quedan ${pend} venc.</span>`:''}</div>
+            <div class="ri-s">
+              <span class="bd bd-gray">${r.categorias_gasto_recurrente?.nombre||'—'}</span>
+              <span class="bd bd-gray">${r.sucursales?.nombre||'General'}</span>
+              <span>${r.frecuencia} · día ${r.dia_del_mes}</span>
+              <span>Desde ${fmtD(r.fecha_inicio)}${r.fecha_fin?' hasta '+fmtD(r.fecha_fin):'(sin fecha fin)'}</span>
+              ${!r.activo?'<span class="bd bd-gray">Inactivo</span>':''}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="display:flex;gap:16px;align-items:baseline;text-align:right">
+              ${r.mwst_monto>0?`<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Netto</div><div style="font-size:13px;font-weight:600">${fmt(r.monto-(r.mwst_monto||0))}</div></div>
+              <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">MwSt</div><div style="font-size:13px;font-weight:600">${fmt(r.mwst_monto)}</div></div>`:''}
+              <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">${r.mwst_monto>0?'Total':''}</div><div style="font-size:16px;font-weight:700">${fmt(r.monto)}</div></div>
+            </div>
+            <span id="rec-arr-${r.id}" style="color:var(--text-faint);font-size:12px">▼</span>
+            <button class="btn btn-sm" onclick="event.stopPropagation();editRec('${r.id}')">Editar</button>
+            ${btnGen}
+            <button class="btn btn-sm btn-d" onclick="event.stopPropagation();delRec('${r.id}')">&#x2715;</button>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="display:flex;gap:16px;align-items:baseline;text-align:right">
-            ${r.mwst_monto>0?`<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Netto</div><div style="font-size:13px;font-weight:600">${fmt(r.monto-(r.mwst_monto||0))}</div></div>
-            <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">MwSt</div><div style="font-size:13px;font-weight:600">${fmt(r.mwst_monto)}</div></div>`:''}
-            <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">${r.mwst_monto>0?'Total':''}</div><div style="font-size:16px;font-weight:700">${fmt(r.monto)}</div></div>
-          </div>
-          <button class="btn btn-sm" onclick="editRec('${r.id}')">Editar</button>
-          ${btnGen}
-          <button class="btn btn-sm btn-d" onclick="delRec('${r.id}')">&#x2715;</button>
+        <div id="rec-det-${r.id}" style="display:none;border-top:1px solid var(--border);background:var(--surface2)">
+          ${recDetalle(r.id,vencsMap[r.id]||[],r.monto)}
         </div>
       </div>`;
     }).join('')}`;
+}
+
+function recDetalle(id,vencs,montoRec){
+  const yr=new Date().getFullYear();
+  const pagados=vencs.filter(v=>v.estado==='pagado');
+  const pendientes=vencs.filter(v=>v.estado==='pendiente'||v.estado==='vencido');
+  const totAnio=pagados.filter(v=>(v.fecha_pago||'').startsWith(yr)).reduce((a,v)=>a+(v.monto||montoRec),0);
+  const totHist=pagados.reduce((a,v)=>a+(v.monto||montoRec),0);
+  const totPend=pendientes.reduce((a,v)=>a+(v.monto||montoRec),0);
+  return`<div style="padding:16px">
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px">
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Pagado ${yr}</div><div style="font-size:18px;font-weight:700;color:var(--green)">${fmt(totAnio)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Total histórico</div><div style="font-size:18px;font-weight:700">${fmt(totHist)}</div></div>
+      <div><div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px">Resta pagar</div><div style="font-size:18px;font-weight:700;color:var(--amber)">${fmt(totPend)}</div></div>
+    </div>
+    <div style="overflow-x:auto"><table><thead><tr><th>Fecha venc.</th><th>Fecha pago</th><th>Monto</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${vencs.sort((a,b)=>a.fecha_vencimiento>b.fecha_vencimiento?1:-1).map(v=>`<tr>
+      <td>${fmtD(v.fecha_vencimiento)}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${v.fecha_pago?fmtD(v.fecha_pago):'—'}</td>
+      <td>${fmt(v.monto||montoRec)}</td>
+      <td>${v.estado==='pagado'?'<span class="bd bd-ok">Pagado</span>':'<span class="bd bd-warn">Pendiente</span>'}</td>
+      <td><button class="btn btn-sm" onclick="editVencRec('${v.id}','${v.fecha_vencimiento}','${v.fecha_pago||''}',${v.monto||montoRec},'${v.estado}','${id}')">Editar</button></td>
+    </tr>`).join('')}
+    </tbody></table></div>
+  </div>`;
+}
+
+function recToggle(id){
+  const det=document.getElementById(`rec-det-${id}`);
+  const arr=document.getElementById(`rec-arr-${id}`);
+  if(!det)return;
+  const open=det.style.display==='none';
+  det.style.display=open?'':'none';
+  if(arr)arr.textContent=open?'▲':'▼';
+}
+
+async function editVencRec(id,fechaVenc,fechaPago,monto,estado,recId){
+  const ss='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit;width:100%';
+  openMo('Editar vencimiento',`<div class="fg">
+    <div class="f"><label>Fecha vencimiento</label><input id="ev-fv" type="date" value="${fechaVenc}" style="${ss}"></div>
+    <div class="f"><label>Fecha de pago</label><input id="ev-fp" type="date" value="${fechaPago}" style="${ss}"></div>
+    <div class="f"><label>Monto</label><input id="ev-m" type="number" step="0.01" value="${monto}" style="${ss}"></div>
+    <div class="f"><label>Estado</label><select id="ev-st" style="${ss}">
+      <option value="pagado" ${estado==='pagado'?'selected':''}>Pagado</option>
+      <option value="pendiente" ${estado==='pendiente'?'selected':''}>Pendiente</option>
+    </select></div>
+  </div>`,
+  async()=>{
+    const{error}=await sb.from('vencimientos_recurrentes').update({
+      fecha_vencimiento:document.getElementById('ev-fv').value,
+      fecha_pago:document.getElementById('ev-fp').value||null,
+      monto:parseFloat(document.getElementById('ev-m').value)||null,
+      estado:document.getElementById('ev-st').value
+    }).eq('id',id);
+    if(error){alert(error.message);return}
+    closeMo();recurrentes();
+  });
 }
 
 async function loadComp(){
