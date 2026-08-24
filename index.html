@@ -4623,14 +4623,14 @@ function pdCalcEntItems(sucMap,depMap,minMap,pos,borsEnt){
       const prim=depInact[0];
       sugSabId=prim.sabor_id;sugSabNom=prim.prod_sabores?.nombre||'?';sugDepStock=depMap[prim.sabor_id]||0;
       const bors=borMap[sugSabId]||[];
-      if(bors.length){const bt=bors.reduce((a,b)=>a+b.cant,0);warns.push(`⚠️ ${bt} ${sugSabNom} en borrador: ${bors.map(b=>`${bLab[b.suc]||b.suc} ${fmtD(b.fecha)}(${b.cant})`).join(', ')} · Depósito: ${sugDepStock}`);} else warns.push(`Depósito: ${sugDepStock} ${sugSabNom}`);
-      if(sugDepStock<def)warns.push(`⚠️ Depósito solo tiene ${sugDepStock} ${sugSabNom}`);
+      if(bors.length){const bt=bors.reduce((a,b)=>a+b.cant,0);warns.push(`⚠️ ${bt} ${sugSabNom} en borrador: ${bors.map(b=>`${bLab[b.suc]||b.suc} ${fmtD(b.fecha)}(${b.cant})`).join(', ')} · Depósito: ${sugDepStock}`);}
+      if(sugDepStock<def&&!bors.length)warns.push(`⚠️ Depósito solo tiene ${sugDepStock} ${sugSabNom}`);
       if(depInact.length>1)warns.push(`También: ${depInact.slice(1).map(ps=>ps.prod_sabores?.nombre+'('+depMap[ps.sabor_id]+')').join(', ')}`);
     }else{
       sugSabId=act.sabor_id;sugSabNom=act.prod_sabores?.nombre||'?';sugDepStock=depMap[act.sabor_id]||0;
       const bors=borMap[sugSabId]||[];
-      if(bors.length){const bt=bors.reduce((a,b)=>a+b.cant,0);warns.push(`⚠️ ${bt} ${sugSabNom} en borrador: ${bors.map(b=>`${bLab[b.suc]||b.suc} ${fmtD(b.fecha)}(${b.cant})`).join(', ')} · Depósito: ${sugDepStock}`);} else warns.push(`Depósito: ${sugDepStock} ${sugSabNom}`);
-      if(sugDepStock<def)warns.push(`⚠️ Depósito solo tiene ${sugDepStock} ${sugSabNom}`);
+      if(bors.length){const bt=bors.reduce((a,b)=>a+b.cant,0);warns.push(`⚠️ ${bt} ${sugSabNom} en borrador: ${bors.map(b=>`${bLab[b.suc]||b.suc} ${fmtD(b.fecha)}(${b.cant})`).join(', ')} · Depósito: ${sugDepStock}`);}
+      if(sugDepStock<def&&!bors.length)warns.push(`⚠️ Depósito solo tiene ${sugDepStock} ${sugSabNom}`);
     }
     items.push({posId:p.id,sabId:sugSabId,sabNom:sugSabNom,posNum:p.numero,totSuc,depStock:sugDepStock,min,def,warn:warns.length?warns.join(' · '):null});
   });
