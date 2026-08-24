@@ -651,10 +651,18 @@ async function dashboard(){
     <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:flex-end">
       <div class="f"><label>Período</label>
         <select id="db-per" onchange="dbChangePer()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
-          <option value="mes">Mes en curso</option>
-          <option value="semana">Semana en curso</option>
+          <option value="mes">Mes</option>
+          <option value="anio">Año</option>
           <option value="custom">Personalizado</option>
         </select>
+      </div>
+      <div class="f" id="db-mes-wrap">
+        <label>Mes</label>
+        <input type="month" id="db-mes" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit">
+      </div>
+      <div class="f" id="db-anio-wrap" style="display:none">
+        <label>Año</label>
+        <input type="number" id="db-anio" min="2020" max="2099" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit;width:90px">
       </div>
       <div class="f" id="db-custom-wrap" style="display:none">
         <label>Desde</label><input type="date" id="db-desde" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);font-family:inherit">
@@ -669,10 +677,18 @@ async function dashboard(){
     </div>
     <div id="db-body"><div class="ld">Cargando...</div></div>`;
   loadDashboard();
+  // Set default values for new inputs
+  const _now=new Date();
+  const _mes=document.getElementById('db-mes');
+  const _anio=document.getElementById('db-anio');
+  if(_mes&&!_mes.value)_mes.value=`${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`;
+  if(_anio&&!_anio.value)_anio.value=_now.getFullYear();
 }
 
 function dbChangePer(){
   const v=document.getElementById('db-per').value;
+  document.getElementById('db-mes-wrap').style.display=v==='mes'?'':'none';
+  document.getElementById('db-anio-wrap').style.display=v==='anio'?'':'none';
   document.getElementById('db-custom-wrap').style.display=v==='custom'?'':'none';
   document.getElementById('db-custom-wrap2').style.display=v==='custom'?'':'none';
 }
@@ -683,9 +699,15 @@ async function loadDashboard(){
   const hoy=today();
   const now=new Date();
   let desde,hasta=hoy;
-  if(per==='semana'){
-    const lun=new Date(now);lun.setDate(now.getDate()-((now.getDay()+6)%7));
-    desde=`${lun.getFullYear()}-${String(lun.getMonth()+1).padStart(2,'0')}-${String(lun.getDate()).padStart(2,'0')}`;
+  if(per==='mes'){
+    const mv=document.getElementById('db-mes')?.value||`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    const[yr,mo]=mv.split('-').map(Number);
+    const ld=new Date(yr,mo,0).getDate();
+    desde=`${yr}-${String(mo).padStart(2,'0')}-01`;
+    hasta=`${yr}-${String(mo).padStart(2,'0')}-${String(ld).padStart(2,'0')}`;
+  } else if(per==='anio'){
+    const yr=document.getElementById('db-anio')?.value||now.getFullYear();
+    desde=`${yr}-01-01`;hasta=`${yr}-12-31`;
   } else if(per==='custom'){
     desde=document.getElementById('db-desde')?.value||hoy;
     hasta=document.getElementById('db-hasta')?.value||hoy;
@@ -716,7 +738,9 @@ async function loadDashboard(){
   const totCBruto=(cm||[]).reduce((a,f)=>a+parseFloat(f.monto_neto||0)+parseFloat(f.mwst_monto||0),0);
   const totVm=(vm||[]).reduce((a,v)=>a+parseFloat(v.ingresos_dia||0)+parseFloat(v.ventas_tarjeta||0),0);
 
-  const perLabel={mes:'mes en curso',semana:'semana en curso',custom:`${fmtD(desde)} — ${fmtD(hasta)}`}[per];
+  const _mesV=document.getElementById('db-mes')?.value||'';
+  const _mNom=['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][parseInt((_mesV||'').split('-')[1])]||'';
+  const perLabel={mes:`${_mNom} ${(_mesV||'').split('-')[0]||''}`,anio:document.getElementById('db-anio')?.value||'',custom:`${fmtD(desde)} — ${fmtD(hasta)}`}[per]||`${fmtD(desde)} — ${fmtD(hasta)}`;
   const sucLabel=sucId?(_sucs.find(s=>s.id===sucId)?.nombre||''):'Todas las sucursales';
 
   document.getElementById('db-body').innerHTML=`
@@ -4599,13 +4623,13 @@ function pdCalcEntItems(sucMap,depMap,minMap,pos,borsEnt){
       const prim=depInact[0];
       sugSabId=prim.sabor_id;sugSabNom=prim.prod_sabores?.nombre||'?';sugDepStock=depMap[prim.sabor_id]||0;
       const bors=borMap[sugSabId]||[];
-      if(bors.length){const bt=bors.reduce((a,b)=>a+b.cant,0);warns.push(`⚠️ ${bt} ${sugSabNom} en borrador: ${bors.map(b=>`${bLab[b.suc]||b.suc} ${fmtD(b.fecha)}(${b.cant})`).join(', ')}`);}
+      if(bors.length){const bt=bors.reduce((a,b)=>a+b.cant,0);warns.push(`⚠️ ${bt} ${sugSabNom} en borrador: ${bors.map(b=>`${bLab[b.suc]||b.suc} ${fmtD(b.fecha)}(${b.cant})`).join(', ')} · Depósito: ${sugDepStock}`);} else warns.push(`Depósito: ${sugDepStock} ${sugSabNom}`);
       if(sugDepStock<def)warns.push(`⚠️ Depósito solo tiene ${sugDepStock} ${sugSabNom}`);
       if(depInact.length>1)warns.push(`También: ${depInact.slice(1).map(ps=>ps.prod_sabores?.nombre+'('+depMap[ps.sabor_id]+')').join(', ')}`);
     }else{
       sugSabId=act.sabor_id;sugSabNom=act.prod_sabores?.nombre||'?';sugDepStock=depMap[act.sabor_id]||0;
       const bors=borMap[sugSabId]||[];
-      if(bors.length){const bt=bors.reduce((a,b)=>a+b.cant,0);warns.push(`⚠️ ${bt} ${sugSabNom} en borrador: ${bors.map(b=>`${bLab[b.suc]||b.suc} ${fmtD(b.fecha)}(${b.cant})`).join(', ')}`);}
+      if(bors.length){const bt=bors.reduce((a,b)=>a+b.cant,0);warns.push(`⚠️ ${bt} ${sugSabNom} en borrador: ${bors.map(b=>`${bLab[b.suc]||b.suc} ${fmtD(b.fecha)}(${b.cant})`).join(', ')} · Depósito: ${sugDepStock}`);} else warns.push(`Depósito: ${sugDepStock} ${sugSabNom}`);
       if(sugDepStock<def)warns.push(`⚠️ Depósito solo tiene ${sugDepStock} ${sugSabNom}`);
     }
     items.push({posId:p.id,sabId:sugSabId,sabNom:sugSabNom,posNum:p.numero,totSuc,depStock:sugDepStock,min,def,warn:warns.length?warns.join(' · '):null});
