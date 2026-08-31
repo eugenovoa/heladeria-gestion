@@ -2991,7 +2991,7 @@ async function contAnalisis(ct){
     </div>
     <div id="zbon-comp-res"><div class="ld">Calculando...</div></div>
   </div>
-  <div class="card"><div class="card-t">Historial de Endabrechnungen</div>
+  <div class="card"><div class="card-t" style="display:flex;justify-content:space-between;align-items:center">Historial de Endabrechnungen<button class="btn btn-sm" onclick="zbonDescargarCSV()">⬇ CSV</button></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
       <input id="zbon-buscar" type="text" placeholder="Buscar por N°, sucursal, notas..." oninput="renderZbonHist()" style="${ss};min-width:200px;flex:1">
       <select id="zbon-f-suc" onchange="renderZbonHist()" style="${ss}">
@@ -3268,6 +3268,30 @@ async function zbonEliminar(id){
   }
   await sb.from('endabrechnungen').delete().eq('id',id);
   await zbonCargarHist();
+}
+
+function zbonDescargarCSV(){
+  const term=(document.getElementById('zbon-buscar')?.value||'').toLowerCase().trim();
+  const sucF=document.getElementById('zbon-f-suc')?.value||'';
+  const mesF=document.getElementById('zbon-f-mes')?.value||'';
+  let data=(_zbonData||[]).filter(r=>{
+    if(sucF&&r.sucursal!==sucF)return false;
+    if(mesF&&!(r.fecha_ventas||'').startsWith(mesF))return false;
+    if(term){const hay=`${r.numero||''} ${bLabZ[r.sucursal]||r.sucursal} ${r.notas||''}`.toLowerCase();if(!hay.includes(term))return false;}
+    return true;
+  });
+  if(!data.length){alert('No hay datos para descargar con los filtros actuales.');return}
+  const cols=['fecha_ventas','sucursal','numero','neto','mwst_monto','mwst_7_neto','mwst_7_monto','mwst_19_neto','mwst_19_monto','bruto','bar','karte','gutscheine','trinkgeld','notas'];
+  const headers=['Fecha ventas','Sucursal','N°','Neto','MwSt total','7% Neto','7% MwSt','19% Neto','19% MwSt','Bruto','BAR','Karte','Gutscheine','Trinkgeld','Notas'];
+  const fmCSV=v=>v==null?'':String(v).replace(/[,;]/g,' ');
+  const rows=[headers.join(';'),...data.map(r=>cols.map(k=>k==='sucursal'?(bLabZ[r[k]]||r[k]||''):fmCSV(r[k])).join(';'))];
+  const blob=new Blob(['\uFEFF'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const mesLabel=mesF?mesF.replace('-','_'):'todos';
+  const sucLabel=sucF||(bLabZ[sucF]||'todas');
+  a.href=url;a.download=`endabrechnungen_${sucLabel}_${mesLabel}.csv`;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
 }
 
 
