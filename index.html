@@ -3044,7 +3044,7 @@ function zbonMostrarVerif(data,editId=null){
   const fmDE=n=>(parseFloat(n)||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
   prev.innerHTML=`<div class="al al-info" style="margin-bottom:12px">${editId?'Editá los datos y guardá los cambios.':'Revisá los datos extraídos antes de confirmar.'}</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-    <div class="f"><label>N° Endabrechnung</label><input id="zv-num" type="number" value="${data.numero||''}" style="${iSty}"></div>
+    <div class="f"><label>N° Endabrechnung *</label><input id="zv-num" type="number" value="${data.numero||''}" placeholder="Requerido" style="${iSty}"></div>
     <div class="f"><label>Fecha emisión</label><input id="zv-fem" type="date" value="${data.fecha_emision||''}" style="${iSty}"></div>
     <div class="f"><label>Fecha ventas (editable)</label><input id="zv-fvt" type="date" value="${data.fecha_ventas||data.fecha_emision||''}" style="${iSty}"></div>
     <div class="f"><label>Neto</label><input id="zv-net" type="text" value="${fmDE(data.neto)}" style="${iSty}"></div>
@@ -3089,6 +3089,10 @@ async function zbonGuardar(editId=''){
     bar:g('zv-bar'),karte:g('zv-kar'),gutscheine:g('zv-gut'),trinkgeld:g('zv-trk'),
     estado:'confirmado',notas:gs('zv-notas')};
   if(!row.fecha_ventas||!row.sucursal){alert('Completá sucursal y fecha.');return}
+  if(!row.numero){alert('El N° Endabrechnung es obligatorio.');return}
+  // Check duplicate
+  const{data:dup}=await sb.from('endabrechnungen').select('id,fecha_ventas').eq('sucursal',row.sucursal).eq('numero',row.numero).neq('id',editId||'00000000-0000-0000-0000-000000000000');
+  if(dup&&dup.length){alert(`⚠️ Ya existe un Endabrechnung N° ${row.numero} para ${bLabZ[row.sucursal]||row.sucursal} (${fmtD(dup[0].fecha_ventas)}). Revisá el número.`);return}
   const pdfFile=document.getElementById('zv-pdf-adj')?.files?.[0];
   if(pdfFile){
     // Si edita y ya había un PDF, eliminar el anterior del storage primero
