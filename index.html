@@ -5533,6 +5533,7 @@ async function mayVerLieferschein(id){
     sb.from('recetas').select('sabor_id,precio_venta')
   ]);
   const precioMap={};(recetas||[]).forEach(r=>{if(r.precio_venta!=null)precioMap[r.sabor_id]=r.precio_venta;});
+  window._lieferCtx={id,sabores:sabores||[],precioMap};
   const ct=document.getElementById('may-ct');
   const isBor=l.estado==='borrador';
   const total=(items||[]).reduce((a,i)=>a+(parseFloat(i.kg)||0)*(parseFloat(i.precio_kg)||0),0);
@@ -5553,7 +5554,7 @@ async function mayVerLieferschein(id){
     ${l.notas?`<div class="al al-info" style="margin-bottom:12px">${l.notas}</div>`:''}
     <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">Sabores
       ${isBor?`<div style="display:flex;gap:6px">
-        <button class="btn btn-sm btn-p" onclick="mayAddLieferItem('${id}',${JSON.stringify(sabores||[])},${JSON.stringify(precioMap)})">+ Agregar</button>
+        <button class="btn btn-sm btn-p" onclick="mayAddLieferItem()">+ Agregar</button>
         <button class="btn btn-sm btn-g" onclick="mayImportarCSVLiefer('${id}')">📊 Importar CSV</button>
       </div>`:''}
     </div>
@@ -5571,9 +5572,9 @@ async function mayVerLieferschein(id){
   </div>`;
 }
 
-function mayAddLieferItem(lieferId,sabores,precioMap){
-  if(typeof sabores==='string')sabores=JSON.parse(sabores);
-  if(typeof precioMap==='string')precioMap=JSON.parse(precioMap);
+function mayAddLieferItem(){
+  const{id,sabores,precioMap}=window._lieferCtx||{};
+  if(!id){alert('Error: recargá la página.');return}
   openMo('Agregar sabor',`<div class="fg">
     <div class="f full"><label>Sabor *</label>
       <select id="li-sab" onchange="const pv=(${JSON.stringify(precioMap)})[this.value];const f=document.getElementById('li-pr');if(pv&&parseFloat(f.value)===0)f.value=pv" style="${SS_M};width:100%">
@@ -5587,9 +5588,9 @@ function mayAddLieferItem(lieferId,sabores,precioMap){
     const sabId=document.getElementById('li-sab').value;
     const kg=parseFloat(document.getElementById('li-kg').value)||0;
     if(!sabId||!kg){alert('Completá sabor y kg.');return}
-    const{error}=await sb.from('lieferschein_items').insert({lieferschein_id:lieferId,sabor_id:sabId,kg,precio_kg:parseFloat(document.getElementById('li-pr').value)||0});
+    const{error}=await sb.from('lieferschein_items').insert({lieferschein_id:id,sabor_id:sabId,kg,precio_kg:parseFloat(document.getElementById('li-pr').value)||0});
     if(error){alert(error.message);return}
-    closeMo();await mayVerLieferschein(lieferId);
+    closeMo();await mayVerLieferschein(id);
   });
 }
 
@@ -5612,33 +5613,39 @@ function mayImportarCSVLiefer(lieferId){
   setTimeout(()=>{
     const inp=document.getElementById('csv-liefer');if(!inp)return;
     inp.onchange=async function(){
-      if(!window.XLSX){const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';document.head.appendChild(s);await new Promise(r=>s.onload=r);}
       const buf=await this.files[0].arrayBuffer();
-      const wb=window.XLSX.read(buf,{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const filas=window.XLSX.utils.sheet_to_json(ws,{defval:''});
+      const text=new TextDecoder('utf-8').decode(buf);
+      // Facciobuono exporta HTML-as-XLS — parsear con DOMParser
+      const parser=new DOMParser();
+      const doc=parser.parseFromString(text,'text/html');
+      const rows=Array.from(doc.querySelectorAll('tbody tr'));
       const{data:sabores}=await sb.from('prod_sabores').select('id,nombre,codigo').order('codigo');
       const{data:recs}=await sb.from('recetas').select('sabor_id,precio_venta');
-      const precioMap={};(recs||[]).forEach(r=>{if(r.precio_venta)precioMap[r.sabor_id]=r.precio_venta;});
+      const precioMapL={};(recs||[]).forEach(r=>{if(r.precio_venta)precioMapL[r.sabor_id]=r.precio_venta;});
       const codeMap={};(sabores||[]).forEach(s=>{if(s.codigo)codeMap[s.codigo.trim().toUpperCase()]=s;if(s.nombre)codeMap[s.nombre.trim().toUpperCase()]=s;});
-      const parsed=[];const notFound=[];
-      filas.forEach(row=>{
-        const keys=Object.keys(row);
-        const codeKey=keys.find(k=>/kod|code|artikel|sabor/i.test(k));
-        const kgKey=keys.find(k=>/\bkg\b|menge|gewicht|cantidad/i.test(k));
-        if(!codeKey||!kgKey)return;
-        const code=String(row[codeKey]||'').trim().toUpperCase();
-        const kg=parseFloat(String(row[kgKey]).replace(',','.'))||0;
-        if(!code||!kg)return;
-        const sab=codeMap[code];
-        if(sab)parsed.push({sabor_id:sab.id,nombre:sab.nombre,codigo:code,kg,precio_kg:precioMap[sab.id]||0});
-        else notFound.push(code);
+      const aggMap={};const notFound=[];
+      rows.forEach(row=>{
+        const cells=Array.from(row.querySelectorAll('td')).map(td=>td.textContent.trim());
+        if(cells.length<8)return;
+        const tipo=cells[2]||'';
+        if(!tipo.includes('VENTA'))return;
+        const prod=cells[1]||''; // "YN - Y. Natur"
+        const cadRaw=cells[7]||'0'; // C.AD
+        const kg=parseFloat(cadRaw.replace(/\./g,'').replace(',','.'))||0;
+        if(!kg)return;
+        const code=(prod.split(' - ')[0]||'').trim().toUpperCase();
+        const sab=codeMap[code]||codeMap[prod.trim().toUpperCase()];
+        if(sab){
+          if(!aggMap[sab.id])aggMap[sab.id]={sabor_id:sab.id,nombre:sab.nombre,codigo:code,kg:0,precio_kg:precioMapL[sab.id]||0};
+          aggMap[sab.id].kg+=kg;
+        } else if(code&&!notFound.includes(code)){notFound.push(code);}
       });
+      const parsed=Object.values(aggMap).map(r=>({...r,kg:Math.round(r.kg*1000)/1000}));
       window._csvLieferRows=parsed;
       const prev=document.getElementById('csv-liefer-prev');
       if(prev)prev.innerHTML=parsed.length
-        ?`<div class="al al-info" style="margin-top:10px"><strong>${parsed.length} sabores:</strong>${parsed.map(r=>`<br>· ${r.nombre}: ${r.kg} kg`).join('')}</div>${notFound.length?`<div class="al al-warn" style="margin-top:6px">No encontrados: ${notFound.join(', ')}</div>`:''}`
-        :'<div class="al al-warn" style="margin-top:10px">No se encontraron filas válidas.</div>';
+        ?`<div class="al al-info" style="margin-top:10px"><strong>${parsed.length} sabores encontrados:</strong>${parsed.map(r=>`<br>· ${r.nombre}: ${r.kg} kg`).join('')}</div>${notFound.length?`<div class="al al-warn" style="margin-top:6px">No encontrados en sistema: ${notFound.join(', ')}</div>`:''}`
+        :'<div class="al al-warn" style="margin-top:10px">No se encontraron filas de venta. Verificá que el archivo sea el de Movimientos de Almacén de Facciobuono.</div>';
     };
   },300);
 }
