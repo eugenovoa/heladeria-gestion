@@ -248,6 +248,12 @@ tbody tr:hover td{background:var(--surface2)}
         </div>
       </div>
       <div class="nav-sec">
+        <div class="nav-lbl" onclick="navGroupToggle('grp-mayor')">Mayorista<span class="nav-arr" id="arr-grp-mayor">▼</span></div>
+        <div class="nav-group-items" id="grp-mayor">
+          <div class="nav-item" data-p="mayorista"><span class="nav-ico">🍨</span>Mayorista</div>
+        </div>
+      </div>
+      <div class="nav-sec">
         <div class="nav-lbl" onclick="navGroupToggle('grp-prod')">Producción<span class="nav-arr" id="arr-grp-prod">▼</span></div>
         <div class="nav-group-items" id="grp-prod">
           <div class="nav-item" data-p="produccion-pd"><span class="nav-ico">📊</span>Dashboard</div>
@@ -406,7 +412,7 @@ function setupNav(){
   if(_rol==='readonly'){['facturas','pagos','gastos','recurrentes','caja','stock','proveedores','productos'].forEach(p=>{const e=document.querySelector(`[data-p="${p}"]`);if(e)e.style.display='none'})}
 }
 
-const _titles={dashboard:'Dashboard',proveedores:'Proveedores',productos:'Productos / Materias primas',facturas:'Facturas de proveedores',pagos:'Pagos a Proveedores','pagos-rec':'Pagos Gastos Recurrentes',vencimientos:'Vencimientos',gastos:'Gastos al contado',recurrentes:'Gastos recurrentes',caja:'Cierre de caja',stock:'Stock','rep-compras':'Compras por período',contable:'Contabilidad','rep-err':'Estado de resultados','rep-flujo':'Flujo de caja','rep-comp':'Comparativo de temporadas',config:'Configuración',produccion:'Producción'};
+const _titles={dashboard:'Dashboard',proveedores:'Proveedores',productos:'Productos / Materias primas',facturas:'Facturas de proveedores',pagos:'Pagos a Proveedores','pagos-rec':'Pagos Gastos Recurrentes',vencimientos:'Vencimientos',gastos:'Gastos al contado',recurrentes:'Gastos recurrentes',caja:'Cierre de caja',stock:'Stock','rep-compras':'Compras por período',contable:'Contabilidad',mayorista:'Mayorista','rep-err':'Estado de resultados','rep-flujo':'Flujo de caja','rep-comp':'Comparativo de temporadas',config:'Configuración',produccion:'Producción'};
 
 
 async function autoMarcarVencidas(){
@@ -5215,6 +5221,584 @@ sb.auth.onAuthStateChange((ev,session)=>{
   if(ev==='SIGNED_OUT'){_init=false;if(_rt)clearInterval(_rt);document.getElementById('app').style.display='none';document.getElementById('auth').style.display='flex';}
 });
 sb.auth.getSession().then(({data:{session}})=>{if(session)initApp(session.user)});
+
+// ═══════════════════════════════════════════════════════════════
+// MÓDULO MAYORISTA
+// ═══════════════════════════════════════════════════════════════
+const SS_M='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
+
+async function mayoristaPage(){
+  loading();setR('');
+  document.getElementById('ct').innerHTML=`
+    <div class="tabs">
+      <div class="tab active" data-myt="costos" onclick="mayTab('costos',this)">💰 Costos</div>
+      <div class="tab" data-myt="materias" onclick="mayTab('materias',this)">🥛 Materias Primas</div>
+      <div class="tab" data-myt="recetas" onclick="mayTab('recetas',this)">📋 Recetas</div>
+      <div class="tab" data-myt="clientes" onclick="mayTab('clientes',this)">👥 Clientes</div>
+      <div class="tab" data-myt="liefer" onclick="mayTab('liefer',this)">📄 Lieferscheine</div>
+    </div>
+    <div id="may-ct"></div>`;
+  await mayTab('costos');
+}
+
+async function mayTab(tab,el){
+  if(el){document.querySelectorAll('[data-myt]').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
+  const ct=document.getElementById('may-ct');if(!ct)return;
+  ct.innerHTML='<div class="ld">Cargando...</div>';
+  if(tab==='costos')await mayCostos(ct);
+  else if(tab==='materias')await mayMaterias(ct);
+  else if(tab==='recetas')await mayRecetas(ct);
+  else if(tab==='clientes')await mayClientes(ct);
+  else await mayLieferscheine(ct);
+}
+
+// ── COSTOS ───────────────────────────────────────────────────────────────────
+async function mayCostos(ct){
+  const[{data:recetas},{data:ingredientes}]=await Promise.all([
+    sb.from('recetas').select('*,prod_sabores(nombre,codigo)').order('prod_sabores(nombre)'),
+    sb.from('receta_ingredientes').select('*,productos(nombre,ultimo_precio,unidad_medida)')
+  ]);
+  if(!(recetas||[]).length){
+    ct.innerHTML='<div class="card"><div class="empty" style="padding:30px">No hay recetas configuradas. Creá una en la pestaña Recetas.</div></div>';return;
+  }
+  const ingMap={};
+  (ingredientes||[]).forEach(i=>{if(!ingMap[i.receta_id])ingMap[i.receta_id]=[];ingMap[i.receta_id].push(i);});
+  const rows=(recetas||[]).map(r=>{
+    const ings=ingMap[r.id]||[];
+    const costoTotal=ings.reduce((a,i)=>a+(parseFloat(i.cantidad)||0)*(parseFloat(i.productos?.ultimo_precio)||0),0);
+    const costoKg=r.kg_producidos>0?costoTotal/r.kg_producidos:0;
+    const margenEur=r.precio_venta!=null?r.precio_venta-costoKg:null;
+    const margenPct=r.precio_venta&&costoKg>0?((r.precio_venta-costoKg)/r.precio_venta*100):null;
+    return{...r,costoKg,margenEur,margenPct};
+  });
+  ct.innerHTML=`<div class="card"><div class="card-t">Costo por Sabor — precio vigente de materias primas</div>
+  <div style="overflow-x:auto"><table><thead><tr>
+    <th>Código</th><th>Sabor</th><th>Rinde (kg)</th><th>Costo/kg</th><th>Precio venta/kg</th><th>Margen €</th><th>Margen %</th>
+  </tr></thead><tbody>
+  ${rows.map(r=>`<tr>
+    <td><span class="bd bd-gray">${r.prod_sabores?.codigo||'—'}</span></td>
+    <td><strong>${r.prod_sabores?.nombre||'—'}</strong></td>
+    <td style="font-size:12px">${r.kg_producidos} kg</td>
+    <td style="font-weight:700">${fmt(r.costoKg)}/kg</td>
+    <td>${r.precio_venta!=null?fmt(r.precio_venta)+'/kg':'<span style="color:var(--text-faint);font-size:12px">No configurado</span>'}</td>
+    <td style="color:${(r.margenEur||0)>=0?'var(--green)':'var(--red)'}">${r.margenEur!=null?fmt(r.margenEur):'—'}</td>
+    <td style="font-weight:700;color:${(r.margenPct||0)>=30?'var(--green)':(r.margenPct||0)>=15?'var(--amber)':'var(--red)'}">${r.margenPct!=null?r.margenPct.toFixed(1)+'%':'—'}</td>
+  </tr>`).join('')}
+  </tbody></table></div>
+  <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">Margen: verde ≥30% · naranja ≥15% · rojo &lt;15%</div></div>`;
+}
+
+// ── MATERIAS PRIMAS ──────────────────────────────────────────────────────────
+async function mayMaterias(ct){
+  const{data:prods}=await sb.from('productos').select('*,categorias_producto(nombre)').eq('es_materia_produccion',true).order('nombre');
+  ct.innerHTML=`<div class="card"><div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+    Materias Primas de Producción
+    <button class="btn btn-sm btn-p" onclick="mayNewMateria()">+ Nueva</button>
+  </div>
+  ${!(prods||[]).length?'<div class="empty" style="padding:20px">Sin materias primas. Agregá una con el botón.</div>':
+  '<div style="overflow-x:auto"><table><thead><tr><th>Nombre</th><th>Unidad</th><th>Precio actual</th><th></th></tr></thead><tbody>'
+  +(prods||[]).map(p=>`<tr>
+    <td><strong>${p.nombre}</strong>${p.categorias_producto?.nombre?` <span style="font-size:11px;color:var(--text-muted)">${p.categorias_producto.nombre}</span>`:''}</td>
+    <td style="font-size:12px">${p.unidad_medida||'—'}</td>
+    <td style="font-weight:700">${p.ultimo_precio!=null?fmt(p.ultimo_precio)+' / '+(p.unidad_medida||'u'):'<span style="color:var(--amber);font-size:12px">Sin precio</span>'}</td>
+    <td><button class="btn btn-sm" onclick="mayEditMateria('${p.id}','${p.nombre.replace(/'/g,"\\'")}',${p.ultimo_precio||0},'${p.unidad_medida||''}')">Editar precio</button></td>
+  </tr>`).join('')
+  +'</tbody></table></div>'}
+  </div>`;
+}
+
+function mayNewMateria(){
+  openMo('Nueva materia prima',`<div class="fg">
+    <div class="f full"><label>Nombre *</label><input id="mm-nom" placeholder="Ej: Pasta Vainilla" style="${SS_M};width:100%"></div>
+    <div class="f"><label>Unidad *</label>
+      <input id="mm-uni" list="mm-uni-list" placeholder="kg, lt, u..." style="${SS_M};width:100%">
+      <datalist id="mm-uni-list"><option>kg</option><option>lt</option><option>u</option><option>g</option><option>ml</option></datalist>
+    </div>
+    <div class="f"><label>Precio por unidad (€)</label><input id="mm-pr" type="number" step="0.01" value="0" style="${SS_M};width:100%"></div>
+  </div>`,
+  async()=>{
+    const nombre=document.getElementById('mm-nom').value.trim().toUpperCase();
+    const uni=document.getElementById('mm-uni').value.trim();
+    if(!nombre||!uni){alert('Completá nombre y unidad.');return}
+    const{error}=await sb.from('productos').insert({nombre,unidad_medida:uni,ultimo_precio:parseFloat(document.getElementById('mm-pr').value)||null,activo:true,es_materia_produccion:true});
+    if(error){alert(error.message);return}
+    closeMo();const el=document.querySelector('[data-myt="materias"]');if(el)mayTab('materias',el);
+  });
+}
+
+function mayEditMateria(id,nombre,precio,uni){
+  openMo(`Editar — ${nombre}`,`<div class="fg">
+    <div class="f full"><label>Precio actual por ${uni||'unidad'} (€) *</label>
+      <input id="mm-pr" type="number" step="0.01" value="${precio}" style="${SS_M};width:100%"></div>
+  </div>`,
+  async()=>{
+    const{error}=await sb.from('productos').update({ultimo_precio:parseFloat(document.getElementById('mm-pr').value)||null}).eq('id',id);
+    if(error){alert(error.message);return}
+    // Actualizar también en stock con precio 0
+    await sb.from('stock').update({precio_unitario:parseFloat(document.getElementById('mm-pr').value)||0}).eq('producto_id',id).eq('precio_unitario',0);
+    closeMo();const el=document.querySelector('[data-myt="materias"]');if(el)mayTab('materias',el);
+  });
+}
+
+// ── RECETAS ──────────────────────────────────────────────────────────────────
+async function mayRecetas(ct){
+  const{data:recetas}=await sb.from('recetas').select('*,prod_sabores(nombre,codigo)').order('prod_sabores(nombre)');
+  ct.innerHTML=`<div class="card"><div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+    Recetas de Helados
+    <button class="btn btn-sm btn-p" onclick="mayNewReceta()">+ Nueva receta</button>
+  </div>
+  ${!(recetas||[]).length?'<div class="empty" style="padding:20px">Sin recetas. Creá una con el botón.</div>':
+  (recetas||[]).map(r=>`<div class="ri">
+    <div>
+      <div class="ri-n">${r.prod_sabores?.nombre||'—'} <span class="bd bd-gray">${r.prod_sabores?.codigo||''}</span></div>
+      <div class="ri-s"><span>Rinde ${r.kg_producidos} kg</span>${r.precio_venta!=null?`<span>Venta: ${fmt(r.precio_venta)}/kg</span>`:''}</div>
+      ${r.notas?`<div style="font-size:12px;color:var(--text-muted)">${r.notas}</div>`:''}
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-sm btn-p" onclick="mayEditReceta('${r.id}')">✏️ Ingredientes</button>
+      <button class="btn btn-sm" onclick="mayEditRecetaInfo('${r.id}','${(r.prod_sabores?.nombre||'').replace(/'/g,"\\'")}',${r.kg_producidos},${r.precio_venta!=null?r.precio_venta:'null'},'${(r.notas||'').replace(/'/g,"\\'")}')">Editar</button>
+    </div>
+  </div>`).join('')}
+  </div>`;
+}
+
+async function mayNewReceta(){
+  const{data:sabores}=await sb.from('prod_sabores').select('id,nombre,codigo').eq('activo',true).order('nombre');
+  const{data:existing}=await sb.from('recetas').select('sabor_id');
+  const usados=new Set((existing||[]).map(r=>r.sabor_id));
+  const disp=(sabores||[]).filter(s=>!usados.has(s.id));
+  if(!disp.length){alert('Todos los sabores activos ya tienen receta.');return}
+  openMo('Nueva receta',`<div class="fg">
+    <div class="f full"><label>Sabor *</label><select id="mr-sab" style="${SS_M};width:100%">
+      <option value="">— Seleccionar —</option>
+      ${disp.map(s=>`<option value="${s.id}">${s.nombre} (${s.codigo})</option>`).join('')}
+    </select></div>
+    <div class="f"><label>Kg producidos por tanda *</label><input id="mr-kg" type="number" step="0.1" value="10" style="${SS_M};width:100%"></div>
+    <div class="f"><label>Precio venta/kg (€)</label><input id="mr-pv" type="number" step="0.01" value="0" style="${SS_M};width:100%"></div>
+    <div class="f full"><label>Notas</label><input id="mr-not" style="${SS_M};width:100%"></div>
+  </div>`,
+  async()=>{
+    const sabId=document.getElementById('mr-sab').value;
+    const kg=parseFloat(document.getElementById('mr-kg').value)||0;
+    if(!sabId||!kg){alert('Completá sabor y kg.');return}
+    const pv=parseFloat(document.getElementById('mr-pv').value)||null;
+    const{data:rec,error}=await sb.from('recetas').insert({sabor_id:sabId,kg_producidos:kg,precio_venta:pv,notas:document.getElementById('mr-not').value||null}).select().single();
+    if(error){alert(error.message);return}
+    closeMo();await mayEditReceta(rec.id);
+  });
+}
+
+function mayEditRecetaInfo(id,nombre,kg,pv,notas){
+  openMo(`Editar — ${nombre}`,`<div class="fg">
+    <div class="f"><label>Kg producidos</label><input id="mr-kg" type="number" step="0.1" value="${kg}" style="${SS_M};width:100%"></div>
+    <div class="f"><label>Precio venta/kg (€)</label><input id="mr-pv" type="number" step="0.01" value="${pv!=null?pv:0}" style="${SS_M};width:100%"></div>
+    <div class="f full"><label>Notas</label><input id="mr-not" value="${notas}" style="${SS_M};width:100%"></div>
+  </div>`,
+  async()=>{
+    const pv=parseFloat(document.getElementById('mr-pv').value);
+    const{error}=await sb.from('recetas').update({kg_producidos:parseFloat(document.getElementById('mr-kg').value)||1,precio_venta:isNaN(pv)||pv===0?null:pv,notas:document.getElementById('mr-not').value||null}).eq('id',id);
+    if(error){alert(error.message);return}
+    closeMo();const el=document.querySelector('[data-myt="recetas"]');if(el)mayTab('recetas',el);
+  });
+}
+
+async function mayEditReceta(recetaId){
+  const[{data:rec},{data:ings}]=await Promise.all([
+    sb.from('recetas').select('*,prod_sabores(nombre,codigo)').eq('id',recetaId).single(),
+    sb.from('receta_ingredientes').select('*,productos(nombre,unidad_medida,ultimo_precio)').eq('receta_id',recetaId).order('created_at')
+  ]);
+  const costoTotal=(ings||[]).reduce((a,i)=>a+(parseFloat(i.cantidad)||0)*(parseFloat(i.productos?.ultimo_precio)||0),0);
+  const costoKg=rec.kg_producidos>0?costoTotal/rec.kg_producidos:0;
+  const ct=document.getElementById('may-ct');
+  ct.innerHTML=`<div class="card">
+    <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+      Receta: <strong>${rec.prod_sabores?.nombre||'—'}</strong>&nbsp;<span class="bd bd-gray">${rec.prod_sabores?.codigo||''}</span>
+      <button class="btn btn-sm btn-g" onclick="mayTab('recetas',document.querySelector('[data-myt=recetas]'))">← Volver</button>
+    </div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:18px;padding:14px;background:var(--surface2);border-radius:var(--r)">
+      <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Rinde</div><div style="font-weight:700;font-size:16px">${rec.kg_producidos} kg</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Costo ingredientes</div><div style="font-weight:700;font-size:16px">${fmt(costoTotal)}</div></div>
+      <div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Costo / kg</div><div style="font-weight:700;font-size:20px;color:var(--blue)">${fmt(costoKg)}</div></div>
+      ${rec.precio_venta!=null?`<div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">Margen / kg</div><div style="font-weight:700;font-size:20px;color:var(--green)">${fmt(rec.precio_venta-costoKg)}</div></div>`:''}
+    </div>
+    <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+      Ingredientes
+      <button class="btn btn-sm btn-p" onclick="mayAddIngrediente('${recetaId}')">+ Agregar</button>
+    </div>
+    ${!(ings||[]).length?'<div class="empty" style="padding:16px">Sin ingredientes. Agregá uno arriba.</div>':
+    '<div style="overflow-x:auto"><table><thead><tr><th>Ingrediente</th><th>Cantidad</th><th>Precio unit.</th><th>Subtotal</th><th></th></tr></thead><tbody>'
+    +(ings||[]).map(i=>{
+      const sub=(parseFloat(i.cantidad)||0)*(parseFloat(i.productos?.ultimo_precio)||0);
+      return`<tr>
+        <td><strong>${i.productos?.nombre||'—'}</strong></td>
+        <td>${i.cantidad} ${i.productos?.unidad_medida||''}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${fmt(i.productos?.ultimo_precio||0)}/${i.productos?.unidad_medida||'u'}</td>
+        <td style="font-weight:600">${fmt(sub)}</td>
+        <td><button class="btn btn-sm btn-d" onclick="mayDelIngrediente('${i.id}','${recetaId}')">✕</button></td>
+      </tr>`;
+    }).join('')
+    +'</tbody></table></div>'}
+  </div>`;
+}
+
+function mayAddIngrediente(recetaId){
+  sb.from('productos').select('id,nombre,unidad_medida,ultimo_precio').eq('es_materia_produccion',true).order('nombre').then(({data:prods})=>{
+    openMo('Agregar ingrediente',`<div class="fg">
+      <div class="f full"><label>Materia prima *</label><select id="mi-prod" style="${SS_M};width:100%">
+        <option value="">— Seleccionar —</option>
+        ${(prods||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.unidad_medida||'u'}) · ${p.ultimo_precio!=null?fmt(p.ultimo_precio):'sin precio'}</option>`).join('')}
+      </select></div>
+      <div class="f"><label>Cantidad *</label><input id="mi-cant" type="number" step="0.001" value="1" style="${SS_M};width:100%"></div>
+    </div>`,
+    async()=>{
+      const pid=document.getElementById('mi-prod').value;
+      const cant=parseFloat(document.getElementById('mi-cant').value)||0;
+      if(!pid||!cant){alert('Completá materia prima y cantidad.');return}
+      const{error}=await sb.from('receta_ingredientes').insert({receta_id:recetaId,producto_id:pid,cantidad:cant});
+      if(error){alert(error.message);return}
+      closeMo();await mayEditReceta(recetaId);
+    });
+  });
+}
+
+async function mayDelIngrediente(id,recetaId){
+  if(!confirm('¿Eliminar ingrediente?'))return;
+  await sb.from('receta_ingredientes').delete().eq('id',id);
+  await mayEditReceta(recetaId);
+}
+
+// ── CLIENTES ─────────────────────────────────────────────────────────────────
+async function mayClientes(ct){
+  const{data}=await sb.from('mayorista_clientes').select('*').order('nombre');
+  ct.innerHTML=`<div class="card"><div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+    Clientes Mayoristas
+    <button class="btn btn-sm btn-p" onclick="mayFormCliente()">+ Nuevo cliente</button>
+  </div>
+  ${!(data||[]).length?'<div class="empty" style="padding:20px">Sin clientes.</div>':
+  (data||[]).map(cli=>`<div class="ri">
+    <div>
+      <div class="ri-n">${cli.nombre}${!cli.activo?' <span class="bd bd-gray">Inactivo</span>':''}</div>
+      <div class="ri-s">
+        ${cli.direccion?`<span>${cli.direccion}</span>`:''}
+        ${cli.nif?`<span>NIF: ${cli.nif}</span>`:''}
+        ${cli.email?`<span>${cli.email}</span>`:''}
+      </div>
+    </div>
+    <button class="btn btn-sm" onclick="mayEditCliente('${cli.id}')">Editar</button>
+  </div>`).join('')}
+  </div>`;
+}
+
+async function mayEditCliente(id){
+  const{data}=await sb.from('mayorista_clientes').select('*').eq('id',id).single();
+  mayFormCliente(data);
+}
+
+function mayFormCliente(cli=null){
+  openMo(cli?'Editar cliente':'Nuevo cliente',`<div class="fg">
+    <div class="f full"><label>Nombre / Razón social *</label><input id="mc-nom" value="${cli?.nombre||''}" style="${SS_M};width:100%"></div>
+    <div class="f full"><label>Dirección</label><input id="mc-dir" value="${cli?.direccion||''}" style="${SS_M};width:100%"></div>
+    <div class="f"><label>Email</label><input id="mc-eml" type="email" value="${cli?.email||''}" style="${SS_M};width:100%"></div>
+    <div class="f"><label>Teléfono</label><input id="mc-tel" value="${cli?.telefono||''}" style="${SS_M};width:100%"></div>
+    <div class="f"><label>NIF / USt-IdNr.</label><input id="mc-nif" value="${cli?.nif||''}" style="${SS_M};width:100%"></div>
+    <div class="f full"><label>Notas</label><input id="mc-not" value="${cli?.notas||''}" style="${SS_M};width:100%"></div>
+    ${cli?`<div class="f"><label>Estado</label><select id="mc-act" style="${SS_M};width:100%">
+      <option value="true" ${cli.activo?'selected':''}>Activo</option>
+      <option value="false" ${!cli.activo?'selected':''}>Inactivo</option>
+    </select></div>`:''}
+  </div>`,
+  async()=>{
+    const row={nombre:document.getElementById('mc-nom').value.trim(),direccion:document.getElementById('mc-dir').value||null,email:document.getElementById('mc-eml').value||null,telefono:document.getElementById('mc-tel').value||null,nif:document.getElementById('mc-nif').value||null,notas:document.getElementById('mc-not').value||null};
+    if(!row.nombre){alert('El nombre es obligatorio.');return}
+    if(cli)row.activo=document.getElementById('mc-act').value==='true';
+    const{error}=cli?await sb.from('mayorista_clientes').update(row).eq('id',cli.id):await sb.from('mayorista_clientes').insert(row);
+    if(error){alert(error.message);return}
+    closeMo();const el=document.querySelector('[data-myt="clientes"]');if(el)mayTab('clientes',el);
+  });
+}
+
+// ── LIEFERSCHEINE ────────────────────────────────────────────────────────────
+async function mayLieferscheine(ct){
+  const{data:liefer}=await sb.from('lieferscheine').select('*,mayorista_clientes(nombre)').order('fecha',{ascending:false}).limit(100);
+  ct.innerHTML=`<div style="margin-bottom:14px">
+    <button class="btn btn-p" onclick="mayNewLieferschein()">+ Nuevo Lieferschein</button>
+  </div>
+  ${!(liefer||[]).length?'<div class="card"><div class="empty" style="padding:20px">Sin Lieferscheine.</div></div>':
+  `<div class="card"><div style="overflow-x:auto"><table><thead><tr>
+    <th>N°</th><th>Fecha</th><th>Cliente</th><th>Período</th><th>Estado</th><th></th>
+  </tr></thead><tbody>
+  ${liefer.map(l=>`<tr>
+    <td style="font-size:11px;font-family:monospace">${l.id.substring(0,8).toUpperCase()}</td>
+    <td>${fmtD(l.fecha)}</td>
+    <td><strong>${l.mayorista_clientes?.nombre||'—'}</strong></td>
+    <td style="font-size:12px">${l.periodo_desde?fmtD(l.periodo_desde)+' — '+fmtD(l.periodo_hasta||l.fecha):'—'}</td>
+    <td>${l.estado==='confirmado'?'<span class="bd bd-ok">Confirmado</span>':'<span class="bd bd-warn">Borrador</span>'}</td>
+    <td style="display:flex;gap:4px">
+      <button class="btn btn-sm btn-p" onclick="mayVerLieferschein('${l.id}')">Ver</button>
+      <button class="btn btn-sm" onclick="mayImprimirLieferschein('${l.id}')">🖨️</button>
+      ${l.estado!=='confirmado'?`<button class="btn btn-sm btn-d" onclick="mayDelLieferschein('${l.id}')">✕</button>`:''}
+    </td>
+  </tr>`).join('')}
+  </tbody></table></div></div>`}`;
+}
+
+async function mayNewLieferschein(){
+  const{data:clientes}=await sb.from('mayorista_clientes').select('id,nombre').eq('activo',true).order('nombre');
+  if(!(clientes||[]).length){alert('Primero cargá un cliente en la pestaña Clientes.');return}
+  openMo('Nuevo Lieferschein',`<div class="fg">
+    <div class="f full"><label>Cliente *</label><select id="ml-cli" style="${SS_M};width:100%">
+      <option value="">— Seleccionar —</option>
+      ${clientes.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')}
+    </select></div>
+    <div class="f"><label>Fecha *</label><input id="ml-fec" type="date" value="${today()}" style="${SS_M};width:100%"></div>
+    <div class="f"><label>Período desde</label><input id="ml-pd" type="date" style="${SS_M};width:100%"></div>
+    <div class="f"><label>Período hasta</label><input id="ml-ph" type="date" value="${today()}" style="${SS_M};width:100%"></div>
+    <div class="f full"><label>Notas</label><input id="ml-not" style="${SS_M};width:100%"></div>
+  </div>`,
+  async()=>{
+    const cliId=document.getElementById('ml-cli').value;
+    const fec=document.getElementById('ml-fec').value;
+    if(!cliId||!fec){alert('Completá cliente y fecha.');return}
+    const{data:l,error}=await sb.from('lieferscheine').insert({cliente_id:cliId,fecha:fec,periodo_desde:document.getElementById('ml-pd').value||null,periodo_hasta:document.getElementById('ml-ph').value||null,notas:document.getElementById('ml-not').value||null,estado:'borrador'}).select().single();
+    if(error){alert(error.message);return}
+    closeMo();await mayVerLieferschein(l.id);
+  });
+}
+
+async function mayVerLieferschein(id){
+  const[{data:l},{data:items},{data:sabores},{data:recetas}]=await Promise.all([
+    sb.from('lieferscheine').select('*,mayorista_clientes(*)').eq('id',id).single(),
+    sb.from('lieferschein_items').select('*,prod_sabores(nombre,codigo)').eq('lieferschein_id',id).order('created_at'),
+    sb.from('prod_sabores').select('id,nombre,codigo').eq('activo',true).order('nombre'),
+    sb.from('recetas').select('sabor_id,precio_venta')
+  ]);
+  const precioMap={};(recetas||[]).forEach(r=>{if(r.precio_venta!=null)precioMap[r.sabor_id]=r.precio_venta;});
+  const ct=document.getElementById('may-ct');
+  const isBor=l.estado==='borrador';
+  const total=(items||[]).reduce((a,i)=>a+(parseFloat(i.kg)||0)*(parseFloat(i.precio_kg)||0),0);
+  ct.innerHTML=`<div class="card">
+    <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Lieferschein — <strong>${l.mayorista_clientes?.nombre||'—'}</strong></span>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="mayImprimirLieferschein('${id}')">🖨️ Imprimir</button>
+        ${isBor?`<button class="btn btn-sm btn-ok" onclick="mayConfirmarLieferschein('${id}')">✅ Confirmar</button>`:''}
+        <button class="btn btn-sm btn-g" onclick="mayTab('liefer',document.querySelector('[data-myt=liefer]'))">← Volver</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;font-size:13px">
+      <div><span style="color:var(--text-muted)">Fecha:</span> <strong>${fmtD(l.fecha)}</strong></div>
+      ${l.periodo_desde?`<div><span style="color:var(--text-muted)">Período:</span> <strong>${fmtD(l.periodo_desde)} — ${fmtD(l.periodo_hasta||l.fecha)}</strong></div>`:''}
+      <div>${isBor?'<span class="bd bd-warn">Borrador</span>':'<span class="bd bd-ok">Confirmado</span>'}</div>
+    </div>
+    ${l.notas?`<div class="al al-info" style="margin-bottom:12px">${l.notas}</div>`:''}
+    <div class="card-t" style="display:flex;justify-content:space-between;align-items:center">
+      Sabores
+      ${isBor?`<div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-p" onclick="mayAddLieferItem('${id}',${JSON.stringify(sabores||[])},${JSON.stringify(precioMap)})">+ Agregar sabor</button>
+        <button class="btn btn-sm btn-g" onclick="mayImportarCSVLiefer('${id}')">📊 Importar CSV</button>
+      </div>`:''}
+    </div>
+    ${!(items||[]).length?'<div class="empty" style="padding:16px">Sin sabores aún.</div>':
+    `<div style="overflow-x:auto"><table><thead><tr>
+      <th>Código</th><th>Sabor</th><th>Kg</th><th>Precio/kg</th><th>Subtotal</th>${isBor?'<th></th>':''}
+    </tr></thead><tbody>
+    ${items.map(i=>`<tr>
+      <td><span class="bd bd-gray">${i.prod_sabores?.codigo||'—'}</span></td>
+      <td><strong>${i.prod_sabores?.nombre||'—'}</strong></td>
+      <td>${i.kg} kg</td>
+      <td>${fmt(i.precio_kg||0)}/kg</td>
+      <td style="font-weight:600">${fmt((parseFloat(i.kg)||0)*(parseFloat(i.precio_kg)||0))}</td>
+      ${isBor?`<td><button class="btn btn-sm btn-d" onclick="mayDelLieferItem('${i.id}','${id}')">✕</button></td>`:''}
+    </tr>`).join('')}
+    </tbody></table>
+    <div style="text-align:right;font-size:15px;font-weight:700;padding:10px 0;border-top:1px solid var(--border-md);margin-top:6px">Total: ${fmt(total)}</div></div>`}
+  </div>`;
+}
+
+function mayAddLieferItem(lieferId,sabores,precioMap){
+  if(typeof sabores==='string')sabores=JSON.parse(sabores);
+  if(typeof precioMap==='string')precioMap=JSON.parse(precioMap);
+  openMo('Agregar sabor',`<div class="fg">
+    <div class="f full"><label>Sabor *</label>
+      <select id="li-sab" onchange="const pv=(${JSON.stringify(precioMap)})[this.value];const f=document.getElementById('li-pr');if(pv&&parseFloat(f.value)===0)f.value=pv" style="${SS_M};width:100%">
+        <option value="">— Seleccionar —</option>
+        ${sabores.map(s=>`<option value="${s.id}">${s.nombre} (${s.codigo})</option>`).join('')}
+      </select>
+    </div>
+    <div class="f"><label>Kg *</label><input id="li-kg" type="number" step="0.001" value="0" style="${SS_M};width:100%"></div>
+    <div class="f"><label>Precio/kg (€)</label><input id="li-pr" type="number" step="0.01" value="0" style="${SS_M};width:100%"></div>
+  </div>`,
+  async()=>{
+    const sabId=document.getElementById('li-sab').value;
+    const kg=parseFloat(document.getElementById('li-kg').value)||0;
+    if(!sabId||!kg){alert('Completá sabor y kg.');return}
+    const{error}=await sb.from('lieferschein_items').insert({lieferschein_id:lieferId,sabor_id:sabId,kg,precio_kg:parseFloat(document.getElementById('li-pr').value)||0});
+    if(error){alert(error.message);return}
+    closeMo();await mayVerLieferschein(lieferId);
+  });
+}
+
+async function mayDelLieferItem(id,lieferId){
+  if(!confirm('¿Eliminar?'))return;
+  await sb.from('lieferschein_items').delete().eq('id',id);
+  await mayVerLieferschein(lieferId);
+}
+
+async function mayConfirmarLieferschein(id){
+  if(!confirm('¿Confirmar Lieferschein? No podrá modificarse.'))return;
+  await sb.from('lieferscheine').update({estado:'confirmado'}).eq('id',id);
+  await mayVerLieferschein(id);
+}
+
+async function mayDelLieferschein(id){
+  if(!confirm('¿Eliminar este Lieferschein?'))return;
+  await sb.from('lieferschein_items').delete().eq('lieferschein_id',id);
+  await sb.from('lieferscheine').delete().eq('id',id);
+  const el=document.querySelector('[data-myt="liefer"]');if(el)mayTab('liefer',el);
+}
+
+function mayImportarCSVLiefer(lieferId){
+  openMo('Importar CSV Facciobuono',`<div>
+    <div class="al al-info" style="margin-bottom:12px">Subí el CSV/XLS de Facciobuono con ventas del período. El sistema busca columnas de código y kg.</div>
+    <input type="file" id="csv-liefer" accept=".csv,.xlsx,.xls" style="margin-bottom:12px">
+    <div id="csv-liefer-prev"></div>
+  </div>`,
+  async()=>{
+    const rows=window._csvLieferRows;
+    if(!rows||!rows.length){alert('Primero cargá un archivo.');return}
+    for(const r of rows){
+      await sb.from('lieferschein_items').insert({lieferschein_id:lieferId,sabor_id:r.sabor_id,kg:r.kg,precio_kg:r.precio_kg||0});
+    }
+    window._csvLieferRows=null;
+    closeMo();await mayVerLieferschein(lieferId);
+  });
+  setTimeout(()=>{
+    const inp=document.getElementById('csv-liefer');if(!inp)return;
+    inp.onchange=async function(){
+      if(!window.XLSX){
+        const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        document.head.appendChild(s);await new Promise(r=>s.onload=r);
+      }
+      const buf=await this.files[0].arrayBuffer();
+      const wb=window.XLSX.read(buf,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const filas=window.XLSX.utils.sheet_to_json(ws,{defval:''});
+      const{data:sabores}=await sb.from('prod_sabores').select('id,nombre,codigo').order('codigo');
+      const{data:recetas}=await sb.from('recetas').select('sabor_id,precio_venta');
+      const precioMap={};(recetas||[]).forEach(r=>{if(r.precio_venta)precioMap[r.sabor_id]=r.precio_venta;});
+      const codeMap={};
+      (sabores||[]).forEach(s=>{
+        if(s.codigo)codeMap[s.codigo.trim().toUpperCase()]=s;
+        if(s.nombre)codeMap[s.nombre.trim().toUpperCase()]=s;
+      });
+      const parsed=[];const notFound=[];
+      filas.forEach(row=>{
+        const keys=Object.keys(row);
+        const codeKey=keys.find(k=>/kod|code|artikel|sabor|flavor/i.test(k));
+        const kgKey=keys.find(k=>/kg|menge|gewicht|cantidad/i.test(k));
+        if(!codeKey||!kgKey)return;
+        const code=String(row[codeKey]||'').trim().toUpperCase();
+        const kg=parseFloat(String(row[kgKey]).replace(',','.'))||0;
+        if(!code||!kg)return;
+        const sab=codeMap[code];
+        if(sab)parsed.push({sabor_id:sab.id,nombre:sab.nombre,codigo:code,kg,precio_kg:precioMap[sab.id]||0});
+        else notFound.push(code);
+      });
+      window._csvLieferRows=parsed;
+      const prev=document.getElementById('csv-liefer-prev');
+      if(prev)prev.innerHTML=parsed.length
+        ?`<div class="al al-info" style="margin-top:10px"><strong>${parsed.length} sabores encontrados:</strong>${parsed.map(r=>`<br>· ${r.nombre}: ${r.kg} kg`).join('')}</div>${notFound.length?`<div class="al al-warn" style="margin-top:6px">No encontrados: ${notFound.join(', ')}</div>`:''}`
+        :`<div class="al al-warn" style="margin-top:10px">No se encontraron filas válidas. Verificá el formato del archivo.</div>`;
+    };
+  },300);
+}
+
+async function mayImprimirLieferschein(id){
+  const[{data:l},{data:items}]=await Promise.all([
+    sb.from('lieferscheine').select('*,mayorista_clientes(*)').eq('id',id).single(),
+    sb.from('lieferschein_items').select('*,prod_sabores(nombre,codigo)').eq('lieferschein_id',id).order('created_at')
+  ]);
+  const cli=l.mayorista_clientes||{};
+  const total=(items||[]).reduce((a,i)=>a+(parseFloat(i.kg)||0)*(parseFloat(i.precio_kg)||0),0);
+  const num=l.id.substring(0,8).toUpperCase();
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+  <title>Lieferschein ${num}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:Arial,sans-serif;font-size:11px;margin:24px;color:#000}
+    .hdr{display:flex;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #000}
+    .co strong{font-size:14px;display:block;margin-bottom:4px}
+    .ti{text-align:right}
+    .ti h1{font-size:24px;font-weight:700;margin:0 0 8px}
+    .ti table{margin-left:auto;font-size:11px;border-collapse:collapse}
+    .ti td{padding:2px 4px}
+    .ti td:first-child{color:#555}
+    .cli{margin:0 0 20px;padding:10px 14px;border-left:3px solid #000;background:#f9f9f9}
+    .cli strong{font-size:12px}
+    table.items{width:100%;border-collapse:collapse;margin-bottom:16px}
+    table.items th{background:#eee;padding:6px 8px;text-align:left;border:1px solid #ccc;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+    table.items td{padding:6px 8px;border:1px solid #ddd}
+    table.items tr:nth-child(even) td{background:#fafafa}
+    .total{text-align:right;font-size:13px;font-weight:700;padding:8px 0;border-top:2px solid #000}
+    .firma{display:flex;gap:60px;margin-top:48px}
+    .firma-box{flex:1;padding-top:8px;border-top:1px solid #000;font-size:10px;color:#555}
+    .footer{font-size:9px;color:#888;border-top:1px solid #ccc;padding-top:8px;margin-top:24px;text-align:center}
+    @media print{button{display:none!important}.noprint{display:none}}
+  </style></head><body>
+  <div class="hdr">
+    <div class="co">
+      <strong>Eis Bibione</strong>
+      Gebrüder Gimenez Ramirez GbR<br>
+      Hauptstraße 89 · 75181 Pforzheim<br>
+      Deutschland
+    </div>
+    <div class="ti">
+      <h1>Lieferschein</h1>
+      <table><tr><td>Lieferschein-Nr.:</td><td><strong>${num}</strong></td></tr>
+      <tr><td>Datum:</td><td><strong>${fmtD(l.fecha)}</strong></td></tr>
+      ${l.periodo_desde?`<tr><td>Leistungszeitraum:</td><td><strong>${fmtD(l.periodo_desde)} – ${fmtD(l.periodo_hasta||l.fecha)}</strong></td></tr>`:''}
+      </table>
+    </div>
+  </div>
+  <div class="cli">
+    <strong>${cli.nombre||'—'}</strong><br>
+    ${cli.direccion?cli.direccion+'<br>':''}
+    ${cli.nif?'USt-IdNr.: '+cli.nif:''}
+  </div>
+  <table class="items">
+    <thead><tr>
+      <th>Pos.</th><th>Code</th><th>Artikelbezeichnung</th>
+      <th style="text-align:right">Menge (kg)</th>
+      <th style="text-align:right">Preis/kg</th>
+      <th style="text-align:right">Gesamt</th>
+    </tr></thead>
+    <tbody>
+    ${(items||[]).map((i,idx)=>`<tr>
+      <td>${idx+1}</td>
+      <td>${i.prod_sabores?.codigo||'—'}</td>
+      <td><strong>${i.prod_sabores?.nombre||'—'}</strong></td>
+      <td style="text-align:right">${i.kg}</td>
+      <td style="text-align:right">${fmt(i.precio_kg||0)}</td>
+      <td style="text-align:right"><strong>${fmt((parseFloat(i.kg)||0)*(parseFloat(i.precio_kg)||0))}</strong></td>
+    </tr>`).join('')}
+    </tbody>
+  </table>
+  <div class="total">Gesamtbetrag: ${fmt(total)}</div>
+  ${l.notas?`<p style="font-size:11px;font-style:italic;color:#555">${l.notas}</p>`:''}
+  <div class="firma">
+    <div class="firma-box">Ausgestellt / Lieferant<br><br>&nbsp;</div>
+    <div class="firma-box">Empfangen / Kunde<br><br>&nbsp;</div>
+  </div>
+  <div class="footer">
+    Eis Bibione · Gebrüder Gimenez Ramirez GbR · Hauptstraße 89 · 75181 Pforzheim · Deutschland
+  </div>
+  <div class="noprint" style="margin-top:20px">
+    <button onclick="window.print()" style="padding:8px 20px;font-size:13px;cursor:pointer">🖨️ Drucken / Imprimir</button>
+  </div>
+  </body></html>`);
+  w.document.close();
+}
 </script>
 </body>
 </html>
