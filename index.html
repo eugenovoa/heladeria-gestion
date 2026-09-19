@@ -5488,12 +5488,12 @@ function mayFormCliente(cli=null){
 }
 
 async function mayLieferscheine(ct){
-  const{data:liefer}=await sb.from('lieferscheine').select('*,mayorista_clientes(nombre)').order('fecha',{ascending:false}).limit(100);
+  const{data:liefer}=await sb.from('lieferscheine').select('*,mayorista_clientes(nombre)').order('numero',{ascending:false}).limit(100);
   ct.innerHTML=`<div style="margin-bottom:14px"><button class="btn btn-p" onclick="mayNewLieferschein()">+ Nuevo Lieferschein</button></div>
   ${!(liefer||[]).length?'<div class="card"><div class="empty" style="padding:20px">Sin Lieferscheine.</div></div>':
   `<div class="card"><div style="overflow-x:auto"><table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Período</th><th>Estado</th><th></th></tr></thead><tbody>
   ${liefer.map(l=>`<tr>
-    <td style="font-size:11px;font-family:monospace">${l.id.substring(0,8).toUpperCase()}</td>
+    <td style="font-size:11px;font-family:monospace">${l.numero?String(l.numero).padStart(5,'0'):'—'}</td>
     <td>${fmtD(l.fecha)}</td><td><strong>${l.mayorista_clientes?.nombre||'—'}</strong></td>
     <td style="font-size:12px">${l.periodo_desde?fmtD(l.periodo_desde)+' — '+fmtD(l.periodo_hasta||l.fecha):'—'}</td>
     <td>${l.estado==='confirmado'?'<span class="bd bd-ok">Confirmado</span>':'<span class="bd bd-warn">Borrador</span>'}</td>
@@ -5657,7 +5657,7 @@ async function mayImprimirLieferschein(id){
   ]);
   const cli=l.mayorista_clientes||{};
   const total=(items||[]).reduce((a,i)=>a+(parseFloat(i.kg)||0)*(parseFloat(i.precio_kg)||0),0);
-  const num=l.id.substring(0,8).toUpperCase();
+  const num=l.numero?String(l.numero).padStart(5,'0'):l.id.substring(0,8).toUpperCase();
   const w=window.open('','_blank');
   w.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Lieferschein ${num}</title>
   <style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;margin:24px;color:#000}
@@ -5672,7 +5672,7 @@ async function mayImprimirLieferschein(id){
   .firma{display:flex;gap:60px;margin-top:48px}.firma-box{flex:1;padding-top:8px;border-top:1px solid #000;font-size:10px;color:#555}
   .footer{font-size:9px;color:#888;border-top:1px solid #ccc;padding-top:8px;margin-top:24px;text-align:center}
   @media print{button{display:none!important}}</style></head><body>
-  <div class="hdr"><div class="co"><strong>Eis Bibione</strong>Gebrüder Gimenez Ramirez GbR<br>Hauptstraße 89 · 75181 Pforzheim<br>Deutschland</div>
+  <div class="hdr"><div class="co"><strong>Eis Bibione</strong>Maximiliano Andrés Gimenez Ramirez<br>Hauptstraße 89 · 75181 Pforzheim · Deutschland<br>USt-IdNr.: DE 358212658 · eisbibione@gmail.com</div>
   <div class="ti"><h1>Lieferschein</h1><table>
     <tr><td>Lieferschein-Nr.:</td><td><strong>${num}</strong></td></tr>
     <tr><td>Datum:</td><td><strong>${fmtD(l.fecha)}</strong></td></tr>
@@ -5687,7 +5687,7 @@ async function mayImprimirLieferschein(id){
   <div class="total">Gesamtbetrag: ${fmt(total)}</div>
   ${l.notas?`<p style="font-size:11px;font-style:italic;color:#555">${l.notas}</p>`:''}
   <div class="firma"><div class="firma-box">Ausgestellt / Lieferant<br><br>&nbsp;</div><div class="firma-box">Empfangen / Kunde<br><br>&nbsp;</div></div>
-  <div class="footer">Eis Bibione · Gebrüder Gimenez Ramirez GbR · Hauptstraße 89 · 75181 Pforzheim · Deutschland</div>
+  <div class="footer">Eis Bibione · Maximiliano Andrés Gimenez Ramirez · Hauptstraße 89 · 75181 Pforzheim · Deutschland · USt-IdNr.: DE 358212658 · eisbibione@gmail.com</div>
   <button onclick="window.print()" style="margin-top:20px;padding:8px 20px;font-size:13px;cursor:pointer">🖨️ Drucken</button>
   </body></html>`);w.document.close();
 }
