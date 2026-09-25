@@ -2086,12 +2086,16 @@ async function nuevoCierre(){
     <div class="f"><label>Fecha *</label><input id="nc-f" type="date" value="${today()}"></div>
     <div class="f"><label>Sucursal *</label><select id="nc-s"><option value="">General</option>${sucOpts()}</select></div>
     <div class="f"><label>Efectivo inicial</label><input id="nc-ei" type="number" step="0.01" value="0"></div>
-    <div class="f"><label>Ingresos del día (efectivo)</label><input id="nc-ing" type="number" step="0.01" value="0" oninput="calcDifCierre()"></div>
+    <div class="f"><label>Ingresos del día (efectivo)</label><input id="nc-ing" type="number" step="0.01" value="0" oninput="calcDifCierre();autoFillEfCierre('nc')"></div>
     <div class="f"><label>Ventas tarjeta</label><input id="nc-tar" type="number" step="0.01" value="0" oninput="calcDifCierre()"></div>
     <div class="f"><label>Egresos efectivo</label><input id="nc-eg" type="number" step="0.01" value="0" oninput="calcDifCierre()"></div>
     <div class="f"><label>Efectivo final contado</label><input id="nc-ef" type="number" step="0.01" value="0" oninput="calcDifCierre()"></div>
     <div class="f"><label>Diferencia</label><input id="nc-dif" type="number" step="0.01" value="0" readonly style="background:var(--surface2)"></div>
     <div class="f full"><label>Observaciones</label><input id="nc-obs"></div>
+    <div class="f"><label>Gutschein vendidos</label><input id="nc-gv" type="number" step="0.01" value="0"></div>
+    <div class="f"><label>Gutschein canjeados</label><input id="nc-gc" type="number" step="0.01" value="0"></div>
+    <div class="f"><label>Propinas</label><input id="nc-prop" type="number" step="0.01" value="0"></div>
+    <div class="f"><label>Eistorten</label><input id="nc-eist" type="number" step="0.01" value="0"></div>
   </div>
   <div style="display:flex;background:var(--surface2);border-radius:var(--r);padding:14px 20px;gap:24px;margin-top:8px">
     <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Efectivo</div><div id="nc-sv-ef" style="font-size:16px;font-weight:700;color:var(--green)">€0,00</div></div>
@@ -2107,7 +2111,7 @@ async function nuevoCierre(){
     const eg=parseFloat(document.getElementById('nc-eg').value)||0;
     const ef=parseFloat(document.getElementById('nc-ef').value)||0;
     const dif=ef-(ei+ing-eg);
-    const{data:cierre,error}=await sb.from('cierres_caja').insert({fecha:f,sucursal_id:document.getElementById('nc-s').value||null,efectivo_inicial:ei,ingresos_dia:ing,ventas_tarjeta:tar,egresos_efectivo:eg,efectivo_final_contado:ef,diferencia_caja:dif,observaciones:document.getElementById('nc-obs').value||null}).select('id').single();
+    const{data:cierre,error}=await sb.from('cierres_caja').insert({fecha:f,sucursal_id:document.getElementById('nc-s').value||null,efectivo_inicial:ei,ingresos_dia:ing,ventas_tarjeta:tar,egresos_efectivo:eg,efectivo_final_contado:ef,diferencia_caja:dif,observaciones:document.getElementById('nc-obs').value||null,gutschein_vendidos:parseFloat(document.getElementById('nc-gv').value)||0,gutschein_canjeados:parseFloat(document.getElementById('nc-gc').value)||0,propinas:parseFloat(document.getElementById('nc-prop').value)||0,eistorten:parseFloat(document.getElementById('nc-eist').value)||0}).select('id').single();
     if(error){alert(error.code==='23505'?'⚠️ Ya existe un cierre de caja para esta sucursal y fecha. Editá el cierre existente en lugar de crear uno nuevo.':error.message);return}
     if(tar>0&&cierre?.id){
       const comision=parseFloat((tar*0.0079).toFixed(2));
@@ -2118,6 +2122,13 @@ async function nuevoCierre(){
   });
 }
 
+
+function autoFillEfCierre(pfx){
+  const ing=document.getElementById(`${pfx}-ing`);
+  const ef=document.getElementById(`${pfx}-ef`);
+  if(ing&&ef)ef.value=ing.value;
+  calcDifCierre();
+}
 function calcDifCierre(){
   const pfx=document.getElementById('nc-ei')?'nc':'ec';
   const ei=parseFloat(document.getElementById(`${pfx}-ei`)?.value)||0;
@@ -2149,6 +2160,10 @@ async function editCierre(id){
     <div class="f"><label>Efectivo final contado</label><input id="ec-ef" type="number" step="0.01" value="${c.efectivo_final_contado||0}" oninput="calcDifCierre()"></div>
     <div class="f"><label>Diferencia</label><input id="ec-dif" type="number" step="0.01" value="${c.diferencia_caja||0}"></div>
     <div class="f full"><label>Observaciones</label><input id="ec-obs" value="${c.observaciones||''}"></div>
+    <div class="f"><label>Gutschein vendidos</label><input id="ec-gv" type="number" step="0.01" value="${c.gutschein_vendidos||0}"></div>
+    <div class="f"><label>Gutschein canjeados</label><input id="ec-gc" type="number" step="0.01" value="${c.gutschein_canjeados||0}"></div>
+    <div class="f"><label>Propinas</label><input id="ec-prop" type="number" step="0.01" value="${c.propinas||0}"></div>
+    <div class="f"><label>Eistorten</label><input id="ec-eist" type="number" step="0.01" value="${c.eistorten||0}"></div>
   </div>
   <div style="display:flex;background:var(--surface2);border-radius:var(--r);padding:14px 20px;gap:24px;margin-top:8px">
     <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Efectivo</div><div id="ec-sv-ef" style="font-size:16px;font-weight:700;color:var(--green)">${fmt(c.ingresos_dia||0)}</div></div>
@@ -2168,7 +2183,11 @@ async function editCierre(id){
       egresos_efectivo:parseFloat(document.getElementById('ec-eg').value)||0,
       efectivo_final_contado:parseFloat(document.getElementById('ec-ef').value)||0,
       diferencia_caja:parseFloat(document.getElementById('ec-dif').value)||0,
-      observaciones:document.getElementById('ec-obs').value||null
+      observaciones:document.getElementById('ec-obs').value||null,
+      gutschein_vendidos:parseFloat(document.getElementById('ec-gv').value)||0,
+      gutschein_canjeados:parseFloat(document.getElementById('ec-gc').value)||0,
+      propinas:parseFloat(document.getElementById('ec-prop').value)||0,
+      eistorten:parseFloat(document.getElementById('ec-eist').value)||0
     }).eq('id',id);
     if(error){alert(error.code==='23505'?'⚠️ Ya existe otro cierre de caja para esa sucursal y fecha.':error.message);return}
     const fd=nuevaFecha.split('-');const fechaFmt=`${fd[2]}/${fd[1]}/${fd[0].slice(2)}`;
@@ -2273,35 +2292,85 @@ async function caja() {
   setR(`<button class="btn btn-p" onclick="nuevoCierre()">+ Registrar cierre</button>`);
   const{data}=await sb.from('cierres_caja').select('*').order('fecha',{ascending:false});
   _cajaData=data||[];
+  const _ss='font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit';
   document.getElementById('ct').innerHTML=`<div class="card">
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-      <select id="caja-suc" onchange="renderCaja()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
-        <option value="">Todas las sucursales</option>
-        ${(_sucs||[]).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}
-      </select>
-      <input id="caja-mes" type="month" onchange="renderCaja()" style="font-size:13px;padding:8px 12px;border:1px solid var(--border-md);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:inherit">
-      <button class="btn btn-sm" onclick="document.getElementById('caja-suc').value='';document.getElementById('caja-mes').value='';renderCaja()">✕ Limpiar</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:flex-end">
+      <div class="f"><label>Período</label>
+        <select id="caja-per" onchange="cajaChangePer()" style="${_ss}">
+          <option value="todos">Todos</option>
+          <option value="mes">Mes</option>
+          <option value="anio">Año</option>
+          <option value="custom">Personalizado</option>
+        </select>
+      </div>
+      <div class="f" id="caja-mes-wrap" style="display:none"><label>Mes</label>
+        <input type="month" id="caja-mes" style="${_ss}">
+      </div>
+      <div class="f" id="caja-anio-wrap" style="display:none"><label>Año</label>
+        <input type="number" id="caja-anio" min="2020" max="2099" style="${_ss};width:90px">
+      </div>
+      <div class="f" id="caja-desde-wrap" style="display:none"><label>Desde</label>
+        <input type="date" id="caja-desde" style="${_ss}">
+      </div>
+      <div class="f" id="caja-hasta-wrap" style="display:none"><label>Hasta</label>
+        <input type="date" id="caja-hasta" style="${_ss}">
+      </div>
+      <div class="f"><label>Sucursal</label>
+        <select id="caja-suc" style="${_ss}">
+          <option value="">Todas</option>
+          ${(_sucs||[]).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-p" onclick="renderCaja()">Aplicar</button>
     </div>
     <div id="caja-tabla"></div>
   </div>`;
   renderCaja();
 }
 
+function cajaChangePer(){
+  const v=document.getElementById('caja-per').value;
+  document.getElementById('caja-mes-wrap').style.display=v==='mes'?'':'none';
+  document.getElementById('caja-anio-wrap').style.display=v==='anio'?'':'none';
+  document.getElementById('caja-desde-wrap').style.display=v==='custom'?'':'none';
+  document.getElementById('caja-hasta-wrap').style.display=v==='custom'?'':'none';
+  const now=new Date();
+  if(v==='mes'){const m=document.getElementById('caja-mes');if(m&&!m.value)m.value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;}
+  if(v==='anio'){const a=document.getElementById('caja-anio');if(a&&!a.value)a.value=now.getFullYear();}
+}
+
 function renderCaja(){
   const suc=document.getElementById('caja-suc')?.value||'';
-  const mes=document.getElementById('caja-mes')?.value||'';
-  let data=_cajaData.filter(c=>{
-    if(suc&&c.sucursal_id!==suc)return false;
-    if(mes&&!(c.fecha||'').startsWith(mes))return false;
-    return true;
-  });
+  const per=document.getElementById('caja-per')?.value||'todos';
+  const now=new Date();
+  let data=_cajaData;
+  if(per==='mes'){
+    const mv=document.getElementById('caja-mes')?.value||`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    data=data.filter(c=>(c.fecha||'').startsWith(mv));
+  } else if(per==='anio'){
+    const yr=String(document.getElementById('caja-anio')?.value||now.getFullYear());
+    data=data.filter(c=>(c.fecha||'').startsWith(yr));
+  } else if(per==='custom'){
+    const desde=document.getElementById('caja-desde')?.value||'';
+    const hasta=document.getElementById('caja-hasta')?.value||'';
+    if(desde)data=data.filter(c=>(c.fecha||'')>=desde);
+    if(hasta)data=data.filter(c=>(c.fecha||'')<=hasta);
+  }
+  if(suc)data=data.filter(c=>c.sucursal_id===suc);
   const totEf=data.reduce((a,c)=>a+parseFloat(c.ingresos_dia||0),0);
   const totTar=data.reduce((a,c)=>a+parseFloat(c.ventas_tarjeta||0),0);
   const totFac=totEf+totTar;
   const totDif=data.reduce((a,c)=>a+parseFloat(c.diferencia_caja||0),0);
+  const totGV=data.reduce((a,c)=>a+parseFloat(c.gutschein_vendidos||0),0);
+  const totGC=data.reduce((a,c)=>a+parseFloat(c.gutschein_canjeados||0),0);
+  const totProp=data.reduce((a,c)=>a+parseFloat(c.propinas||0),0);
+  const totEist=data.reduce((a,c)=>a+parseFloat(c.eistorten||0),0);
   const el=document.getElementById('caja-tabla');if(!el)return;
   el.innerHTML=!data.length?'<div class="empty">Sin cierres registrados.</div>':`
-    <div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Diferencia</th><th>Ingresos Efectivo</th><th>Tarjetas</th><th>Total Facturación</th><th>Observaciones</th><th></th></tr></thead><tbody>
+    <div style="overflow-x:auto"><table><thead><tr>
+      <th>Fecha</th><th>Sucursal</th><th>Diferencia</th><th>Ingresos Efectivo</th><th>Tarjetas</th><th>Total Fact.</th><th>Observaciones</th>
+      <th>Gutsch. Vend.</th><th>Gutsch. Canj.</th><th>Propinas</th><th>Eistorten</th><th></th>
+    </tr></thead><tbody>
     ${data.map(c=>{const tot=(parseFloat(c.ingresos_dia)||0)+(parseFloat(c.ventas_tarjeta)||0);return`<tr>
       <td>${fmtD(c.fecha)}</td>
       <td style="font-size:12px">${_sucs.find(s=>s.id===c.sucursal_id)?.nombre||'General'}</td>
@@ -2310,7 +2379,11 @@ function renderCaja(){
       <td style="color:var(--blue);font-weight:700">${fmt(c.ventas_tarjeta||0)}</td>
       <td style="color:var(--amber);font-weight:700">${fmt(tot)}</td>
       <td style="font-size:12px;color:var(--text-muted)">${c.observaciones||'—'}</td>
-      <td style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editCierre('${c.id}')">Editar</button><button class="btn btn-sm btn-d" onclick="eliminarCierre('${c.id}')">✕</button></td>
+      <td style="font-size:12px">${fmt(c.gutschein_vendidos||0)}</td>
+      <td style="font-size:12px">${fmt(c.gutschein_canjeados||0)}</td>
+      <td style="font-size:12px">${fmt(c.propinas||0)}</td>
+      <td style="font-size:12px">${fmt(c.eistorten||0)}</td>
+      <td style="white-space:nowrap"><button class="btn btn-sm" onclick="editCierre('${c.id}')">Editar</button> <button class="btn btn-sm btn-d" onclick="eliminarCierre('${c.id}')">✕</button></td>
     </tr>`}).join('')}
     </tbody>
     <tfoot><tr style="border-top:2px solid var(--border-md);background:var(--surface2)">
@@ -2319,7 +2392,12 @@ function renderCaja(){
       <td style="color:var(--green);font-weight:700">${fmt(totEf)}</td>
       <td style="color:var(--blue);font-weight:700">${fmt(totTar)}</td>
       <td style="color:var(--amber);font-weight:700">${fmt(totFac)}</td>
-      <td colspan="2"></td>
+      <td></td>
+      <td style="font-weight:700">${fmt(totGV)}</td>
+      <td style="font-weight:700">${fmt(totGC)}</td>
+      <td style="font-weight:700">${fmt(totProp)}</td>
+      <td style="font-weight:700">${fmt(totEist)}</td>
+      <td></td>
     </tr></tfoot>
     </table></div>`;
 }
