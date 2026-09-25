@@ -5674,7 +5674,7 @@ async function mayImprimirLieferschein(id){
   .firma{display:flex;gap:60px;margin-top:48px}.firma-box{flex:1;padding-top:8px;border-top:1px solid #000;font-size:10px;color:#555}
   .footer{font-size:9px;color:#888;border-top:1px solid #ccc;padding-top:8px;margin-top:24px;text-align:center}
   @media print{button{display:none!important}}</style></head><body>
-  <div class="hdr"><div class="co"><img src="${LIEFER_LOGO}" style="height:70px;object-fit:contain" alt="Eis Bibione"><br><span style="font-size:10px">Maximiliano Andrés Gimenez Ramirez<br>Hauptstraße 89 · 75181 Pforzheim · Deutschland<br>USt-IdNr.: DE 358212658 · eisbibione@gmail.com</span></div>
+  <div class="hdr"><div class="co"><img src="${LIEFER_LOGO}" style="height:70px;object-fit:contain;filter:brightness(0)" alt="Eis Bibione"><br><span style="font-size:10px">Maximiliano Andrés Gimenez Ramirez<br>Hauptstraße 89 · 75181 Pforzheim · Deutschland<br>USt-IdNr.: DE 358212658 · eisbibione@gmail.com</span></div>
   <div class="ti"><h1>Lieferschein</h1><table>
     <tr><td>Lieferschein-Nr.:</td><td><strong>${num}</strong></td></tr>
     <tr><td>Datum:</td><td><strong>${fmtD(l.fecha)}</strong></td></tr>
